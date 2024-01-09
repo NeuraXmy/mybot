@@ -122,7 +122,6 @@ def get_file_db(path, logger):
 
 # 是否是群聊消息
 def is_group(event):
-    return True
     return isinstance(event, GroupMessageEvent)
 
 
@@ -501,3 +500,4 @@ async def _(event: GroupMessageEvent):
         else:
             msg_off += f'{name} '
     return await service.finish(msg_on + '\n' + msg_off)
+  

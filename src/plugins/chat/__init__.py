@@ -80,7 +80,7 @@ async def _(bot: Bot, event: MessageEvent):
             logger.log(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
             session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
-            if reply_text and reply_text.strip() != "":
+            if len(reply_imgs) > 0 or reply_text.strip() != "":
                 role = USER_ROLE if reply_uid != bot.self_id else BOT_ROLE
                 session.append_content(role, reply_text, reply_imgs)
     else:
@@ -108,7 +108,7 @@ async def _(bot: Bot, event: MessageEvent):
     if len(res) < FOLD_LENGTH_THRESHOLD or not is_group(event):
         logger.log(f"非折叠回复")
         out_msg = OutMessage(f"[CQ:reply,id={event.message_id}] " + res)
-        if not is_group:
+        if not is_group(event):
             ret = await bot.send_private_msg(user_id=event.user_id, message=out_msg)
         else:
             ret = await bot.send_group_msg(group_id=event.group_id, message=out_msg)

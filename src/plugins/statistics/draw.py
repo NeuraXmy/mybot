@@ -5,7 +5,6 @@ import matplotlib
 import jieba
 import jieba.posseg as pseg
 import wordcloud
-import re
 import random
 import colorsys
 import io
@@ -15,7 +14,6 @@ config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
 
-IMG_STR = "[CQ:image,"
 FONT_PATH = config['font_path'] 
 
 plt.switch_backend('agg')

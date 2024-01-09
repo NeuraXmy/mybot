@@ -1,0 +1,75 @@
+bobing:
+  name: "骰子服务"
+  help: |
+    /rand [L] [R]
+    随机生成[L,R]的整数，L,R可不填，默认为[0,100]
+    例子：/rand 1 6 随机生成1-6的整数
+    /bing 
+    博饼
+                         
+chat:
+  name: "GPT聊天服务"
+  help: |
+    消息中@bot即可触发聊天，回复之前bot回复的消息（必须包含@）可继续聊天，支持聊天中包含图片
+    每个会话有最大长度限制，超过限制后自动清空记忆
+    支持私聊，但是你要先加到bot好友
+    不要问太多沙比问题
+    
+mc:
+  name: "MC服务器服务"
+  help: |
+    以一定间隔向服务器的卫星地图查询信息
+    服务器断线和恢复时会自动提醒
+    /send msg 向服务器发送消息
+    /info 获取服务器信息
+    /mc_listen 开关该服务器的监听（需要超级用户权限）
+
+pjsk:
+  name: "世界计划服务"
+  help: |
+    /live 获取当前虚拟live信息
+    虚拟live开始前和结束前会触发自动提醒
+    每天更新一次live数据
+    数据来源：sekai-world.github.io/sekai-master-db-diff
+
+record:
+  name: "群消息记录服务"
+  help: |
+    自动记录群消息供其他服务使用
+  
+run_code:
+  name: "代码运行服务"
+  help: |
+    /run [lang] 
+    [code]
+    运行代码，lang为语言，code为代码
+    支持语言：py/php/java/cpp/js/c#/c/go/asm/ats/bash/clisp/clojure/cobol/coffeescript/crystal/d/elixir/elm/erlang/fsharp/groovy/guide/hare/haskell/idris/julia/kotlin/lua/mercury/nim/nix/ocaml/pascal/perl/raku/ruby/rust/sac/scala/swift/typescript/zig/plaintext
+                   
+statistics:
+  name: "群消息统计服务"
+  help: |
+    每天特定时间点会自动发送群消息统计图
+    统计图说明：
+    饼图中扇形名字格式为 用户名(总消息数,图片表情数)
+    词云下方为词发言量统计，格式为 [词] 发言第1用户(占比) 发言第2用户(占比) ...
+    最下方统计图中，条形图内浅色为图片表情发言量
+
+    /sta [date]
+    发送指定日期的群消息统计图（需要超级用户权限）
+    date格式为Year-Month-Day，不填默认为当天
+    /sta_add [word1] [word2] ...
+    添加词汇到用户词典（需要超级用户权限）
+    /sta_ban [word1] [word2] ...
+    添加词汇到停用词典（需要超级用户权限）
+
+water:
+  name: "水果查询服务"
+  help: |
+    以/water回复消息即可查询回复的那条消息有没有水果
+    文本消息为精确匹配，图片和表情为tx内部图片id匹配（不一定准） 
+                  
+welcome:
+  name: "加退群通知服务"
+  help: |
+    已经坏了
+

@@ -30,7 +30,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
     user_name = await get_user_name(bot, group_id, user_id)
 
-    logger.log(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {get_shortname(str(msg), 64)}")
+    logger.log(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {get_shortname(str(msg), 128)}")
 
     msg_insert(
         group_id=group_id,
