@@ -149,7 +149,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 @scheduler.scheduled_job("cron", hour=STATICSTIC_TIME[0], minute=STATICSTIC_TIME[1], second=STATICSTIC_TIME[2])
 async def cron_statistic():
     bot = get_bot()
-    for group_id in gwl.get_groups():
+    for group_id in gwl.get():
         logger.log(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)

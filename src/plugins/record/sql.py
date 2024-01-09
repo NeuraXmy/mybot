@@ -57,7 +57,8 @@ def get_conn(group_id):
                 msg_id INTEGER,
                 user_id INTEGER,
                 nickname TEXT,
-                content TEXT
+                url TEXT,
+                img_id TEXT
             )
         """)
         conn.commit()
@@ -229,17 +230,16 @@ def text_content_like(group_id, text):
 
 
 # 插入到图片表
-def img_insert(group_id, time, msg_id, user_id, nickname, img):
+def img_insert(group_id, time, msg_id, user_id, nickname, url, img_id):
     time = time.timestamp()
-    content = img
 
     conn = get_conn(group_id)
     cursor = conn.cursor()
     insert_query = f'''
-        INSERT INTO {IMG_TABLE_NAME.format(group_id)} (time, msg_id, user_id, nickname, content)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO {IMG_TABLE_NAME.format(group_id)} (time, msg_id, user_id, nickname, url, img_id)
+        VALUES (?, ?, ?, ?, ?, ?)
     '''
-    cursor.execute(insert_query, (time, msg_id, user_id, nickname, content))
+    cursor.execute(insert_query, (time, msg_id, user_id, nickname, url, img_id))
     logger.log(f"插入消息 {msg_id} 到 {IMG_TABLE_NAME.format(group_id)} 表")
 
 # 图片表row转换为返回值
@@ -250,7 +250,8 @@ def img_row_to_ret(row):
         "msg_id": row[2],
         "user_id": row[3],
         "nickname": row[4],
-        "content": row[5]
+        "url": row[5],
+        "img_id": row[6]
     }
 
 # 获取图片表中的所有消息
@@ -294,14 +295,28 @@ def img_user(group_id, user_id):
     return [img_row_to_ret(row) for row in rows]
 
 # 按图片URL获取图片表中的消息（精确匹配）
-def img_content_match(group_id, img):
+def img_url_match(group_id, url):
     conn = get_conn(group_id)
     cursor = conn.cursor()
     query = f'''
         SELECT * FROM {IMG_TABLE_NAME.format(group_id)}
-        WHERE content = ?
+        WHERE url = ?
     '''
-    cursor.execute(query, (img,))
+    cursor.execute(query, (url,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片 {img} 的消息 {len(rows)} 条")
+    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片URL {url} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
+
+# 按图片ID获取图片表中的消息（精确匹配）
+def img_id_match(group_id, img_id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {IMG_TABLE_NAME.format(group_id)}
+        WHERE img_id = ?
+    '''
+    cursor.execute(query, (img_id,))
+    rows = cursor.fetchall()
+    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片ID {img_id} 的消息 {len(rows)} 条")
+    return [img_row_to_ret(row) for row in rows]
+

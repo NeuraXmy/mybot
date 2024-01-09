@@ -179,6 +179,13 @@ def extract_image_url(msg):
     return [cq["url"] for cq in cqs["image"] if "url" in cq]
 
 
+# 从消息段中提取所有图片id
+def extract_image_id(msg):
+    cqs = extract_cq_code(msg)
+    if "image" not in cqs or len(cqs["image"]) == 0: return []
+    return [cq["file"] for cq in cqs["image"] if "file" in cq]
+
+
 # 从消息段中提取文本
 def extract_text(msg):
     cqs = extract_cq_code(msg)
