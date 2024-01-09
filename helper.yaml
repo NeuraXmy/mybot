@@ -73,3 +73,9 @@ welcome:
   help: |
     已经坏了
 
+info:
+  name: "bot信息"
+  help: |
+    作者：NeuraXmy (1635841739@qq.com)
+    基于nonebot2框架，onebot11协议开发
+    项目地址：https://github.com/NeuraXmy/mybot
