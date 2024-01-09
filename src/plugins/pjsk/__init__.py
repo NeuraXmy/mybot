@@ -151,6 +151,9 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         msg += f" 剩余场次: {vlive['rest_num']}\n"
 
     if msg.endswith("\n"): msg = msg[:-1]
+
+    if msg == "当前的虚拟Lives:": 
+        return await get_vlive.finish("当前没有虚拟Live")
     await get_vlive.finish(msg)
 
 

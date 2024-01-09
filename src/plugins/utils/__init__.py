@@ -470,31 +470,21 @@ def get_group_black_list(db, logger, name, superuser=SUPERUSER):
     return _gbls[name]
 
 
-# 获取当前群聊开启的服务
-get_on = on_command('/get_on', priority=100, block=False)
-@get_on.handle()
+# 获取当前群聊开启和关闭的服务
+service = on_command('/service', priority=100, block=False)
+@service.handle()
 async def _(event: GroupMessageEvent):
     if not check_superuser(event): return
-    msg = "本群开启的服务:\n"
+    msg_on = "本群开启的服务:\n"
+    msg_off = "本群关闭的服务:\n"
     for name, gwl in _gwls.items():
         if gwl.check_id(event.group_id):
-            msg += f'{name} '
+            msg_on += f'{name} '
+        else:
+            msg_off += f'{name} '
     for name, gbl in _gbls.items():
         if gbl.check_id(event.group_id):
-            msg += f'{name} '
-    return await get_on.finish(msg)
-
-
-# 获取当前群聊关闭的服务
-get_off = on_command('/get_off', priority=100, block=False)
-@get_off.handle()
-async def _(event: GroupMessageEvent):
-    if not check_superuser(event): return
-    msg = "本群关闭的服务:\n"
-    for name, gwl in _gwls.items():
-        if not gwl.check_id(event.group_id):
-            msg += f'{name} '
-    for name, gbl in _gbls.items():
-        if not gbl.check_id(event.group_id):
-            msg += f'{name} '
-    return await get_off.finish(msg)
+            msg_on += f'{name} '
+        else:
+            msg_off += f'{name} '
+    return await service.finish(msg_on + '\n' + msg_off)

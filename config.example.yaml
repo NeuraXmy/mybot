@@ -49,6 +49,9 @@ pjsk:
   event_end_notify_before_minute: 180     # 提前多少分钟提醒event结束
 
 
+record:
+  
+
 run_code:
   cd: 60                       
 
