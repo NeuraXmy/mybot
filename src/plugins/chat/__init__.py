@@ -6,8 +6,9 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE
 from ..utils import *
 
-from .ChatSession import logger, config
-file_db = FileDB("data/chat/db.json", logger)
+config = get_config('chat')
+logger = get_logger("Chat")
+file_db = get_file_db("data/chat/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = GroupWhiteList(file_db, logger, 'chat')
 

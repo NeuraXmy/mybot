@@ -1,5 +1,4 @@
 from nonebot import on_command, on_message
-from nonebot import require
 from nonebot import get_bot
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, Bot
 from nonebot.adapters.onebot.v11.message import MessageSegment
@@ -11,7 +10,9 @@ from .sql import insert_msg, get_all_msg
 from .draw import draw_all, reset_jieba
 
 
-from .draw import logger, file_db, config
+config = get_config("statistics")
+logger = get_logger("Sta")
+file_db = get_file_db("data/statistics/db.json", logger)
 gwl = GroupWhiteList(file_db, logger, "sta")
 
 

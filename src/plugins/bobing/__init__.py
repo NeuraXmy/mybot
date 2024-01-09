@@ -7,8 +7,8 @@ import random
 from ..utils import *
 
 config = get_config('bobing')
-logger = Logger("Bobing")
-file_db = FileDB("data/bobing/db.json", logger)
+logger = get_logger("Bobing")
+file_db = get_file_db("data/bobing/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 
     

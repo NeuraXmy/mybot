@@ -12,8 +12,8 @@ import io
 from ..utils import *
 
 config = get_config("statistics")
-logger = Logger("Sta")
-file_db = FileDB("data/statistics/db.json", logger)
+logger = get_logger("Sta")
+file_db = get_file_db("data/statistics/db.json", logger)
 
 IMG_STR = "[CQ:image,"
 FONT_PATH = config['font_path'] 

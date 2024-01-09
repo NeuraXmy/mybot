@@ -2,7 +2,7 @@ import openai
 from ..utils import *
 
 config = get_config('chat')
-logger = Logger("Chat")
+logger = get_logger("Chat")
 
 USER_ROLE = "user"
 BOT_ROLE = "assistant"

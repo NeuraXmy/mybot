@@ -10,8 +10,8 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from ..utils import *
 
 config = get_config("run_code")
-logger = Logger("RunCode")
-file_db = FileDB("data/runcode/db.json", logger)
+logger = get_logger("RunCode")
+file_db = get_file_db("data/runcode/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 
 runcode = on_command('/code', priority=100, block=False)

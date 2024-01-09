@@ -8,8 +8,8 @@ import json
 from ..utils import *
 
 config = get_config('mc')
-logger = Logger('MC')
-file_db = FileDB('data/mc/db.json', logger)
+logger = get_logger('MC')
+file_db = get_file_db('data/mc/db.json', logger)
 
 QUERY_INTERVAL = config['query_interval'] 
 QUEUE_CONSUME_INTERVAL = config['queue_consume_interval']

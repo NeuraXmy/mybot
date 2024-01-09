@@ -67,6 +67,12 @@ class Logger:
     def print_exc(self):
         traceback.print_exc()
 
+loggers = {}
+def get_logger(name):
+    if name not in loggers:
+        loggers[name] = Logger(name)
+    return loggers[name]
+
 
 # 文件数据库
 class FileDB:
@@ -104,6 +110,15 @@ class FileDB:
         if key in self.data:
             del self.data[key]
             self.save()
+
+file_dbs = {}
+def get_file_db(path, logger):
+    if path not in file_dbs:
+        file_dbs[path] = FileDB(path, logger)
+    db = file_dbs[path]
+    if db.logger != logger:
+        db.logger = logger
+    return db
 
 
 # 是否是群聊消息

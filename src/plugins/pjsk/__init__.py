@@ -9,8 +9,8 @@ import json
 from ..utils import *
 
 config = get_config('pjsk')
-logger = Logger("Pjsk")
-file_db = FileDB("data/pjsk/db.json", logger)
+logger = get_logger("Pjsk")
+file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = GroupWhiteList(file_db, logger, 'pjsk')
 

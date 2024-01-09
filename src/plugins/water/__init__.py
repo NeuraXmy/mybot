@@ -7,8 +7,8 @@ from .sql import insert_msg, query_by_msg
 from ..utils import *
 
 config = get_config("water")
-logger = Logger("Water")
-file_db = FileDB("data/water/db.json", logger)
+logger = get_logger("Water")
+file_db = get_file_db("data/water/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = GroupWhiteList(file_db, logger, 'water')
 
