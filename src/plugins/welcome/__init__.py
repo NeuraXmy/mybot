@@ -16,6 +16,7 @@ async def check_welcome():
         bot = get_bot()
         groups = await get_group_list(bot)
         for group in groups:
+            if group['group_id'] in gbl.get(): continue
             group_id = group['group_id']
             member_num = file_db.get(f'{group_id}_member_num', None)
             # 未加入

@@ -75,4 +75,4 @@ water:
 
 
 welcome:
-  check_interval: 5            # 检查间隔（秒）
+  check_interval: 10            # 检查间隔（秒）
