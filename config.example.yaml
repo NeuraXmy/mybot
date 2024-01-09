@@ -30,6 +30,7 @@ mc:
   group_server_pairs:            # 群组与服务器的对应关系
     - group_id: '111111111'
       url: 'http://卫星地图网址'
+  disconnect_notify_count: 3      # 和服务器断联多少次后提醒
 
 
 pjsk:

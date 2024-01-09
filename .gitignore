@@ -1,6 +1,7 @@
 data/
 config.yaml
 log.txt
+logshow/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python

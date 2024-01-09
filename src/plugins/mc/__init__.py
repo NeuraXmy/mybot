@@ -14,6 +14,7 @@ file_db = FileDB('data/mc/db.json', logger)
 QUERY_INTERVAL = config['query_interval'] 
 QUEUE_CONSUME_INTERVAL = config['queue_consume_interval']
 OFFSET = config['query_offset']
+DISCONNECT_NOTIFY_COUNT = config['disconnect_notify_count']
 
 
 # MC的gametick(一天24000ticks, tick=0是早上6:00)转换为HH:MM
@@ -52,7 +53,7 @@ class ServerData:
         self.url = url
         self.bot_on = file_db.get(f'{group_id}.bot_on', True)
         self.first_update = True
-        self.last_failed = False
+        self.failed_count = 0
 
         self.players = {}
         self.messages = {}
@@ -126,14 +127,15 @@ async def query_server():
             if server.bot_on:
                 try:
                     await server.update(mute=server.first_update)
-                    if server.last_failed:
-                        server.last_failed = False
+                    if server.failed_count > DISCONNECT_NOTIFY_COUNT:
                         server.queue.append('重新建立到服务器的连接')
+                    server.failed_count = 0
                 except Exception as e:
-                    if not server.last_failed:
+                    logger.log(f'{server.url} 定时查询失败: {e}')
+                    if server.failed_count == DISCONNECT_NOTIFY_COUNT:
                         logger.log(f'{server.url} 定时查询失败: {e}')
-                        server.last_failed = True
                         server.queue.append('与服务器的连接断开')
+                    server.failed_count += 1
     except Exception as e:
         logger.log(f'定时查询失败: {e}')
 
@@ -187,7 +189,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     if msg.endswith('\n'): msg = msg[:-1]
 
-    if server.last_failed:
+    if server.failed_count > 0:
         msg = "与服务器的连接断开"
 
     await info.finish(msg)

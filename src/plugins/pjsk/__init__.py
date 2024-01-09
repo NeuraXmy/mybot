@@ -183,6 +183,7 @@ async def vlive_notify():
 
     start_notified_vlives = file_db.get("start_notified_vlives", [])
     end_notified_vlives   = file_db.get("end_notified_vlives", [])
+    updated = False
 
     data = await get_vlive_data()
     for vlive in data:
@@ -204,6 +205,7 @@ async def vlive_notify():
                         logger.print_exc()
                         continue
                 start_notified_vlives.append(vlive["id"]) 
+                updated = True
 
         # 结束的提醒
         if vlive["id"] not in end_notified_vlives:
@@ -225,9 +227,11 @@ async def vlive_notify():
                         logger.print_exc()
                         continue
                 end_notified_vlives.append(vlive["id"])
+                updated = True
 
-    file_db.set("start_notified_vlives", start_notified_vlives)
-    file_db.set("end_notified_vlives", end_notified_vlives)
+    if updated:
+        file_db.set("start_notified_vlives", start_notified_vlives)
+        file_db.set("end_notified_vlives", end_notified_vlives)
     logger.log(f"vlive自动提醒完成")
 
 
