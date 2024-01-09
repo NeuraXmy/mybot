@@ -71,7 +71,7 @@ water:
 welcome:
   name: "加退群通知服务"
   help: |
-    已经坏了
+    加群退群提醒
 
 info:
   name: "bot信息"

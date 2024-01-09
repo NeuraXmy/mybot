@@ -3,7 +3,7 @@ import yaml
 from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 import os
 from copy import deepcopy
 import asyncio
@@ -140,6 +140,19 @@ def get_readable_datetime(time):
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+# 获取加入的所有群id
+async def get_group_id_list(bot):
+    group_list = await bot.call_api('get_group_list')
+    for group in group_list:
+        print(group)
+    return [group['group_id'] for group in group_list]
+
+
+# 获取加入的所有群
+async def get_group_list(bot):
+    return await bot.call_api('get_group_list')
+
+
 # 获取消息段
 async def get_msg(bot, message_id):
     return (await bot.get_msg(message_id=int(message_id)))['message']
@@ -150,7 +163,7 @@ async def get_msg_obj(bot, message_id):
     return await bot.get_msg(message_id=int(message_id))
 
 
-# 获取用户名
+# 获取用户名 如果有群名片则返回群名片 否则返回昵称
 async def get_user_name(bot, group_id, user_id):
     user_info = await bot.call_api('get_group_member_list', **{'group_id': int(group_id)})
     for info in user_info:
@@ -160,6 +173,22 @@ async def get_user_name(bot, group_id, user_id):
             else:
                 return info['nickname']
     return "Unknown User"
+
+
+# 获取群聊中所有用户
+async def get_group_users(bot, group_id):
+    return await bot.call_api('get_group_member_list', **{'group_id': int(group_id)})
+
+
+# 获取群聊名
+async def get_group_name(bot, group_id):
+    group_info = await bot.call_api('get_group_info', **{'group_id': int(group_id)})
+    return group_info['group_name']
+
+
+# 获取群聊信息
+async def get_group(bot, group_id):
+    return await bot.call_api('get_group_info', **{'group_id': int(group_id)})
 
 
 # 解析消息段中的所有CQ码 返回格式为 ret["类型"]=[{CQ码1的字典}{CQ码2的字典}...]
@@ -482,11 +511,32 @@ def get_group_black_list(db, logger, name, superuser=SUPERUSER):
     return _gbls[name]
 
 
-# 获取当前群聊开启和关闭的服务
+# 获取当前群聊开启和关闭的服务 或 获取某个服务在哪些群聊开启
 service = on_command('/service', priority=100, block=False)
 @service.handle()
-async def _(event: GroupMessageEvent):
+async def _(bot: Bot, event: GroupMessageEvent):
     if not check_superuser(event): return
+
+    msg = event.get_plaintext().strip()
+    # 查询某个服务在哪些群聊开启
+    if msg != "/service":
+        name = msg.split(' ')[1]
+        if name not in _gwls and name not in _gbls:
+            return await service.finish(f'未知服务 {name}')
+        msg = ""
+        if name in _gwls:
+            msg += f"{name}使用的规则是白名单\n开启服务的群聊有:\n"
+            for group_id in _gwls[name].get():
+                msg += f'{await get_group_name(bot, group_id)}({group_id})\n'
+        elif name in _gbls:
+            msg += f"{name}使用的规则是黑名单\n关闭服务的群聊有:\n"
+            for group_id in _gbls[name].get():
+                msg += f'{await get_group_name(bot, group_id)}({group_id})\n'
+        else:
+            msg += f"未知服务 {name}"
+        return await service.finish(msg.strip())
+
+
     msg_on = "本群开启的服务:\n"
     msg_off = "本群关闭的服务:\n"
     for name, gwl in _gwls.items():
@@ -500,4 +550,4 @@ async def _(event: GroupMessageEvent):
         else:
             msg_off += f'{name} '
     return await service.finish(msg_on + '\n' + msg_off)
-  
+
