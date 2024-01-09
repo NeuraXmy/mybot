@@ -7,7 +7,11 @@ superuser:
 
 
 bobing:
-  cd: 60                         
+  cd: 60         
+
+
+helper:
+  cd: 300  # 每种help查询单独的cd                
 
 
 chat:
