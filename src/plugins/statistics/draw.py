@@ -24,14 +24,14 @@ matplotlib.rcParams['axes.unicode_minus']=False
 
 
 # 绘制饼图
-def draw_pie(ax, rows, topk_user, topk_name):
+def draw_pie(ax, recs, topk_user, topk_name):
     logger.log(f"开始绘制饼图")
     topk = len(topk_user)
     user_count, user_image_count = Counter(), Counter()
-    for row in rows:
-        msg_id, user = row[0], row[1]
-        user_count.inc(user)
-        if IMG_STR in row[4]: user_image_count.inc(user)
+    for rec in recs:
+        user_count.inc(rec['user_id'])
+        if has_image(rec['msg']):
+            user_image_count.inc(rec['user_id'])
     sorted_user_count = sorted(user_count.items(), key=lambda x: x[1], reverse=True)
 
     topk_user = [user for user, _ in sorted_user_count[:topk]]
@@ -43,29 +43,28 @@ def draw_pie(ax, rows, topk_user, topk_name):
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
 
     current_date = datetime.now().strftime("%Y-%m-%d")
-    ax.text(-0.4, 0.98, f"{current_date} 今日消息总数：{len(rows)}", fontsize=12, transform=ax.transAxes)
+    ax.text(-0.4, 0.98, f"{current_date} 今日消息总数：{len(recs)}", fontsize=12, transform=ax.transAxes)
     ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
 
 
 # 绘制折线图
-def draw_plot(ax, rows, interval, topk_user, topk_name):
+def draw_plot(ax, recs, interval, topk_user, topk_name):
     logger.log(f"开始绘制折线图")
     topk = len(topk_user)
     cnts = [[0] * int(24*60/interval) for _ in range(topk + 1)]
     all = [0] * int(24*60/interval)
     img_all = [0] * int(24*60/interval)
 
-    for row in rows:
-        date = row[3]
-        time = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+    for rec in recs:
+        time = rec['time']
         minute = time.hour * 60 + time.minute
         index = int(minute / interval)
-        if row[1] in topk_user:
-            cnts[topk_user.index(row[1])][index] += 1
+        if rec['user_id'] in topk_user:
+            cnts[topk_user.index(rec['user_id'])][index] += 1
         else:
             cnts[-1][index] += 1
         all[index] += 1
-        if IMG_STR in row[4]:
+        if has_image(rec['msg']):
             img_all[index] += 1
 
     x = [datetime.strptime("00:00", "%H:%M") + timedelta(minutes=interval*i) for i in range(int(24*60/interval))]
@@ -119,7 +118,7 @@ def init_jieba():
 
 
 # 绘制词云图
-def draw_wordcloud(ax, rows, users, names):
+def draw_wordcloud(ax, recs, users, names):
     logger.log(f"开始绘制词云图")
     init_jieba()
 
@@ -129,9 +128,8 @@ def draw_wordcloud(ax, rows, users, names):
     all_words = { " ": 1 }
     word_user_count = {} # word_user_count[word][user] = count
 
-    for row in rows:
-        msg = row[4]
-        msg = re.sub(r'\[CQ:.*?\]', '', msg)
+    for rec in recs:
+        msg = extract_text(rec['msg'])
         words = pseg.cut(msg)
         nouns = []
         for word, flag in words:
@@ -144,7 +142,7 @@ def draw_wordcloud(ax, rows, users, names):
                 all_words[noun] = 0
                 word_user_count[noun] = {}
             all_words[noun] += 1
-            user = row[1]
+            user = rec['user_id']
             if user not in word_user_count[noun]:
                 word_user_count[noun][user] = 0
             word_user_count[noun][user] += 1
@@ -221,15 +219,15 @@ def draw_wordcloud(ax, rows, users, names):
 
 
 # 绘制所有图
-def draw_all(rows, interval, topk1, topk2, user, name, path):
+def draw_all(recs, interval, topk1, topk2, user, name, path):
     logger.log(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
     fig, ax = plt.subplots(figsize=(8, 15), nrows=3, ncols=1)
     fig.tight_layout()
 
-    draw_pie(ax[0], rows, user[:topk1], name[:topk1])
-    draw_plot(ax[2], rows, interval, user[:topk2], name[:topk2])
-    draw_wordcloud(ax[1], rows, user, name)
+    draw_pie(ax[0], recs, user[:topk1], name[:topk1])
+    draw_plot(ax[2], recs, interval, user[:topk2], name[:topk2])
+    draw_wordcloud(ax[1], recs, user, name)
 
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)

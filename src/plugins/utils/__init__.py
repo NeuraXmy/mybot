@@ -172,6 +172,12 @@ def extract_cq_code(msg):
     return ret
 
 
+# 是否包含图片
+def has_image(msg):
+    cqs = extract_cq_code(msg)
+    return "image" in cqs and len(cqs["image"]) > 0
+
+
 # 从消息段中提取所有图片链接
 def extract_image_url(msg):
     cqs = extract_cq_code(msg)

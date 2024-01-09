@@ -6,8 +6,8 @@ from datetime import datetime
 from PIL import Image
 import io
 from ..utils import *
-from .sql import insert_msg, get_all_msg
 from .draw import draw_all, reset_jieba
+from ..record.sql import msg_range
 
 
 config = get_config("statistics")
@@ -28,12 +28,16 @@ PLOT_PATH = "./data/statistics/plots/"
 # 获取某天统计图数据
 async def get_statistic(bot, group_id, date=None):
     if date is None: date = datetime.now().strftime("%Y-%m-%d")
-    rows = [row for row in get_all_msg(group_id) if datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d") == date]
-    logger.log(f'获取{date}的统计图: 共获取到{len(rows)}条消息')
-    if len(rows) == 0: return f"{date} 的消息记录为空"
+    start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
+    end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
+    recs = msg_range(group_id, 
+                     datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
+                     datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
+    logger.log(f'获取{date}的统计图: 共获取到{len(recs)}条消息')
+    if len(recs) == 0: return f"{date} 的消息记录为空"
     # 统计发言数
     user_count = Counter()
-    for row in rows: user_count.inc(row[1])
+    for rec in recs: user_count.inc(rec['user_id'])
     sorted_user_count = sorted(user_count.items(), key=lambda x: x[1], reverse=True)
     # 计算出需要的topk
     need_k = len(sorted_user_count)
@@ -45,7 +49,7 @@ async def get_statistic(bot, group_id, date=None):
         topk_name.append(name)
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.jpg"
-    draw_all(rows, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path)
+    draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path)
     # 保存为二进制流
     img = Image.open(path)
     imgByteArr = io.BytesIO()
@@ -124,22 +128,6 @@ async def _(bot: Bot, event: MessageEvent):
         logger.print_exc()
         return await msgban.finish(f'添加停用词汇失败：{e}')
     await msgban.finish(f"成功添加{len(words)}条停用词汇")
-
-
-# 记录消息
-add = on_message(block=False)
-@add.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event): return
-    insert_msg(
-        event.group_id, 
-        event.message_id, 
-        event.user_id, 
-        event.sender.nickname,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-        event.raw_message
-    )
-    logger.log(f'群聊 {event.group_id} 消息已记录: {get_shortname(event.raw_message, 20)}')
 
 
 # ------------------------------------------------ 定时任务 ------------------------------------------------

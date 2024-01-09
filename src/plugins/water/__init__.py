@@ -2,9 +2,8 @@ from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
-from datetime import datetime
-from .sql import insert_msg, query_by_msg
 from ..utils import *
+from ..record.sql import text_content_match, img_id_match
 
 config = get_config("water")
 logger = get_logger("Water")
@@ -18,62 +17,35 @@ add = on_message(block=False)
 @add.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gbl.check(event): return
-    
     msg = await get_msg(bot, event.message_id)
     cmd = extract_text(msg).strip()
+    if cmd != '/water': return
+    if not cd.check(event): return
 
-    # 查询
-    if cmd == '/water':
-        if not cd.check(event): return
+    # 获取回复的内容
+    reply_msg = await get_reply_msg(bot, msg)
+    if reply_msg is None: return
+    reply_text = extract_text(reply_msg)
+    reply_imgs = extract_image_id(reply_msg)
+    group_id = event.group_id
 
-        # 获取回复的内容
-        reply_msg = await get_reply_msg(bot, msg)
-        if reply_msg is None: return
-        reply_content = extract_text(reply_msg)
-
-        # 如果有图片则提取第一个图片链接
-        imgs = extract_image_url(reply_msg)
-        if len(imgs) > 0:
-            reply_content = f"IMG:{imgs[0]}"
-
-        logger.log(f'查询水果：{reply_content}')
-        rows = query_by_msg(event.group_id, reply_content)
-        logger.log(f'查询到{len(rows)}条记录')
-        if len(rows) <= 1:
-            res = "没有水果"
-        else:
-            rows = sorted(rows, key=lambda x: x[3])
-            fst, last = rows[0], rows[-2]
-            res = f"水果总数：{len(rows) - 1}\n"
-            res += f"最早水果：{str(fst[3])} by {fst[2]}({fst[1]})\n"
-            res += f"上次水果：{str(last[3])} by {last[2]}({last[1]})"
-        return await add.finish(OutMessage(f"[CQ:reply,id={event.message_id}]" + res))
+    if len(reply_imgs) > 0:
+        # 图片只查询第一张
+        logger.log(f'查询图片水果：{reply_imgs[0]}')
+        recs = img_id_match(group_id=group_id, img_id=reply_imgs[0])
+    else:
+        logger.log(f'查询文本水果：{reply_text}')
+        recs = text_content_match(group_id=group_id, text=reply_text)
     
-    # 保存记录
-    try:
-        imgs = extract_image_url(msg)
-        # 如果有图片则提取第一个图片链接保存
-        if len(imgs) > 0:
-            insert_msg(
-                event.group_id, 
-                event.message_id, 
-                event.user_id, 
-                event.sender.nickname,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                f"IMG:{imgs[0]}"
-            )
-            logger.log(f'群聊 {event.group_id} 图片消息已记录: {imgs[0]}')
-        else:
-            insert_msg(
-                event.group_id, 
-                event.message_id, 
-                event.user_id, 
-                event.sender.nickname,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                event.raw_message
-            )
-            logger.log(f'群聊 {event.group_id} 消息已记录: {get_shortname(event.raw_message, 20)}')
+    logger.log(f'查询到{len(recs)}条记录')
+    if len(recs) <= 1:
+        res = "没有水果"
+    else:
+        recs = sorted(recs, key=lambda x: x['time'])
+        fst, lst = recs[1], recs[-1]
+        res = f"水果总数：{len(recs) - 1}\n"
+        res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
+        res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})"
+    return await add.finish(OutMessage(f"[CQ:reply,id={event.message_id}]" + res))
 
-    except Exception as e:
-        logger.print_exc()
     

@@ -93,7 +93,7 @@ def msg_row_to_ret(row):
         "msg_id": row[2],
         "user_id": row[3],
         "nickname": row[4],
-        "content": json.loads(row[5])
+        "msg": json.loads(row[5])
     }
 
 # 获取消息表中的所有消息
@@ -159,7 +159,7 @@ def text_row_to_ret(row):
         "msg_id": row[2],
         "user_id": row[3],
         "nickname": row[4],
-        "content": row[5]
+        "text": row[5]
     }
 
 # 获取文本表中的所有消息
