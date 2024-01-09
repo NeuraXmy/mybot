@@ -10,7 +10,7 @@ config = get_config('chat')
 logger = get_logger("Chat")
 file_db = get_file_db("data/chat/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
-gwl = GroupWhiteList(file_db, logger, 'chat')
+gwl = get_group_white_list(file_db, logger, 'chat')
 
 API_KEY = config['api_key']
 API_BASE = config['api_base']

@@ -12,7 +12,7 @@ config = get_config('pjsk')
 logger = get_logger("Pjsk")
 file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
-gwl = GroupWhiteList(file_db, logger, 'pjsk')
+gwl = get_group_white_list(file_db, logger, 'pjsk')
 
 VLIVE_URL = "https://sekai-world.github.io/sekai-master-db-diff/virtualLives.json"
 EVENT_URL = "https://sekai-world.github.io/sekai-master-db-diff/events.json"

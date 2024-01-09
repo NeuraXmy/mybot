@@ -67,11 +67,12 @@ class Logger:
     def print_exc(self):
         traceback.print_exc()
 
-loggers = {}
+_loggers = {}
 def get_logger(name):
-    if name not in loggers:
-        loggers[name] = Logger(name)
-    return loggers[name]
+    global _loggers
+    if name not in _loggers:
+        _loggers[name] = Logger(name)
+    return _loggers[name]
 
 
 # 文件数据库
@@ -111,18 +112,17 @@ class FileDB:
             del self.data[key]
             self.save()
 
-file_dbs = {}
+_file_dbs = {}
 def get_file_db(path, logger):
-    if path not in file_dbs:
-        file_dbs[path] = FileDB(path, logger)
-    db = file_dbs[path]
-    if db.logger != logger:
-        db.logger = logger
-    return db
+    global _file_dbs
+    if path not in _file_dbs:
+        _file_dbs[path] = FileDB(path, logger)
+    return _file_dbs[path]
 
 
 # 是否是群聊消息
 def is_group(event):
+    return True
     return isinstance(event, GroupMessageEvent)
 
 
@@ -277,9 +277,9 @@ class ColdDown:
         if key not in last_use:
             return None
         return datetime.fromtimestamp(last_use[key])
-    
 
-# 群白名单
+
+# 群白名单：默认关闭
 class GroupWhiteList:
     def __init__(self, db, logger, name, superuser=SUPERUSER):
         self.superuser = superuser
@@ -331,9 +331,9 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id in white_list:
-                return await switch_query.finish(f'{name}已开启')
+                return await switch_query.finish(f'{name}开启中')
             else:
-                return await switch_query.finish(f'{name}已关闭')
+                return await switch_query.finish(f'{name}关闭中')
             
     def get(self):
         return self.db.get(self.white_list_name, [])
@@ -358,14 +358,143 @@ class GroupWhiteList:
             
     def check_id(self, group_id):
         white_list = self.db.get(self.white_list_name, [])
-        if group_id in white_list:
-            return True
-        return False
+        return group_id in white_list
 
     def check(self, event, allow_private=False, allow_super=False):
-        if isinstance(event, GroupMessageEvent):
+        if is_group(event):
             if allow_super and check_superuser(event, self.superuser): return True
             return self.check_id(event.group_id)
         return allow_private
     
     
+# 群黑名单：默认开启
+class GroupBlackList:
+    def __init__(self, db, logger, name, superuser=SUPERUSER):
+        self.superuser = superuser
+        self.name = name
+        self.logger = logger
+        self.db = db
+        self.black_list_name = f'group_black_list_{name}'
+
+        # 关闭命令
+        off = on_command(f'/{name}_off', block=False, priority=100)
+        @off.handle()
+        async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
+                    black_list_name=self.black_list_name):
+            if not check_superuser(event, superuser):
+                logger.log(f'{event.user_id} 无权限关闭 {name}')
+                return
+            group_id = event.group_id
+            black_list = db.get(black_list_name, [])
+            if group_id in black_list:
+                return await off.finish(f'{name}已经是关闭状态')
+            black_list.append(group_id)
+            db.set(black_list_name, black_list)
+            await off.finish(f'{name}已关闭')
+        
+        # 开启命令
+        on = on_command(f'/{name}_on', block=False, priority=100)
+        @on.handle()
+        async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
+                    black_list_name=self.black_list_name):
+            if not check_superuser(event, superuser):
+                logger.log(f'{event.user_id} 无权限开启 {name}')
+                return
+            group_id = event.group_id
+            black_list = db.get(black_list_name, [])
+            if group_id not in black_list:
+                return await on.finish(f'{name}已经是开启状态')
+            black_list.remove(group_id)
+            db.set(black_list_name, black_list)
+            await on.finish(f'{name}已开启')
+            
+        # 查询命令
+        query = on_command(f'/{name}_state', block=False, priority=100)
+        @query.handle()
+        async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
+                    black_list_name=self.black_list_name):
+            if not check_superuser(event, superuser):
+                logger.log(f'{event.user_id} 无权限查询 {name}')
+                return
+            group_id = event.group_id
+            black_list = db.get(black_list_name, [])
+            if group_id in black_list:
+                return await query.finish(f'{name}关闭中')
+            else:
+                return await query.finish(f'{name}开启中')
+        
+    def get(self):
+        return self.db.get(self.black_list_name, [])
+    
+    def add(self, group_id):
+        black_list = self.db.get(self.black_list_name, [])
+        if group_id in black_list:
+            return False
+        black_list.append(group_id)
+        self.db.set(self.black_list_name, black_list)
+        self.logger.log(f'添加群 {group_id} 到 {self.black_list_name}')
+        return True
+    
+    def remove(self, group_id):
+        black_list = self.db.get(self.black_list_name, [])
+        if group_id not in black_list:
+            return False
+        black_list.remove(group_id)
+        self.db.set(self.black_list_name, black_list)
+        self.logger.log(f'从 {self.black_list_name} 删除群 {group_id}')
+        return True
+    
+    def check_id(self, group_id):
+        black_list = self.db.get(self.black_list_name, [])
+        return group_id not in black_list
+    
+    def check(self, event, allow_private=False, allow_super=False):
+        if is_group(event):
+            if allow_super and check_superuser(event, self.superuser): return True
+            return self.check_id(event.group_id)
+        return allow_private
+    
+
+_gwls = {}
+def get_group_white_list(db, logger, name, superuser=SUPERUSER):
+    global _gwls
+    if name not in _gwls:
+        _gwls[name] = GroupWhiteList(db, logger, name, superuser)
+    return _gwls[name]
+
+_gbls = {}
+def get_group_black_list(db, logger, name, superuser=SUPERUSER):
+    global _gbls
+    if name not in _gbls:
+        _gbls[name] = GroupBlackList(db, logger, name, superuser)
+    return _gbls[name]
+
+
+# 获取当前群聊开启的服务
+get_on = on_command('/get_on', priority=100, block=False)
+@get_on.handle()
+async def _(event: GroupMessageEvent):
+    if not check_superuser(event): return
+    msg = "本群开启的服务:\n"
+    for name, gwl in _gwls.items():
+        if gwl.check_id(event.group_id):
+            msg += f'{name} '
+    for name, gbl in _gbls.items():
+        if gbl.check_id(event.group_id):
+            msg += f'{name} '
+    return await get_on.finish(msg)
+
+
+# 获取当前群聊关闭的服务
+get_off = on_command('/get_off', priority=100, block=False)
+@get_off.handle()
+async def _(event: GroupMessageEvent):
+    if not check_superuser(event): return
+    msg = "本群关闭的服务:\n"
+    for name, gwl in _gwls.items():
+        if not gwl.check_id(event.group_id):
+            msg += f'{name} '
+    for name, gbl in _gbls.items():
+        if not gbl.check_id(event.group_id):
+            msg += f'{name} '
+    return await get_off.finish(msg)

@@ -10,17 +10,16 @@ config = get_config("water")
 logger = get_logger("Water")
 file_db = get_file_db("data/water/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
-gwl = GroupWhiteList(file_db, logger, 'water')
+gbl = get_group_black_list(file_db, logger, 'water')
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
 add = on_message(block=False)
 @add.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event): return
+    if not gbl.check(event): return
     
     msg = await get_msg(bot, event.message_id)
-    msg_cqs = extract_cq_code(msg)
     cmd = extract_text(msg).strip()
 
     # 查询

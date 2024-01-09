@@ -13,10 +13,12 @@ config = get_config("run_code")
 logger = get_logger("RunCode")
 file_db = get_file_db("data/runcode/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
+gbl = get_group_black_list(file_db, logger, "runcode")
 
 runcode = on_command('/code', priority=100, block=False)
 @runcode.handle()
 async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
+    if not gbl.check(event): return
     if not cd.check(event): return
 
     content = arg.extract_plain_text()

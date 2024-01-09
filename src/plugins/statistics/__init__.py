@@ -13,7 +13,7 @@ from .draw import draw_all, reset_jieba
 config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
-gwl = GroupWhiteList(file_db, logger, "sta")
+gwl = get_group_white_list(file_db, logger, "sta")
 
 
 STATICSTIC_TIME = config['statistic_time']
