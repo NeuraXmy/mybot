@@ -32,12 +32,8 @@ mc:
   query_interval: 0.5            # 向卫星地图查询的间隔（秒）
   queue_consume_interval: 1      # 队列消费间隔（秒）
   query_offset: 2000             # 查询时间的偏移量
-  group_server_pairs:            # 群组与服务器的对应关系
-    - group_id: '111111111'
-      url: 'http://卫星地图网址'
-      info: |
-        服务器信息
   disconnect_notify_count: 3      # 和服务器断联多少次后提醒
+  cd: 5
 
 
 pjsk:

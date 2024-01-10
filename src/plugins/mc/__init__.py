@@ -10,6 +10,7 @@ from ..utils import *
 config = get_config('mc')
 logger = get_logger('MC')
 file_db = get_file_db('data/mc/db.json', logger)
+cd = ColdDown(file_db, logger, config['cd'])
 
 QUERY_INTERVAL = config['query_interval'] 
 QUEUE_CONSUME_INTERVAL = config['queue_consume_interval']
@@ -217,7 +218,8 @@ start_repeat_with_interval(QUEUE_CONSUME_INTERVAL, consume_queue, logger, '消�
 info = on_command("/info", priority=100, block=False)
 @info.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not gwl.check(event): return
+    if not cd.check(event): return
     server = get_server(event.group_id)
     
     msg = server.info.strip() 
@@ -244,7 +246,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 bot_on = on_command("/listen", priority=100, block=False)
 @bot_on.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not check_superuser(event): return
+    if not gwl.check(event): return
     server = get_server(event.group_id)
     if server.bot_on:
         server.bot_on = False
@@ -259,7 +262,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 set_url = on_command("/seturl", priority=100, block=False)
 @set_url.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not check_superuser(event): return
+    if not gwl.check(event): return
     server = get_server(event.group_id)
     if not server.bot_on: 
         await set_url.finish("监听已关闭，无法设置url")
@@ -276,7 +280,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 get_url = on_command("/geturl", priority=100, block=False)
 @get_url.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not gwl.check(event): return
+    if not cd.check(event): return
     server = get_server(event.group_id)
     await get_url.finish(f'本群设置的卫星地图地址为: {server.url}')
 
@@ -284,7 +289,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 set_info = on_command("/setinfo", priority=100, block=False)
 @set_info.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not check_superuser(event): return
+    if not gwl.check(event): return
     server = get_server(event.group_id)
     info = str(event.get_message()).replace('/setinfo', '').strip()
     server.info = info
@@ -295,7 +301,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 sendmsg = on_command("/send", priority=100, block=False)
 @sendmsg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event.group_id): return
+    if not gwl.check(event): return
+    if not cd.check(event): return
     server = get_server(event.group_id)
     if not server.bot_on: 
         await sendmsg.finish("监听已关闭，无法发送消息")
