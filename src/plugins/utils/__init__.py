@@ -256,18 +256,42 @@ def get_shortname(name, limit):
     return ret
 
 
-# 重复执行某个异步任务
-async def repeat_with_interval(interval, func, logger):
-    next_time = datetime.now() + timedelta(seconds=interval)
-    while True:
-        now_time = datetime.now()
-        if next_time > now_time:
-            try:
-                await asyncio.sleep((next_time - now_time).total_seconds())
-            except Exception as e:
-                logger.log(f'重复执行异步任务sleep失败: {e}')
-        next_time = next_time + timedelta(seconds=interval)
-        await func()
+# 开始重复执行某个异步任务
+def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5):
+    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=3))
+    async def _():
+        try:
+            error_count = 0
+            logger.log(f'开始循环执行{name}', flush=True)
+            next_time = datetime.now() + timedelta(seconds=1)
+            while True:
+                now_time = datetime.now()
+                if next_time > now_time:
+                    try:
+                        await asyncio.sleep((next_time - now_time).total_seconds())
+                    except Exception as e:
+                        logger.log(f'循环执行{name} sleep失败: {e}')
+                next_time = next_time + timedelta(seconds=interval)
+                try:
+                    if every_output:
+                        logger.log(f'开始执行{name}')
+                    await func()
+                    if every_output:
+                        logger.log(f'执行{name}成功')
+                    if error_output and error_count > 0:
+                        logger.log(f'循环执行{name}从错误中恢复, 累计错误次数: {error_count}')
+                    error_count = 0
+                except Exception as e:
+                    if error_output and error_count < error_limit - 1:
+                        logger.log(f'循环执行{name}失败: {e} (失败次数 {error_count + 1})')
+                    elif error_output and error_count == error_limit - 1:
+                        logger.log(f'循环执行{name}失败: {e} (达到错误次数输出上限)')
+                        logger.print_exc()
+                    error_count += 1
+
+        except Exception as e:
+            logger.log(f'循环执行{name}失败: {e}')
+
 
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #

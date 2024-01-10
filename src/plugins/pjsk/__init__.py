@@ -179,9 +179,7 @@ async def update_event_data():
     await download_event_data()
 
 # vlive自动提醒
-@scheduler.scheduled_job("interval", minutes=VLIVE_NOTIFY_INTERVAL_MINUTE)
 async def vlive_notify():
-    logger.log(f"开始vlive自动提醒")
     bot = get_bot()
 
     start_notified_vlives = file_db.get("start_notified_vlives", [])
@@ -235,7 +233,9 @@ async def vlive_notify():
     if updated:
         file_db.set("start_notified_vlives", start_notified_vlives)
         file_db.set("end_notified_vlives", end_notified_vlives)
-    logger.log(f"vlive自动提醒完成")
+
+# 定时任务
+start_repeat_with_interval(VLIVE_NOTIFY_INTERVAL_MINUTE * 60, vlive_notify, logger, 'vlive自动提醒', every_output=True, error_limit=999999)
 
 
 

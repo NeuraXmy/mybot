@@ -121,51 +121,45 @@ def get_server(group_id):
 
 # 向服务器请求信息
 async def query_server():
-    try:
-        #logger.log(f'query server", datetime.now(), flush=True)
-        for server in servers:
-            if server.bot_on:
-                try:
-                    await server.update(mute=server.first_update)
-                    if server.failed_count > DISCONNECT_NOTIFY_COUNT:
-                        server.queue.append('重新建立到服务器的连接')
-                    server.failed_count = 0
-                except Exception as e:
+    #logger.log(f'query server", datetime.now(), flush=True)
+    for server in servers:
+        if server.bot_on:
+            try:
+                await server.update(mute=server.first_update)
+                if server.failed_count > DISCONNECT_NOTIFY_COUNT:
+                    server.queue.append('重新建立到服务器的连接')
+                server.failed_count = 0
+            except Exception as e:
+                logger.log(f'{server.url} 定时查询失败: {e}')
+                if server.failed_count == DISCONNECT_NOTIFY_COUNT:
                     logger.log(f'{server.url} 定时查询失败: {e}')
-                    if server.failed_count == DISCONNECT_NOTIFY_COUNT:
-                        logger.log(f'{server.url} 定时查询失败: {e}')
-                        server.queue.append('与服务器的连接断开')
-                    server.failed_count += 1
-    except Exception as e:
-        logger.log(f'定时查询失败: {e}')
+                    server.queue.append('与服务器的连接断开')
+                server.failed_count += 1
+
 
 # 消费消息队列
 async def consume_queue():
-    try:
-        #logger.log(f'consume queue", datetime.now(), flush=True)
-        bot = get_bot()
-        for server in servers:
-            try:
-                while len(server.queue) > 0:
-                    msg = server.queue.pop(0)
-                    msg = f'[Server] {msg}'
-                    await bot.send_group_msg(group_id=server.group_id, message=msg)
-            except Exception as e:
-                logger.log(f'消费消息队列失败: {e}')
-    except Exception as e:
-        logger.log(f'消费消息队列失败: {e}')
+    #logger.log(f'consume queue", datetime.now(), flush=True)
+    bot = get_bot()
+    for server in servers:
+        try:
+            while len(server.queue) > 0:
+                msg = server.queue.pop(0)
+                msg = f'[Server] {msg}'
+                await bot.send_group_msg(group_id=server.group_id, message=msg)
+                consume_queue_failed_count = 0
+        except Exception as e:
+            if consume_queue_failed_count < 5:
+                logger.log(f'消费消息队列 {server.url} 失败: {e}')
+            consume_queue_failed_count += 1
+
+
 
 # 服务器请求信息定时任务
-@scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=3))
-async def cron_query():
-    logger.log(f'start cron query', flush=True)
-    await repeat_with_interval(QUERY_INTERVAL, query_server, logger)
+start_repeat_with_interval(QUERY_INTERVAL, query_server, logger, '请求服务器')
              
 # 消费消息队列定时任务
-@scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=3))
-async def cron_consume():
-    logger.log(f'start cron consume', flush=True)
-    await repeat_with_interval(QUEUE_CONSUME_INTERVAL, consume_queue, logger)
+start_repeat_with_interval(QUEUE_CONSUME_INTERVAL, consume_queue, logger, '消费消息队列')
 
 
 # 查询服务器信息
