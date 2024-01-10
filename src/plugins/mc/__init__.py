@@ -17,6 +17,7 @@ OFFSET = config['query_offset']
 DISCONNECT_NOTIFY_COUNT = config['disconnect_notify_count']
 
 
+
 # MC的gametick(一天24000ticks, tick=0是早上6:00)转换为HH:MM
 def gametick2time(tick):
     tick = tick % 24000
@@ -44,17 +45,21 @@ async def send_message(url_base, name, msg):
         }
         async with session.post(url, json=payload) as resp:
             return await resp.text()
-        
+
+
+# ------------------------------------------ 服务器数据维护 ------------------------------------------ # 
+
 
 # 服务端信息
 class ServerData:
-    def __init__(self, group_id, url, info='') -> None:
+    def __init__(self, group_id) -> None:
         self.group_id = group_id
-        self.url = url
-        self.bot_on = file_db.get(f'{group_id}.bot_on', True)
+        
+        # 从文件数据库读取配置
+        self.load()
+
         self.first_update = True
         self.failed_count = 0
-        self.info = info
 
         self.players = {}
         self.messages = {}
@@ -64,6 +69,28 @@ class ServerData:
         self.thundering = False
 
         self.queue = []     # bot发送的消息队列
+
+    # 保存配置
+    def save(self):
+        data = {
+            'url': self.url,
+            'bot_on': self.bot_on,
+            'info': self.info
+        }
+        file_db.set(f'{self.group_id}.server_info', data)
+        logger.info(f'在 {self.group_id} 中保存服务器 {data}')
+
+    # 加载配置
+    def load(self):
+        data = file_db.get(f'{self.group_id}.server_info', {
+            'url': '',
+            'bot_on': True,
+            'info': ''
+        })
+        self.url    = data['url']
+        self.bot_on = data['bot_on']
+        self.info   = data['info']
+        logger.info(f'在 {self.group_id} 中加载服务器 {data}')
 
     # 通过向服务器请求信息更新数据
     async def update(self, mute=False):
@@ -104,20 +131,45 @@ class ServerData:
         self.first_update = False
         
 
-# 设置服务器             
-servers = set()
-group_server_pairs = config['group_server_pairs']
-for pair in group_server_pairs:
-    group_id, url, info = int(pair['group_id']), pair['url'], pair['info']
-    logger.info(f'添加服务器: {group_id} - {url}')
-    servers.add(ServerData(group_id, url, info))
+# ------------------------------------------ 服务器列表维护 ------------------------------------------ #
 
+
+# 服务器列表  
+servers = set()
+
+# 通过group_id获取服务器
 def get_server(group_id):
     for server in servers:
         if server.group_id == group_id:
             return server
     return None
 
+# 通过group_id添加服务器
+async def add_server(group_id):
+    server = get_server(group_id)
+    if server is None:
+        servers.add(ServerData(group_id))
+    else:
+        logger.warning(f'{group_id} 的服务器已经存在')
+
+# 通过group_id移除服务器
+async def remove_server(group_id):
+    server = get_server(group_id)
+    if server is not None:
+        servers.remove(server)
+        logger.info(f'移除 {group_id} 的服务器')
+    else:
+        logger.warning(f'{group_id} 的服务器已经移除')
+
+# 群白名单，同时控制服务器的开关
+gwl = get_group_white_list(file_db, logger, 'mc', on_func=add_server, off_func=remove_server)
+
+# 初始添加服务器
+for group_id in gwl.get():
+    servers.add(ServerData(group_id))
+
+
+# ------------------------------------------ 定时任务 ------------------------------------------ #
 
 
 # 向服务器请求信息
@@ -136,7 +188,6 @@ async def query_server():
                     server.queue.append('与卫星地图的连接断开')
                 server.failed_count += 1
 
-
 # 消费消息队列
 async def consume_queue():
     bot = get_bot()
@@ -152,76 +203,112 @@ async def consume_queue():
                 logger.error(f'消费消息队列 {server.url} 失败: {e}')
             consume_queue_failed_count += 1
 
-
-
 # 服务器请求信息定时任务
 start_repeat_with_interval(QUERY_INTERVAL, query_server, logger, '请求服务器')
-             
+
 # 消费消息队列定时任务
 start_repeat_with_interval(QUEUE_CONSUME_INTERVAL, consume_queue, logger, '消费消息队列')
+
+
+# ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
 
 # 查询服务器信息
 info = on_command("/info", priority=100, block=False)
 @info.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
     server = get_server(event.group_id)
-    if server is None: return
-    if not server.bot_on: return
+    
+    msg = server.info.strip() 
+    if server.info.strip() != '':
+        msg += '\n------------------------\n'
 
-    if server.info.strip() == '':
-        msg = ''
+    if not server.bot_on: 
+        msg += "监听已关闭"
+    elif server.failed_count > 0:
+        msg += "与卫星地图的连接断开"
     else:
-        msg = server.info.strip() + '\n--------\n'
-    msg += f'服务器时间: {gametick2time(server.time)}'
-    if server.thundering: msg += ' ⛈'
-    elif server.storming: msg += ' 🌧'
-    msg += '\n'
-    msg += f'在线玩家数: {len(server.players)}\n'
-    for player in server.players.values():
-        msg += f'<{player["name"]}>\n'
-        msg += f'{player["world"]}({player["x"]:.1f},{player["y"]:.1f},{player["z"]:.1f})\n'
-        msg += f'HP:{player["health"]:.1f} Armor:{player["armor"]:.1f}\n'
-
-    if msg.endswith('\n'): msg = msg[:-1]
-
-    if server.failed_count > 0:
-        msg = "与服务器的连接断开"
-
-    await info.finish(msg)
-
+        msg += f'服务器时间: {gametick2time(server.time)}'
+        if server.thundering: msg += ' ⛈'
+        elif server.storming: msg += ' 🌧'
+        msg += '\n'
+        msg += f'在线玩家数: {len(server.players)}\n'
+        for player in server.players.values():
+            msg += f'<{player["name"]}>\n'
+            msg += f'{player["world"]}({player["x"]:.1f},{player["y"]:.1f},{player["z"]:.1f})\n'
+            msg += f'HP:{player["health"]:.1f} Armor:{player["armor"]:.1f}\n'
+    await info.finish(msg.strip())
 
 # 开关监听
-bot_on = on_command("/mc_listen", priority=100, block=False)
+bot_on = on_command("/listen", priority=100, block=False)
 @bot_on.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
     server = get_server(event.group_id)
-    if server is None: return
     if server.bot_on:
         server.bot_on = False
-        file_db.set(f'{server.group_id}.bot_on', False)
+        server.save()
         await bot_on.finish('监听已关闭')
     else:
         server.bot_on = True
-        file_db.set(f'{server.group_id}.bot_on', True)
+        server.save()
         await bot_on.finish('监听已开启')
 
+# 设置url
+set_url = on_command("/seturl", priority=100, block=False)
+@set_url.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
+    server = get_server(event.group_id)
+    if not server.bot_on: 
+        await set_url.finish("监听已关闭，无法设置url")
+    url = str(event.get_message()).replace('/seturl', '').strip()
+    if url == '':
+        await set_url.finish('url不能为空')
+    if not url.startswith('http'):
+        url = 'http://' + url
+    server.url = url
+    server.save()
+    await set_url.finish(f'设置本群卫星地图地址为: {url}')
+
+# 获取url
+get_url = on_command("/geturl", priority=100, block=False)
+@get_url.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
+    server = get_server(event.group_id)
+    await get_url.finish(f'本群设置的卫星地图地址为: {server.url}')
+
+# 设置info
+set_info = on_command("/setinfo", priority=100, block=False)
+@set_info.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
+    server = get_server(event.group_id)
+    info = str(event.get_message()).replace('/setinfo', '').strip()
+    server.info = info
+    server.save()
+    await set_info.finish(f'服务器信息已设置')
 
 # 发送消息
 sendmsg = on_command("/send", priority=100, block=False)
 @sendmsg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event.group_id): return
     server = get_server(event.group_id)
-    if server is None: return
-    if not server.bot_on: return
-    text = str(event.get_message()).replace('/send', '').strip()
+    if not server.bot_on: 
+        await sendmsg.finish("监听已关闭，无法发送消息")
 
+    text = str(event.get_message()).replace('/send', '').strip()
     user_name = await get_user_name(bot, event.group_id, event.user_id)
     msg = f'[{user_name}] {text}'
 
     try:
         await send_message(server.url, user_name, msg)
-        logger.info(f'发送消息成功: {msg}')
+        logger.info(f'{user_name} 发送消息到 {server.url} 成功: {msg}')
     except Exception as e:
+        logger.print_exc(f'{user_name} 发送消息到 {server.url} 失败')
         await sendmsg.finish(f'发送失败: {e}')
+
 

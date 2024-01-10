@@ -367,12 +367,14 @@ class ColdDown:
 
 # 群白名单：默认关闭
 class GroupWhiteList:
-    def __init__(self, db, logger, name, superuser=SUPERUSER):
+    def __init__(self, db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
         self.superuser = superuser
         self.name = name
         self.logger = logger
         self.db = db
         self.white_list_name = f'group_white_list_{name}'
+        self.on_func = on_func
+        self.off_func = off_func
 
         # 开启命令
         switch_on = on_command(f'/{name}_on', block=False, priority=100)
@@ -388,6 +390,7 @@ class GroupWhiteList:
                 return await switch_on.finish(f'{name}已经是开启状态')
             white_list.append(group_id)
             db.set(white_list_name, white_list)
+            if self.on_func is not None: await self.on_func(event.group_id)
             await switch_on.finish(f'{name}已开启')
         
         # 关闭命令
@@ -404,6 +407,7 @@ class GroupWhiteList:
                 return await switch_off.finish(f'{name}已经是关闭状态')
             white_list.remove(group_id)
             db.set(white_list_name, white_list)
+            if self.off_func is not None:  await self.off_func(event.group_id)
             await switch_off.finish(f'{name}已关闭')
             
         # 查询命令
@@ -431,6 +435,7 @@ class GroupWhiteList:
         white_list.append(group_id)
         self.db.set(self.white_list_name, white_list)
         self.logger.info(f'添加群 {group_id} 到 {self.white_list_name}')
+        if self.on_func is not None: self.on_func(group_id)
         return True
     
     def remove(self, group_id):
@@ -440,6 +445,7 @@ class GroupWhiteList:
         white_list.remove(group_id)
         self.db.set(self.white_list_name, white_list)
         self.logger.info(f'从 {self.white_list_name} 删除群 {group_id}')
+        if self.off_func is not None: self.off_func(group_id)
         return True
             
     def check_id(self, group_id):
@@ -455,12 +461,14 @@ class GroupWhiteList:
     
 # 群黑名单：默认开启
 class GroupBlackList:
-    def __init__(self, db, logger, name, superuser=SUPERUSER):
+    def __init__(self, db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
         self.superuser = superuser
         self.name = name
         self.logger = logger
         self.db = db
         self.black_list_name = f'group_black_list_{name}'
+        self.on_func = on_func
+        self.off_func = off_func
 
         # 关闭命令
         off = on_command(f'/{name}_off', block=False, priority=100)
@@ -476,6 +484,7 @@ class GroupBlackList:
                 return await off.finish(f'{name}已经是关闭状态')
             black_list.append(group_id)
             db.set(black_list_name, black_list)
+            if self.off_func is not None: await self.off_func(event.group_id)
             await off.finish(f'{name}已关闭')
         
         # 开启命令
@@ -492,6 +501,7 @@ class GroupBlackList:
                 return await on.finish(f'{name}已经是开启状态')
             black_list.remove(group_id)
             db.set(black_list_name, black_list)
+            if self.on_func is not None: await self.on_func(event.group_id)
             await on.finish(f'{name}已开启')
             
         # 查询命令
@@ -519,6 +529,7 @@ class GroupBlackList:
         black_list.append(group_id)
         self.db.set(self.black_list_name, black_list)
         self.logger.info(f'添加群 {group_id} 到 {self.black_list_name}')
+        if self.off_func is not None: self.off_func(group_id)
         return True
     
     def remove(self, group_id):
@@ -528,6 +539,7 @@ class GroupBlackList:
         black_list.remove(group_id)
         self.db.set(self.black_list_name, black_list)
         self.logger.info(f'从 {self.black_list_name} 删除群 {group_id}')
+        if self.on_func is not None: self.on_func(group_id)
         return True
     
     def check_id(self, group_id):
@@ -542,17 +554,17 @@ class GroupBlackList:
     
 
 _gwls = {}
-def get_group_white_list(db, logger, name, superuser=SUPERUSER):
+def get_group_white_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
     global _gwls
     if name not in _gwls:
-        _gwls[name] = GroupWhiteList(db, logger, name, superuser)
+        _gwls[name] = GroupWhiteList(db, logger, name, superuser, on_func, off_func)
     return _gwls[name]
 
 _gbls = {}
-def get_group_black_list(db, logger, name, superuser=SUPERUSER):
+def get_group_black_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
     global _gbls
     if name not in _gbls:
-        _gbls[name] = GroupBlackList(db, logger, name, superuser)
+        _gbls[name] = GroupBlackList(db, logger, name, superuser, on_func, off_func)
     return _gbls[name]
 
 
