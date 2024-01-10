@@ -48,12 +48,13 @@ async def send_message(url_base, name, msg):
 
 # 服务端信息
 class ServerData:
-    def __init__(self, group_id, url) -> None:
+    def __init__(self, group_id, url, info='') -> None:
         self.group_id = group_id
         self.url = url
         self.bot_on = file_db.get(f'{group_id}.bot_on', True)
         self.first_update = True
         self.failed_count = 0
+        self.info = info
 
         self.players = {}
         self.messages = {}
@@ -107,9 +108,9 @@ class ServerData:
 servers = set()
 group_server_pairs = config['group_server_pairs']
 for pair in group_server_pairs:
-    group_id, url = int(pair['group_id']), pair['url']
+    group_id, url, info = int(pair['group_id']), pair['url'], pair['info']
     logger.info(f'添加服务器: {group_id} - {url}')
-    servers.add(ServerData(group_id, url))
+    servers.add(ServerData(group_id, url, info))
 
 def get_server(group_id):
     for server in servers:
@@ -126,13 +127,13 @@ async def query_server():
             try:
                 await server.update(mute=server.first_update)
                 if server.failed_count > DISCONNECT_NOTIFY_COUNT:
-                    server.queue.append('重新建立到服务器的连接')
+                    server.queue.append('重新建立到卫星地图的连接')
                 server.failed_count = 0
             except Exception as e:
                 logger.warning(f'{server.url} 定时查询失败: {e}')
                 if server.failed_count == DISCONNECT_NOTIFY_COUNT:
                     logger.warning(f'{server.url} 定时查询失败: {e}')
-                    server.queue.append('与服务器的连接断开')
+                    server.queue.append('与卫星地图的连接断开')
                 server.failed_count += 1
 
 
@@ -168,7 +169,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if server is None: return
     if not server.bot_on: return
 
-    msg = ""
+    if server.info.strip() == '':
+        msg = ''
+    else:
+        msg = server.info.strip() + '\n--------\n'
     msg += f'服务器时间: {gametick2time(server.time)}'
     if server.thundering: msg += ' ⛈'
     elif server.storming: msg += ' 🌧'

@@ -279,12 +279,12 @@ def get_shortname(name, limit):
 
 
 # 开始重复执行某个异步任务
-def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5):
-    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=3))
+def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5, start_offset=5):
+    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset))
     async def _():
         try:
             error_count = 0
-            logger.info(f'开始循环执行{name}', flush=True)
+            logger.info(f'开始循环执行{name}任务', flush=True)
             next_time = datetime.now() + timedelta(seconds=1)
             while True:
                 now_time = datetime.now()
@@ -311,7 +311,7 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
                     error_count += 1
 
         except Exception as e:
-            logger.print_exc(f'循环执行{name}失败')
+            logger.print_exc(f'循环执行{name}任务失败')
 
 
 

@@ -1,6 +1,7 @@
 # 文件名修改为config.yaml后生效
 
 bot_name: "机器人名字" 
+log_level: "DEBUG"
 superuser:  
   - 11111111
   - 22222222
@@ -34,6 +35,8 @@ mc:
   group_server_pairs:            # 群组与服务器的对应关系
     - group_id: '111111111'
       url: 'http://卫星地图网址'
+      info: |
+        服务器信息
   disconnect_notify_count: 3      # 和服务器断联多少次后提醒
 
 
@@ -75,4 +78,4 @@ water:
 
 
 welcome:
-  check_interval: 5            # 检查间隔（秒）
+  group_info_update_interval: 30  # 群组信息更新间隔（分钟）
