@@ -55,7 +55,7 @@ async def send_noti(ok):
 
 # 存活检测
 async def alive_check():
-    global last_connect_time
+    global last_connect_time, last_disconnect_time
     try:
         from nonebot import get_bot
         bot = get_bot()
