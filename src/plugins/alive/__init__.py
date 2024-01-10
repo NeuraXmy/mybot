@@ -21,8 +21,9 @@ MAIL_RECEIVERS = config['mail_receivers']
 
 
 very_future = datetime.now() + timedelta(weeks=10000)
-last_connect_time    = very_future if not NOTIFY_AT_FIRST else datetime.now()
-last_disconnect_time = very_future if not NOTIFY_AT_FIRST else datetime.now()
+last_notify = "none" if NOTIFY_AT_FIRST else "every"
+last_connect_time    = datetime.now()
+last_disconnect_time = datetime.now()
 
 
 # 发送通知
@@ -51,6 +52,8 @@ async def send_noti(ok):
             except Exception as e:
                 logger.print_exc(f"发送邮件到 {receiver} 失败")
 
+    global last_notify
+    last_notify = "disconnect" if not ok else "connect"
 
 
 # 存活检测
@@ -61,13 +64,15 @@ async def alive_check():
         bot = get_bot()
 
         last_connect_time = datetime.now()
-        if (datetime.now() - last_disconnect_time).total_seconds() > TIME_THRESHOLD:
+        if (datetime.now() - last_disconnect_time).total_seconds() > TIME_THRESHOLD \
+            and last_notify in ["disconnect", "none"]:
             last_disconnect_time = very_future
             await send_noti(True)
     except:
 
         last_disconnect_time = datetime.now()
-        if (datetime.now() - last_connect_time).total_seconds() > TIME_THRESHOLD:
+        if (datetime.now() - last_connect_time).total_seconds() > TIME_THRESHOLD \
+            and last_notify in ["connect", "none"]:
             last_connect_time = very_future
             await send_noti(False)
         
