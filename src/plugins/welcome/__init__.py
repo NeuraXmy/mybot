@@ -35,7 +35,7 @@ async def check_welcome():
         member_num = file_db.get(f'{group_id}_member_num', None)
         # 未加入
         if member_num is None:
-            logger.log(f'初始化 {group_id} 数据')
+            logger.info(f'初始化 {group_id} 数据')
             users = await get_group_users(bot, group_id)
             user_id_names = [[user['user_id'], user['nickname'] if user['card'] == "" else user['card']] \
                                 for user in users]
@@ -44,7 +44,7 @@ async def check_welcome():
 
         # 人数变化
         elif member_num != group['member_num']:
-            logger.log(f"检测到 {group_id} 人数变化 {member_num} -> {group['member_num']}")
+            logger.info(f"检测到 {group_id} 人数变化 {member_num} -> {group['member_num']}")
             users = await get_group_users(bot, group_id)
             user_id_names = [[user['user_id'], user['nickname'] if user['card'] == "" else user['card']] \
                                 for user in users]
@@ -52,13 +52,13 @@ async def check_welcome():
 
             for user in user_id_names:
                 if user not in last_user_id_names:
-                    logger.log(f"{user[0]} 加入 {group_id}")
+                    logger.info(f"{user[0]} 加入 {group_id}")
                     if user[0] not in gbl.get():
                         await bot.send_group_msg(group_id=group_id, message=f'[CQ:at,qq={user[0]}] 加入群聊')
 
             for user in last_user_id_names:
                 if user not in user_id_names:
-                    logger.log(f"{user[0]} 离开 {group_id}")
+                    logger.info(f"{user[0]} 离开 {group_id}")
                     if user[0] not in gbl.get():
                         await bot.send_group_msg(group_id=group_id, message=f'{user[1]}({user[0]}) 退出群聊')
 

@@ -60,14 +60,14 @@ async def _(bot: Bot, event: MessageEvent):
         # 回复模式，检测是否在历史会话中
         reply_id = reply_msg_obj["message_id"]
         reply_msg = reply_msg_obj["message"]
-        logger.log(f"回复模式：{reply_id}")
+        logger.info(f"回复模式：{reply_id}")
 
         if str(reply_id) in sessions:
             # 在历史会话中，直接沿用会话
             session = sessions[str(reply_id)]
             sessions.pop(str(reply_id))
             session_id_backup = reply_id
-            logger.log(f"沿用会话{session.id}, 长度:{len(session)}")
+            logger.info(f"沿用会话{session.id}, 长度:{len(session)}")
         else:
             # 不在历史会话中，使用新会话，并加入回复的内容
             reply_text = extract_text(reply_msg)
@@ -77,7 +77,7 @@ async def _(bot: Bot, event: MessageEvent):
             # 不在历史会话中则不回复折叠内容
             if "json" in reply_cqs:
                 return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
-            logger.log(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
+            logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
             session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
             if len(reply_imgs) > 0 or reply_text.strip() != "":
@@ -95,8 +95,7 @@ async def _(bot: Bot, event: MessageEvent):
         if retry_count > 0:
             res += f"\n[重试次数:{retry_count}]"
     except Exception as error:
-        logger.log(f"会话{session.id}抛出异常：{error}")
-        logger.print_exc()
+        logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
@@ -106,7 +105,7 @@ async def _(bot: Bot, event: MessageEvent):
 
     # 进行回复
     if len(res) < FOLD_LENGTH_THRESHOLD or not is_group(event):
-        logger.log(f"非折叠回复")
+        logger.info(f"非折叠回复")
         out_msg = OutMessage(f"[CQ:reply,id={event.message_id}] " + res)
         if not is_group(event):
             ret = await bot.send_private_msg(user_id=event.user_id, message=out_msg)
@@ -114,7 +113,7 @@ async def _(bot: Bot, event: MessageEvent):
             ret = await bot.send_group_msg(group_id=event.group_id, message=out_msg)
         
     else:
-        logger.log(f"折叠回复")
+        logger.info(f"折叠回复")
         name = await get_user_name(bot, event.group_id, event.user_id)
         msg_list = []
         msg_list.append({
@@ -139,4 +138,4 @@ async def _(bot: Bot, event: MessageEvent):
     if len(session) < SESSION_LEN_LIMIT:
         ret_id = str(ret["message_id"])
         sessions[ret_id] = session
-        logger.log(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
+        logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")

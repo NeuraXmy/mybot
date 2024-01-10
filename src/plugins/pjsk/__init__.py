@@ -35,7 +35,7 @@ EVENT_END_NOTIFY_BEFORE_MINUTE      = config['event_end_notify_before_minute']
 
 # 下载vlive数据到本地
 async def download_vlive_data():
-    logger.log(f"开始下载vlive数据")
+    logger.info(f"开始下载vlive数据")
     async with aiohttp.ClientSession() as session:
         async with session.get(VLIVE_URL) as resp:
             if resp.status == 200:
@@ -47,14 +47,14 @@ async def download_vlive_data():
                         valid_lives.append(lives)
                 with open(VLIVE_SAVE_PATH, 'wb') as f:
                     f.write(json.dumps(valid_lives, indent=4).encode('utf8'))
-                logger.log(f"下载vlive数据成功: 共获取{len(valid_lives)}条")
+                logger.info(f"下载vlive数据成功: 共获取{len(valid_lives)}条")
                 return
             else:
                 raise Exception("下载vlive数据失败")
 
 # 下载event数据到本地
 async def download_event_data():
-    logger.log(f"开始下载event数据")
+    logger.info(f"开始下载event数据")
     async with aiohttp.ClientSession() as session:
         async with session.get(EVENT_URL) as resp:
             if resp.status == 200:
@@ -66,7 +66,7 @@ async def download_event_data():
                         valid_events.append(event)
                 with open(EVENT_SAVE_PATH, 'wb') as f:
                     f.write(json.dumps(valid_events, indent=4).encode('utf8'))
-                logger.log(f"下载event数据成功: 共获取{len(valid_events)}条")
+                logger.info(f"下载event数据成功: 共获取{len(valid_events)}条")
                 return
             else:
                 raise Exception("下载event数据失败")
@@ -195,7 +195,7 @@ async def vlive_notify():
         if vlive["id"] not in start_notified_vlives:
             t = vlive["start"] - datetime.now()
             if not (t.total_seconds() < 0 or t.total_seconds() > VLIVE_START_NOTIFY_BEFORE_MINUTE * 60):
-                logger.log(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
+                logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
                 msg = f"PJSK Live提醒：\n【{vlive['name']}】将于 {get_readable_datetime(vlive['start'])} 开始"
 
@@ -203,7 +203,7 @@ async def vlive_notify():
                     try:
                         await bot.send_group_msg(group_id=group_id, message=Message(msg))
                     except:
-                        logger.print_exc()
+                        logger.print_exc(f'发送vlive开始提醒到群{group_id}失败')
                         continue
                 start_notified_vlives.append(vlive["id"]) 
                 updated = True
@@ -212,7 +212,7 @@ async def vlive_notify():
         if vlive["id"] not in end_notified_vlives:
             t = vlive["end"] - datetime.now()
             if not (t.total_seconds() < 0 or t.total_seconds() > VLIVE_END_NOTIFY_BEFORE_MINUTE * 60):
-                logger.log(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
+                logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
                 msg = f"PJSK Live提醒：\n【{vlive['name']}】将于 {get_readable_datetime(vlive['end'])} 结束\n"
 
@@ -225,7 +225,7 @@ async def vlive_notify():
                     try:
                         await bot.send_group_msg(group_id=group_id, message=Message(msg))
                     except:
-                        logger.print_exc()
+                        logger.print_exc(f'发送vlive结束提醒到群{group_id}失败')
                         continue
                 end_notified_vlives.append(vlive["id"])
                 updated = True

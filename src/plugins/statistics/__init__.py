@@ -33,7 +33,7 @@ async def get_statistic(bot, group_id, date=None):
     recs = msg_range(group_id, 
                      datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
                      datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
-    logger.log(f'获取{date}的统计图: 共获取到{len(recs)}条消息')
+    logger.info(f'获取{date}的统计图: 共获取到{len(recs)}条消息')
     if len(recs) == 0: return f"{date} 的消息记录为空"
     # 统计发言数
     user_count = Counter()
@@ -75,11 +75,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
             date = event.get_plaintext().split()[1]
             datetime.strptime(date, "%Y-%m-%d")
         except:
-            logger.log(f'日期格式错误, 使用当前日期')
+            logger.info(f'日期格式错误, 使用当前日期')
             date = None
         res = await get_statistic(bot, event.group_id, date)
     except Exception as e:
-        logger.print_exc()
+        logger.print_exc(f'发送统计图失败')
         return await sta.finish(f'发送统计图失败：{e}')
     await sta.finish(res)
 
@@ -102,7 +102,7 @@ async def _(bot: Bot, event: MessageEvent):
         file_db.set("stopwords", stopwords)
         reset_jieba()
     except Exception as e:
-        logger.print_exc()
+        logger.print_exc(f'添加用户词汇失败')
         return await msgadd.finish(f'添加用户词汇失败：{e}')
     await msgadd.finish(f"成功添加{len(words)}条用户词汇")
 
@@ -125,7 +125,7 @@ async def _(bot: Bot, event: MessageEvent):
         file_db.set("stopwords", stopwords)
         reset_jieba()
     except Exception as e:
-        logger.print_exc()
+        logger.print_exc(f'添加停用词汇失败')
         return await msgban.finish(f'添加停用词汇失败：{e}')
     await msgban.finish(f"成功添加{len(words)}条停用词汇")
 
@@ -138,9 +138,9 @@ async def _(bot: Bot, event: MessageEvent):
 async def cron_statistic():
     bot = get_bot()
     for group_id in gwl.get():
-        logger.log(f'尝试发送 {group_id} 统计图', flush=True)
+        logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)
         except Exception as e:
-            logger.print_exc()
+            logger.print_exc(f'发送 {group_id} 统计图失败')
         await bot.send_group_msg(group_id=group_id, message=res)

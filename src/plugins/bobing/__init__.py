@@ -21,7 +21,7 @@ async def handle_function(bot: Bot, event: MessageEvent):
     dices = [random.randint(1, 6) for _ in range(6)]
     dices = [chr(0x267F + dice) for dice in dices]
     msg = " ".join(dices)
-    logger.log(f"send: {msg}")
+    logger.info(f"send: {msg}")
     await bing.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 
 
@@ -37,6 +37,6 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     except:
         pass
     msg = f'{random.randint(l, r)}'
-    logger.log(f"send: {msg}")
+    logger.info(f"send: {msg}")
     await rand.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 

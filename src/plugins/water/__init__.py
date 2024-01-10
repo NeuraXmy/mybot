@@ -31,13 +31,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     if len(reply_imgs) > 0:
         # 图片只查询第一张
-        logger.log(f'查询图片水果：{reply_imgs[0]}')
+        logger.info(f'查询图片水果：{reply_imgs[0]}')
         recs = img_id_match(group_id=group_id, img_id=reply_imgs[0])
     else:
-        logger.log(f'查询文本水果：{reply_text}')
+        logger.info(f'查询文本水果：{reply_text}')
         recs = text_content_match(group_id=group_id, text=reply_text)
     
-    logger.log(f'查询到{len(recs)}条记录')
+    logger.info(f'查询到{len(recs)}条记录')
     if len(recs) <= 1:
         res = "没有水果"
     else:

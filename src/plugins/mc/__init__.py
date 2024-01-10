@@ -75,14 +75,14 @@ class ServerData:
         for player in data['players']:
             account = player['account']
             if account not in self.players:
-                logger.log(f'{player["name"]} 加入了游戏')
+                logger.info(f'{player["name"]} 加入了游戏')
                 if not mute:
                     self.queue.append(f'{player["name"]} 加入了游戏')
             self.players[account] = player
         remove_list = []
         for account in self.players:
             if account not in [player['account'] for player in data['players']]:
-                logger.log(f'{self.players[account]["name"]} 离开了游戏')
+                logger.info(f'{self.players[account]["name"]} 离开了游戏')
                 if not mute:
                     self.queue.append(f'{self.players[account]["name"]} 离开了游戏')
                 remove_list.append(account)
@@ -93,13 +93,13 @@ class ServerData:
             if upd["type"] == "chat":
                 if upd["source"] == "plugin": continue
                 key = f'{upd["timestamp"]} - {upd["account"]} - {upd["message"]}'
-                logger.log(f'新消息: {upd}')
+                logger.info(f'新消息: {upd}')
                 if key not in self.messages:
                     self.messages[key] = upd
                     if not mute:
                         self.queue.append(f'<{upd["playerName"]}> {upd["message"]}')
         if self.first_update:
-            logger.log(f'服务器 {self.url} 首次更新完成')
+            logger.info(f'服务器 {self.url} 首次更新完成')
         self.first_update = False
         
 
@@ -108,7 +108,7 @@ servers = set()
 group_server_pairs = config['group_server_pairs']
 for pair in group_server_pairs:
     group_id, url = int(pair['group_id']), pair['url']
-    logger.log(f'添加服务器: {group_id} - {url}')
+    logger.info(f'添加服务器: {group_id} - {url}')
     servers.add(ServerData(group_id, url))
 
 def get_server(group_id):
@@ -121,7 +121,6 @@ def get_server(group_id):
 
 # 向服务器请求信息
 async def query_server():
-    #logger.log(f'query server", datetime.now(), flush=True)
     for server in servers:
         if server.bot_on:
             try:
@@ -130,16 +129,15 @@ async def query_server():
                     server.queue.append('重新建立到服务器的连接')
                 server.failed_count = 0
             except Exception as e:
-                logger.log(f'{server.url} 定时查询失败: {e}')
+                logger.warning(f'{server.url} 定时查询失败: {e}')
                 if server.failed_count == DISCONNECT_NOTIFY_COUNT:
-                    logger.log(f'{server.url} 定时查询失败: {e}')
+                    logger.warning(f'{server.url} 定时查询失败: {e}')
                     server.queue.append('与服务器的连接断开')
                 server.failed_count += 1
 
 
 # 消费消息队列
 async def consume_queue():
-    #logger.log(f'consume queue", datetime.now(), flush=True)
     bot = get_bot()
     for server in servers:
         try:
@@ -150,7 +148,7 @@ async def consume_queue():
                 consume_queue_failed_count = 0
         except Exception as e:
             if consume_queue_failed_count < 5:
-                logger.log(f'消费消息队列 {server.url} 失败: {e}')
+                logger.error(f'消费消息队列 {server.url} 失败: {e}')
             consume_queue_failed_count += 1
 
 
@@ -219,7 +217,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     try:
         await send_message(server.url, user_name, msg)
-        logger.log(f'发送消息成功: {msg}')
+        logger.info(f'发送消息成功: {msg}')
     except Exception as e:
         await sendmsg.finish(f'发送失败: {e}')
 

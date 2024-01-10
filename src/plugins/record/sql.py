@@ -23,7 +23,7 @@ def get_conn(group_id):
         import os
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
-        logger.log(f"连接sqlite数据库 {DB_PATH} 成功")
+        logger.info(f"连接sqlite数据库 {DB_PATH} 成功")
     if group_id not in group_vis:
         group_vis.add(group_id)
         cursor = conn.cursor()
@@ -67,7 +67,7 @@ def get_conn(group_id):
 
 # 提交事务
 def commit():
-    logger.log(f"提交sqlite数据库 {DB_PATH} 的事务")
+    logger.info(f"提交sqlite数据库 {DB_PATH} 的事务")
     conn.commit()
 
 
@@ -83,7 +83,7 @@ def msg_insert(group_id, time, msg_id, user_id, nickname, msg):
         VALUES (?, ?, ?, ?, ?)
     '''
     cursor.execute(insert_query, (time, msg_id, user_id, nickname, content))
-    logger.log(f"插入消息 {msg_id} 到 {MSG_TABLE_NAME.format(group_id)} 表")
+    logger.info(f"插入消息 {msg_id} 到 {MSG_TABLE_NAME.format(group_id)} 表")
     
 # 消息表row转换为返回值
 def msg_row_to_ret(row):
@@ -105,7 +105,7 @@ def msg_all(group_id):
     '''
     cursor.execute(query)
     rows = cursor.fetchall()
-    logger.log(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
+    logger.info(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
 # 按时间范围获取消息表中的消息 None则不限制
@@ -120,7 +120,7 @@ def msg_range(group_id, start_time, end_time):
     '''
     cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
     rows = cursor.fetchall()
-    logger.log(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
 # 按用户名获取消息表中的消息
@@ -133,7 +133,7 @@ def msg_user(group_id, user_id):
     '''
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
 
@@ -149,7 +149,7 @@ def text_insert(group_id, time, msg_id, user_id, nickname, text):
         VALUES (?, ?, ?, ?, ?)
     '''
     cursor.execute(insert_query, (time, msg_id, user_id, nickname, content))
-    logger.log(f"插入消息 {msg_id} 到 {TEXT_TABLE_NAME.format(group_id)} 表")
+    logger.info(f"插入消息 {msg_id} 到 {TEXT_TABLE_NAME.format(group_id)} 表")
 
 # 文本表row转换为返回值
 def text_row_to_ret(row):
@@ -171,7 +171,7 @@ def text_all(group_id):
     '''
     cursor.execute(query)
     rows = cursor.fetchall()
-    logger.log(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
+    logger.info(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
 # 按时间范围获取文本表中的消息 None则不限制
@@ -186,7 +186,7 @@ def text_range(group_id, start_time, end_time):
     '''
     cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
     rows = cursor.fetchall()
-    logger.log(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
 # 按用户名获取文本表中的消息
@@ -199,7 +199,7 @@ def text_user(group_id, user_id):
     '''
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
 # 按文本内容获取文本表中的消息（精确匹配）
@@ -212,7 +212,7 @@ def text_content_match(group_id, text):
     '''
     cursor.execute(query, (text,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中 精确匹配文本 {text} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中 精确匹配文本 {text} 的消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
 # 按文本内容获取文本表中的消息（模糊匹配）
@@ -225,7 +225,7 @@ def text_content_like(group_id, text):
     '''
     cursor.execute(query, (f"%{text}%",))
     rows = cursor.fetchall()
-    logger.log(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中 模糊匹配文本 {text} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中 模糊匹配文本 {text} 的消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
 
@@ -240,7 +240,7 @@ def img_insert(group_id, time, msg_id, user_id, nickname, url, img_id):
         VALUES (?, ?, ?, ?, ?, ?)
     '''
     cursor.execute(insert_query, (time, msg_id, user_id, nickname, url, img_id))
-    logger.log(f"插入消息 {msg_id} 到 {IMG_TABLE_NAME.format(group_id)} 表")
+    logger.info(f"插入消息 {msg_id} 到 {IMG_TABLE_NAME.format(group_id)} 表")
 
 # 图片表row转换为返回值
 def img_row_to_ret(row):
@@ -263,7 +263,7 @@ def img_all(group_id):
     '''
     cursor.execute(query)
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
+    logger.info(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
 # 按时间范围获取图片表中的消息 None则不限制
@@ -278,7 +278,7 @@ def img_range(group_id, start_time, end_time):
     '''
     cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
 # 按用户名获取图片表中的消息
@@ -291,7 +291,7 @@ def img_user(group_id, user_id):
     '''
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
 # 按图片URL获取图片表中的消息（精确匹配）
@@ -304,7 +304,7 @@ def img_url_match(group_id, url):
     '''
     cursor.execute(query, (url,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片URL {url} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片URL {url} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
 # 按图片ID获取图片表中的消息（精确匹配）
@@ -317,6 +317,6 @@ def img_id_match(group_id, img_id):
     '''
     cursor.execute(query, (img_id,))
     rows = cursor.fetchall()
-    logger.log(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片ID {img_id} 的消息 {len(rows)} 条")
+    logger.info(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片ID {img_id} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 

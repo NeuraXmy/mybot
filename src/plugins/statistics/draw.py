@@ -23,7 +23,7 @@ matplotlib.rcParams['axes.unicode_minus']=False
 
 # 绘制饼图
 def draw_pie(ax, recs, topk_user, topk_name):
-    logger.log(f"开始绘制饼图")
+    logger.info(f"开始绘制饼图")
     topk = len(topk_user)
     user_count, user_image_count = Counter(), Counter()
     for rec in recs:
@@ -107,7 +107,7 @@ def reset_jieba():
     jieba.load_userdict(userwords_file)
     last_userwords = userwords
     jieba_inited = True
-    logger.log(f'jieba已重置 用户词数:{len(userwords)} 停用词数:{len(stopwords)}')
+    logger.info(f'jieba已重置 用户词数:{len(userwords)} 停用词数:{len(stopwords)}')
 
 # jieba初始化
 def init_jieba():
@@ -117,7 +117,7 @@ def init_jieba():
 
 # 绘制词云图
 def draw_wordcloud(ax, recs, users, names):
-    logger.log(f"开始绘制词云图")
+    logger.info(f"开始绘制词云图")
     init_jieba()
 
     userwords = set(file_db.get("userwords", []))
@@ -218,7 +218,7 @@ def draw_wordcloud(ax, recs, users, names):
 
 # 绘制所有图
 def draw_all(recs, interval, topk1, topk2, user, name, path):
-    logger.log(f"开始绘制所有图到{path}")
+    logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
     fig, ax = plt.subplots(figsize=(8, 15), nrows=3, ncols=1)
     fig.tight_layout()
@@ -230,4 +230,4 @@ def draw_all(recs, interval, topk1, topk2, user, name, path):
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)
     plt.savefig(path)
-    logger.log(f"绘制完成")
+    logger.info(f"绘制完成")

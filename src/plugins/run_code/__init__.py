@@ -27,7 +27,9 @@ async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg(
     
     code = str(arg).strip()
     try:
+        logger.info(f"运行代码: {code}")
         res = await run(code)
+        logger.info(f"运行结果: {res}")
 
         name = await get_user_name(bot, event.group_id, event.user_id)
 
@@ -49,9 +51,9 @@ async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg(
             }
         })
 
-        if isinstance(event, GroupMessageEvent):
+        if is_group(event):
             return await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=msg_list)
         else:
             return await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=msg_list)
     except Exception as e:
-        logger.print_exc()
+        logger.print_exc(f"运行代码失败")

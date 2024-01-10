@@ -28,6 +28,8 @@ def get_config(name=None):
 
 SUPERUSER = get_config()['superuser']   
 BOT_NAME  = get_config()['bot_name']
+LOG_LEVEL = get_config()['log_level']
+LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
@@ -61,10 +63,30 @@ class Logger:
     def __init__(self, name):
         self.name = name
 
-    def log(self, msg, flush=True, end='\n'):
-        print(f'[{self.name}] {msg}', flush=flush, end=end)
+    def log(self, msg, flush=True, end='\n', level='INFO'):
+        if level not in LOG_LEVELS:
+            raise Exception(f'未知日志等级 {level}')
+        if LOG_LEVELS.index(level) < LOG_LEVELS.index(LOG_LEVEL):
+            return
+        time = datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3]
+        print(f'{time} {level} [{self.name}] {msg}', flush=flush, end=end)
+    
+    def debug(self, msg, flush=True, end='\n'):
+        self.log(msg, flush=flush, end=end, level='DEBUG')
+    
+    def info(self, msg, flush=True, end='\n'):
+        self.log(msg, flush=flush, end=end, level='INFO')
+    
+    def warning(self, msg, flush=True, end='\n'):
+        self.log(msg, flush=flush, end=end, level='WARNING')
 
-    def print_exc(self):
+    def error(self, msg, flush=True, end='\n'):
+        self.log(msg, flush=flush, end=end, level='ERROR')
+
+    def print_exc(self, msg=None):
+        self.error(msg)
+        time = datetime.now().strftime("%m-%d %H:%M:%S.%f")[:-3]
+        print(f'{time} ERROR [{self.name}] ', flush=True, end='')
         traceback.print_exc()
 
 _loggers = {}
@@ -87,27 +109,27 @@ class FileDB:
         try:
             with open(self.path, 'r') as f:
                 self.data = json.load(f)
-            self.logger.log(f'加载数据库 {self.path} 成功')
+            self.logger.info(f'加载数据库 {self.path} 成功')
         except:
-            self.logger.log(f'加载数据库 {self.path} 失败 使用空数据')
+            self.logger.warning(f'加载数据库 {self.path} 失败 使用空数据')
             self.data = {}
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, 'w') as f:
             json.dump(self.data, f, indent=4)
-        self.logger.log(f'保存数据库 {self.path}')
+        self.logger.info(f'保存数据库 {self.path}')
 
     def get(self, key, default=None):
         return deepcopy(self.data.get(key, default))
 
     def set(self, key, value):
-        self.logger.log(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
+        self.logger.info(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
         self.data[key] = deepcopy(value)
         self.save()
 
     def delete(self, key):
-        self.logger.log(f'删除数据库 {self.path} {key}')
+        self.logger.info(f'删除数据库 {self.path} {key}')
         if key in self.data:
             del self.data[key]
             self.save()
@@ -262,7 +284,7 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
     async def _():
         try:
             error_count = 0
-            logger.log(f'开始循环执行{name}', flush=True)
+            logger.info(f'开始循环执行{name}', flush=True)
             next_time = datetime.now() + timedelta(seconds=1)
             while True:
                 now_time = datetime.now()
@@ -270,27 +292,26 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
                     try:
                         await asyncio.sleep((next_time - now_time).total_seconds())
                     except Exception as e:
-                        logger.log(f'循环执行{name} sleep失败: {e}')
+                        logger.print_exc(f'循环执行{name} sleep失败')
                 next_time = next_time + timedelta(seconds=interval)
                 try:
                     if every_output:
-                        logger.log(f'开始执行{name}')
+                        logger.info(f'开始执行{name}')
                     await func()
                     if every_output:
-                        logger.log(f'执行{name}成功')
+                        logger.info(f'执行{name}成功')
                     if error_output and error_count > 0:
-                        logger.log(f'循环执行{name}从错误中恢复, 累计错误次数: {error_count}')
+                        logger.info(f'循环执行{name}从错误中恢复, 累计错误次数: {error_count}')
                     error_count = 0
                 except Exception as e:
                     if error_output and error_count < error_limit - 1:
-                        logger.log(f'循环执行{name}失败: {e} (失败次数 {error_count + 1})')
+                        logger.warning(f'循环执行{name}失败: {e} (失败次数 {error_count + 1})')
                     elif error_output and error_count == error_limit - 1:
-                        logger.log(f'循环执行{name}失败: {e} (达到错误次数输出上限)')
-                        logger.print_exc()
+                        logger.print_exc(f'循环执行{name}失败 (达到错误次数输出上限)')
                     error_count += 1
 
         except Exception as e:
-            logger.log(f'循环执行{name}失败: {e}')
+            logger.print_exc(f'循环执行{name}失败')
 
 
 
@@ -315,7 +336,7 @@ class ColdDown:
     
     def check(self, event, interval=None, allow_super=True):
         if allow_super and check_superuser(event, self.superuser):
-            self.logger.log(f'{self.cold_down_name}检查: 超级用户{event.user_id}')
+            self.logger.info(f'{self.cold_down_name}检查: 超级用户{event.user_id}')
             return True
         if interval is None: interval = self.default_interval
         key = str(event.user_id)
@@ -326,14 +347,14 @@ class ColdDown:
         if key not in last_use:
             last_use[key] = now
             self.db.set(self.cold_down_name, last_use)
-            self.logger.log(f'{self.cold_down_name}检查: {key} 未使用过')
+            self.logger.info(f'{self.cold_down_name}检查: {key} 未使用过')
             return True
         if now - last_use[key] < self.default_interval:
-            self.logger.log(f'{self.cold_down_name}检查: {key} CD中')
+            self.logger.info(f'{self.cold_down_name}检查: {key} CD中')
             return False
         last_use[key] = now
         self.db.set(self.cold_down_name, last_use)
-        self.logger.log(f'{self.cold_down_name}检查: {key} 通过')
+        self.logger.info(f'{self.cold_down_name}检查: {key} 通过')
         return True
 
     def get_last_use(self, user_id, group_id=None):
@@ -375,7 +396,7 @@ class GroupWhiteList:
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     white_list_name=self.white_list_name):
             if not check_superuser(event, superuser):
-                logger.log(f'{event.user_id} 无权限关闭 {name}')
+                logger.info(f'{event.user_id} 无权限关闭 {name}')
                 return
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
@@ -391,7 +412,7 @@ class GroupWhiteList:
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     white_list_name=self.white_list_name):
             if not check_superuser(event, superuser):
-                logger.log(f'{event.user_id} 无权限查询 {name}')
+                logger.info(f'{event.user_id} 无权限查询 {name}')
                 return
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
@@ -409,7 +430,7 @@ class GroupWhiteList:
             return False
         white_list.append(group_id)
         self.db.set(self.white_list_name, white_list)
-        self.logger.log(f'添加群 {group_id} 到 {self.white_list_name}')
+        self.logger.info(f'添加群 {group_id} 到 {self.white_list_name}')
         return True
     
     def remove(self, group_id):
@@ -418,7 +439,7 @@ class GroupWhiteList:
             return False
         white_list.remove(group_id)
         self.db.set(self.white_list_name, white_list)
-        self.logger.log(f'从 {self.white_list_name} 删除群 {group_id}')
+        self.logger.info(f'从 {self.white_list_name} 删除群 {group_id}')
         return True
             
     def check_id(self, group_id):
@@ -447,7 +468,7 @@ class GroupBlackList:
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     black_list_name=self.black_list_name):
             if not check_superuser(event, superuser):
-                logger.log(f'{event.user_id} 无权限关闭 {name}')
+                logger.info(f'{event.user_id} 无权限关闭 {name}')
                 return
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
@@ -463,7 +484,7 @@ class GroupBlackList:
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     black_list_name=self.black_list_name):
             if not check_superuser(event, superuser):
-                logger.log(f'{event.user_id} 无权限开启 {name}')
+                logger.info(f'{event.user_id} 无权限开启 {name}')
                 return
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
@@ -479,7 +500,7 @@ class GroupBlackList:
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     black_list_name=self.black_list_name):
             if not check_superuser(event, superuser):
-                logger.log(f'{event.user_id} 无权限查询 {name}')
+                logger.info(f'{event.user_id} 无权限查询 {name}')
                 return
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
@@ -497,7 +518,7 @@ class GroupBlackList:
             return False
         black_list.append(group_id)
         self.db.set(self.black_list_name, black_list)
-        self.logger.log(f'添加群 {group_id} 到 {self.black_list_name}')
+        self.logger.info(f'添加群 {group_id} 到 {self.black_list_name}')
         return True
     
     def remove(self, group_id):
@@ -506,7 +527,7 @@ class GroupBlackList:
             return False
         black_list.remove(group_id)
         self.db.set(self.black_list_name, black_list)
-        self.logger.log(f'从 {self.black_list_name} 删除群 {group_id}')
+        self.logger.info(f'从 {self.black_list_name} 删除群 {group_id}')
         return True
     
     def check_id(self, group_id):

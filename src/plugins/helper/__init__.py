@@ -12,11 +12,11 @@ cds = []
 # 帮助
 HELPER_PATH = 'helper.yaml'
 def init_helper():
-    logger.log(f'初始化帮助')
+    logger.info(f'初始化帮助')
     with open(HELPER_PATH, 'r') as f:
         helps = yaml.load(f, Loader=yaml.FullLoader)
     help_keys = helps.keys()
-    logger.log(f'可用的帮助: {",".join(help_keys)}')
+    logger.info(f'可用的帮助: {",".join(help_keys)}')
     
     # 如果没有全局帮助, 则自动添加
     if '_global' not in helps:
@@ -47,7 +47,7 @@ def init_helper():
             if not cds[cd_index].check(event): return
             await help.finish(help_text)
 
-    logger.log(f'初始化帮助完成')
+    logger.info(f'初始化帮助完成')
     
     
 
