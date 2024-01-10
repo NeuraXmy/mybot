@@ -608,3 +608,46 @@ async def _(bot: Bot, event: GroupMessageEvent):
             msg_off += f'{name} '
     return await service.finish(msg_on + '\n' + msg_off)
 
+
+# 发送邮件
+async def send_mail_async(
+    subject: str,
+    recipient: str,
+    body: str,
+    smtp_server: str,
+    port: int,
+    username: str,
+    password: str,
+    use_tls: bool = True,
+    logger = None,
+    max_attempts: int = 3,
+    retry_interval: int = 5,
+):
+    logger.info(f'从 {username} 发送邮件到 {recipient} 主题: {subject} 内容: {body}')
+    from email.message import EmailMessage
+    import aiosmtplib
+    message = EmailMessage()
+    message["From"] = username
+    message["To"] = recipient
+    message["Subject"] = subject
+    message.set_content(body)
+
+    for i in range(max_attempts):
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=smtp_server,
+                port=port,
+                username=username,
+                password=password,
+                use_tls=use_tls,
+            )
+            logger.info(f'发送邮件成功')
+            return
+        except Exception as e:
+            if logger is not None:
+                if i == max_attempts - 1:
+                    logger.error(f'第{i + 1}次发送邮件失败 (达到最大尝试次数)')
+                    raise e
+                logger.warning(f'第{i + 1}次发送邮件失败: {e}')
+            await asyncio.sleep(retry_interval)

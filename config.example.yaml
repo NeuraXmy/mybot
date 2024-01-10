@@ -7,6 +7,21 @@ superuser:
   - 22222222
 
 
+alive:
+  check_interval: 3                 # 存活检测间隔（秒）
+  time_threshold: 10                # 状态改变多久后才发送提醒（秒）
+  notify_at_connect: True           # 恢复连线时是否发送提醒
+  notify_at_disconnect: True        # 断线时是否发送提醒
+  notify_at_first: False            # 如果bot启动时已经断线/连接，是否发送一次提醒
+  send_email: True                  # 是否发送邮件
+  mail_host: "smtp.qq.com"          # 邮箱服务器地址
+  mail_port: 25                     # 邮箱服务器端口
+  mail_user: "xxxxxxxx@qq.com"      # 邮箱发送者用户名
+  mail_pass: "xxxxxxxxxxxxxxxx"     # 邮箱密码
+  mail_receivers:                   # 邮箱接收者列表
+    - "xxxxxxxx@qq.com"
+
+
 bobing:
   cd: 60         
 

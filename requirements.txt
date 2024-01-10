@@ -6,3 +6,5 @@ pandas
 httpx
 aiohttp
 wordcloud
+aiosmtplib
+mail
