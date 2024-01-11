@@ -119,8 +119,9 @@ class ServerData:
             self.players.pop(account)
         # 检测消息更新
         for upd in data['updates']:
+            logger.debug(f'{self.url} 消息更新: {upd}')
             if upd["type"] == "chat":
-                if upd["source"] == "plugin": continue
+                # if upd["source"] == "plugin": continue
                 key = f'{upd["timestamp"]} - {upd["account"]} - {upd["message"]}'
                 logger.info(f'新消息: {upd}')
                 if key not in self.messages:
