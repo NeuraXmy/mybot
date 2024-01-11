@@ -39,7 +39,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         user_id=user_id,
         nickname=user_name,
         msg=msg,
-        verbose=False
     )
     text_insert(
         group_id=group_id,
@@ -48,7 +47,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         user_id=user_id,
         nickname=user_name,
         text=msg_text,
-        verbose=False
     )
     for url, img_id in zip(img_urls, img_ids):
         img_insert(
@@ -59,10 +57,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
             nickname=user_name,
             url=url,
             img_id=img_id,
-            verbose=False
         )
 
-    commit(verbose=False)
+    commit()
 
 
 

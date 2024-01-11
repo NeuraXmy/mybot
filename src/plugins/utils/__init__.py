@@ -21,7 +21,7 @@ def get_config(name=None):
         print(f'加载配置文件 {CONFIG_PATH}')
         with open(CONFIG_PATH, 'r') as f:
             _config = yaml.load(f, Loader=yaml.FullLoader)
-        print(f'加载配置文件 {CONFIG_PATH} 成功')
+        print(f'配置文件已加载')
     if name is not None:
         return _config[name]
     return _config
@@ -30,6 +30,7 @@ SUPERUSER = get_config()['superuser']
 BOT_NAME  = get_config()['bot_name']
 LOG_LEVEL = get_config()['log_level']
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
+print(f'使用日志等级: {LOG_LEVEL}')
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
@@ -105,31 +106,31 @@ class FileDB:
         self.logger = logger
         self.load()
 
-    def load(self, verbose=True):
+    def load(self):
         try:
             with open(self.path, 'r') as f:
                 self.data = json.load(f)
-            if verbose: self.logger.info(f'加载数据库 {self.path} 成功')
+            self.logger.debug(f'加载数据库 {self.path} 成功')
         except:
-            if verbose: self.logger.warning(f'加载数据库 {self.path} 失败 使用空数据')
+            self.logger.debug(f'加载数据库 {self.path} 失败 使用空数据')
             self.data = {}
 
-    def save(self, verbose=False):
+    def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, 'w') as f:
             json.dump(self.data, f, indent=4)
-        if verbose: self.logger.info(f'保存数据库 {self.path}')
+        self.logger.debug(f'保存数据库 {self.path}')
 
     def get(self, key, default=None):
         return deepcopy(self.data.get(key, default))
 
-    def set(self, key, value, verbose=True):
-        if verbose: self.logger.info(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
+    def set(self, key, value):
+        self.logger.debug(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
         self.data[key] = deepcopy(value)
         self.save()
 
-    def delete(self, key, verbose=True):
-        if verbose: self.logger.info(f'删除数据库 {self.path} {key}')
+    def delete(self, key):
+        self.logger.debug(f'删除数据库 {self.path} {key}')
         if key in self.data:
             del self.data[key]
             self.save()
@@ -336,7 +337,7 @@ class ColdDown:
     
     def check(self, event, interval=None, allow_super=True):
         if allow_super and check_superuser(event, self.superuser):
-            self.logger.info(f'{self.cold_down_name}检查: 超级用户{event.user_id}')
+            self.logger.debug(f'{self.cold_down_name}检查: 超级用户{event.user_id}')
             return True
         if interval is None: interval = self.default_interval
         key = str(event.user_id)
@@ -347,14 +348,14 @@ class ColdDown:
         if key not in last_use:
             last_use[key] = now
             self.db.set(self.cold_down_name, last_use)
-            self.logger.info(f'{self.cold_down_name}检查: {key} 未使用过')
+            self.logger.debug(f'{self.cold_down_name}检查: {key} 未使用过')
             return True
         if now - last_use[key] < self.default_interval:
-            self.logger.info(f'{self.cold_down_name}检查: {key} CD中')
+            self.logger.debug(f'{self.cold_down_name}检查: {key} CD中')
             return False
         last_use[key] = now
         self.db.set(self.cold_down_name, last_use)
-        self.logger.info(f'{self.cold_down_name}检查: {key} 通过')
+        self.logger.debug(f'{self.cold_down_name}检查: {key} 通过')
         return True
 
     def get_last_use(self, user_id, group_id=None):
@@ -450,12 +451,16 @@ class GroupWhiteList:
             
     def check_id(self, group_id):
         white_list = self.db.get(self.white_list_name, [])
+        self.logger.debug(f'白名单{self.white_list_name}检查{group_id}: {"允许通过" if group_id in white_list else "不允许通过"}')
         return group_id in white_list
 
     def check(self, event, allow_private=False, allow_super=False):
         if is_group(event):
-            if allow_super and check_superuser(event, self.superuser): return True
+            if allow_super and check_superuser(event, self.superuser): 
+                self.logger.debug(f'白名单{self.white_list_name}检查: 允许超级用户{event.user_id}')
+                return True
             return self.check_id(event.group_id)
+        self.logger.debug(f'白名单{self.white_list_name}检查: {"允许私聊" if allow_private else "不允许私聊"}')
         return allow_private
     
     
@@ -544,12 +549,17 @@ class GroupBlackList:
     
     def check_id(self, group_id):
         black_list = self.db.get(self.black_list_name, [])
+        self.logger.debug(f'黑名单{self.black_list_name}检查{group_id}: {"允许通过" if group_id not in black_list else "不允许通过"}')
         return group_id not in black_list
     
     def check(self, event, allow_private=False, allow_super=False):
         if is_group(event):
-            if allow_super and check_superuser(event, self.superuser): return True
+            if allow_super and check_superuser(event, self.superuser): 
+                self.logger.debug(f'黑名单{self.black_list_name}检查: 允许超级用户{event.user_id}')
+                return True
+            self.logger.debug(f'黑名单{self.black_list_name}检查: {"允许通过" if self.check_id(event.group_id) else "不允许通过"}')
             return self.check_id(event.group_id)
+        self.logger.debug(f'黑名单{self.black_list_name}检查: {"允许私聊" if allow_private else "不允许私聊"}')
         return allow_private
     
 
