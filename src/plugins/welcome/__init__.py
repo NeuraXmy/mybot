@@ -30,7 +30,7 @@ async def update_member_info(group_id=None):
             else:
                 id_names[str(info['user_id'])] = info['nickname']
         file_db.set(f'{group_id}_members', id_names)
-        logger.info(f'群 {group_id} 成员信息更新完毕')
+        logger.debug(f'群 {group_id} 成员信息更新完毕')
 
 
 # 加退群通知
