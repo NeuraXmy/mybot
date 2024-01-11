@@ -40,3 +40,17 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     logger.info(f"send: {msg}")
     await rand.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 
+
+choice = on_command("/choice", priority=100, block=False)
+@choice.handle()
+async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if not gbl.check(event): return
+    if not cd.check(event): return
+    choices = args.extract_plain_text().split()
+    if len(choices) <= 1:
+        msg = '至少需要两个选项'
+    else:
+        msg = f'选择: {random.choice(choices)}'
+    logger.info(f"send: {msg}")
+    await choice.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+

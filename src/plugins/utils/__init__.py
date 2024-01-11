@@ -105,31 +105,31 @@ class FileDB:
         self.logger = logger
         self.load()
 
-    def load(self):
+    def load(self, verbose=True):
         try:
             with open(self.path, 'r') as f:
                 self.data = json.load(f)
-            self.logger.info(f'加载数据库 {self.path} 成功')
+            if verbose: self.logger.info(f'加载数据库 {self.path} 成功')
         except:
-            self.logger.warning(f'加载数据库 {self.path} 失败 使用空数据')
+            if verbose: self.logger.warning(f'加载数据库 {self.path} 失败 使用空数据')
             self.data = {}
 
-    def save(self):
+    def save(self, verbose=False):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, 'w') as f:
             json.dump(self.data, f, indent=4)
-        self.logger.info(f'保存数据库 {self.path}')
+        if verbose: self.logger.info(f'保存数据库 {self.path}')
 
     def get(self, key, default=None):
         return deepcopy(self.data.get(key, default))
 
-    def set(self, key, value):
-        self.logger.info(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
+    def set(self, key, value, verbose=True):
+        if verbose: self.logger.info(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
         self.data[key] = deepcopy(value)
         self.save()
 
-    def delete(self, key):
-        self.logger.info(f'删除数据库 {self.path} {key}')
+    def delete(self, key, verbose=True):
+        if verbose: self.logger.info(f'删除数据库 {self.path} {key}')
         if key in self.data:
             del self.data[key]
             self.save()

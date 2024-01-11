@@ -9,6 +9,8 @@ bobing:
     /rand [L] [R]
     随机生成[L,R]的整数，L,R可不填，默认为[0,100]
     例子：/rand 1 6 随机生成1-6的整数
+    /choice [item1] [item2] ...
+    随机选择一个item
     /bing 
     博饼
                          
