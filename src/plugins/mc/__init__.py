@@ -1,10 +1,12 @@
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from datetime import datetime, timedelta
 from nonebot import get_bot
 import aiohttp
 import json
+import mcrcon
 from ..utils import *
 
 config = get_config('mc')
@@ -76,7 +78,10 @@ class ServerData:
         data = {
             'url': self.url,
             'bot_on': self.bot_on,
-            'info': self.info
+            'info': self.info,
+            'admin': self.admin,
+            'rcon_url': self.rcon_url,
+            'rcon_password': self.rcon_password
         }
         file_db.set(f'{self.group_id}.server_info', data)
         logger.info(f'在 {self.group_id} 中保存服务器 {data}')
@@ -86,11 +91,17 @@ class ServerData:
         data = file_db.get(f'{self.group_id}.server_info', {
             'url': '',
             'bot_on': True,
-            'info': ''
+            'info': '',
+            'admin': [],
+            'rcon_url': '',
+            'rcon_password': ''
         })
-        self.url    = data['url']
-        self.bot_on = data['bot_on']
-        self.info   = data['info']
+        self.url    = data.get('url', '')
+        self.bot_on = data.get('bot_on', True)
+        self.info   = data.get('info', '')
+        self.rcon_url = data.get('rcon_url', '')
+        self.rcon_password = data.get('rcon_password', '')
+        self.admin = data.get('admin', [])
         logger.info(f'在 {self.group_id} 中加载服务器 {data}')
 
     # 通过向服务器请求信息更新数据
@@ -131,7 +142,12 @@ class ServerData:
         if self.first_update:
             logger.info(f'服务器 {self.url} 首次更新完成')
         self.first_update = False
+
+    def check_admin(self, event):
+        return str(event.user_id) in self.admin
         
+    def check_admin_or_superuser(self, event):
+        return self.check_admin(event) or check_superuser(event)
 
 # ------------------------------------------ 服务器列表维护 ------------------------------------------ #
 
@@ -140,7 +156,7 @@ class ServerData:
 servers = set()
 
 # 通过group_id获取服务器
-def get_server(group_id):
+def get_server(group_id) -> ServerData:
     for server in servers:
         if server.group_id == group_id:
             return server
@@ -249,9 +265,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
 bot_on = on_command("/listen", priority=100, block=False)
 @bot_on.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not check_superuser(event): return
     if not gwl.check(event): return
     server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
     if server.bot_on:
         server.bot_on = False
         server.save()
@@ -265,9 +281,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
 set_url = on_command("/seturl", priority=100, block=False)
 @set_url.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not check_superuser(event): return
     if not gwl.check(event): return
     server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
     if not server.bot_on: 
         await set_url.finish("监听已关闭，无法设置url")
     url = str(event.get_message()).replace('/seturl', '').strip()
@@ -292,9 +308,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
 set_info = on_command("/setinfo", priority=100, block=False)
 @set_info.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not check_superuser(event): return
     if not gwl.check(event): return
     server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
     info = str(event.get_message()).replace('/setinfo', '').strip()
     server.info = info
     server.save()
@@ -320,5 +336,113 @@ async def _(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f'{user_name} 发送消息到 {server.url} 失败')
         await sendmsg.finish(f'发送失败: {e}')
+
+
+# 添加管理员
+add_admin = on_command("/opadd", priority=100, block=False)
+@add_admin.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    msg = extract_cq_code(await get_msg(bot, event.message_id))
+    if 'at' not in msg:
+        await add_admin.finish('请@一个人')
+    user_id = str(msg['at'][0]['qq'])
+    if user_id in server.admin:
+        await add_admin.finish('该用户已经是管理员')
+    server.admin.append(user_id)
+    server.save()
+    await add_admin.finish('添加管理员成功')
+
+# 移除管理员
+remove_admin = on_command("/opdel", priority=100, block=False)
+@remove_admin.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    msg = extract_cq_code(await get_msg(bot, event.message_id))
+    if 'at' not in msg:
+        await remove_admin.finish('请@一个人')
+    user_id = str(msg['at'][0]['qq'])
+    if user_id not in server.admin:
+        await remove_admin.finish('该用户不是管理员')
+    server.admin.remove(user_id)
+    server.save()
+    await remove_admin.finish('移除管理员成功')
+
+# 获取管理员列表
+get_admin = on_command("/oplist", priority=100, block=False)
+@get_admin.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    msg = '管理员列表:\n'
+    for user_id in server.admin:
+        user_name = await get_user_name(bot, event.group_id, int(user_id))
+        msg += f'{user_name}({user_id})\n'
+    await get_admin.finish(msg.strip())
+
+# 设置rconurl
+set_rcon = on_command("/setrconurl", priority=100, block=False)
+@set_rcon.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    url = str(event.get_message()).replace('/setrconurl', '').strip()
+    if url == '':
+        await set_rcon.finish('url不能为空')
+    server.rcon_url = url
+    server.save()
+    await set_rcon.finish(f'设置服务器rcon地址为: {url}')
+
+# 获取rconurl
+get_rcon = on_command("/getrconurl", priority=100, block=False)
+@get_rcon.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not cd.check(event): return
+    server = get_server(event.group_id)
+    await get_rcon.finish(f'服务器rcon地址为: {server.rcon_url}')
+
+# 发送rcon命令
+rcon = on_command("/rcon", priority=100, block=False)
+@rcon.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not cd.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    if server.rcon_url == '':
+        await rcon.finish('rcon地址未设置')
+    if server.rcon_password == '':
+        await rcon.finish('rcon密码未设置')
+
+    command = str(event.get_message()).replace('/rcon', '').strip()
+    if command == '':
+        await rcon.finish('命令不能为空')
+    try:
+        logger.info(f'发送rcon命令到{server.rcon_url}: {command}')
+        host = server.rcon_url.split(':')[0]
+        port = int(server.rcon_url.split(':')[1])
+        with mcrcon.MCRcon(host, server.rcon_password, port) as mcr:
+            resp = mcr.command(command)
+    except Exception as e:
+        logger.print_exc(f'发送rcon命令 {command} 到{server.rcon_url}失败')
+        await rcon.finish(f'发送失败: {e}')
+
+    logger.info(f'获取到rcon响应: {resp}')
+    if resp == '':
+        await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，无响应'))
+    else:
+        await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，响应:\n{resp}'))
+    
+    
+
+
+
+
 
 

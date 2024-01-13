@@ -83,6 +83,8 @@ statistics:
   plot_topk: 5                  # 折线图显示的前k名
   plot_interval: 15             # 折线图的时间间隔（分钟）
 
+touhou:
+  cd: 60
 
 water:
   cd: 60                      

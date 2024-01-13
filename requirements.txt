@@ -8,3 +8,4 @@ aiohttp
 wordcloud
 aiosmtplib
 mail
+mcrcon
