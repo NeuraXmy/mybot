@@ -25,13 +25,18 @@ MAIL_RECEIVERS = config['mail_receivers']
 
 
 very_future = datetime.now() + timedelta(weeks=10000)
-last_notify = "none" if NOTIFY_AT_FIRST else "every"
+last_notify = "none"
+is_first_notify = True
 last_connect_time    = datetime.now()
 last_disconnect_time = datetime.now()
 
 
 # 发送通知
 async def send_noti(ok):
+    global is_first_notify
+    if is_first_notify and not NOTIFY_AT_FIRST:
+        is_first_notify = False
+        return
     if not ok:
         if not NOTIFY_AT_DISCONNECT: return
         logger.info("存活检测失败，开始发送通知")
