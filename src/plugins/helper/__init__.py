@@ -1,7 +1,7 @@
 import yaml
 from ..utils import *
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
 config = get_config('helper')
 logger = get_logger('Helper')
@@ -40,10 +40,10 @@ def init_helper():
         cmd = "/help" if key == '_global' else f"/help {key}"
         help = on_command(cmd, block=False, priority=100)
         @help.handle()
-        async def _(event: GroupMessageEvent, help_text=help_text, cd_index=cd_index):
+        async def _(event: MessageEvent, help_text=help_text, cd_index=cd_index):
             fake_event = deepcopy(event)
             fake_event.user_id = 1
-            if not gbl.check(fake_event): return
+            if not gbl.check(fake_event, allow_private=True): return
             if not cds[cd_index].check(event): return
             await help.finish(help_text)
 

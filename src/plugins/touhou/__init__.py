@@ -7,34 +7,136 @@ import random
 from ..utils import *
 import pandas as pd
 from glob import glob
+import openai
+import numpy as np
+import pandas as pd
+import os
+from glob import glob
+from tqdm import tqdm
+
 
 config = get_config('touhou')
+openai_config = get_config('openai')
 logger = get_logger("Touhou")
 file_db = get_file_db("data/touhou/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'touhou')
 
 
+API_KEY = openai_config['api_key']
+API_BASE = openai_config['api_base']
+PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
+MODEL_ID = config['model_id']
+SC_QUERY_MAX_NUM = config['sc_query_max_num']
+
+
+# ------------------------------------------ 初始化 ------------------------------------------ #
+
+
 SC_LIST_DIR = "data/touhou/sc_list"
 sc_lists = {}
+sc_embs = []
 # 初始化符卡列表
 def init_sc_list():
     global sc_lists
     files = glob(f"{SC_LIST_DIR}/*.csv")
     for file in files:
-        file_name = file.split('/')[-1].split('.')[0]
-        game_name = file_name.split('_')[1]
-        sc_lists[game_name] = pd.read_csv(file, sep='\t', encoding='utf8')
+        try:
+            file_name = file.split('/')[-1].split('.')[0]
+            game_name = file_name.split('_')[1]
+            sc_lists[game_name] = pd.read_csv(file, sep='\t', encoding='utf8')
+            emb_file_name = file.replace('.csv', '_emb.npy')
+            emb = np.load(emb_file_name)
+            for i in range(len(emb)):
+                sc_embs.append((emb[i], sc_lists[game_name], i))
+        except:
+            logger.print_exc(f"符卡列表初始化失败: {file}")
+            return
     logger.info(f"符卡列表初始化完成: {sc_lists.keys()}")
 init_sc_list()
 
 
-# ------------------------------------------ 指令 ------------------------------------------ #
+# ------------------------------------------ 工具函数 ------------------------------------------ #
+
+
+# 获取embedding
+def get_text_embedding(text, max_retries=10):
+    openai.api_key = API_KEY
+    openai.api_base = API_BASE
+    openai.proxy = PROXY
+    logger.info(f'获取embedding: {text}')
+    for i in range(max_retries):
+        try:
+            response = openai.Embedding.create(
+                input=text,
+                model=MODEL_ID,
+                encoding_format="float"
+            )
+            embedding = np.array(response['data'][0]['embedding'])
+            logger.info(f'获取embedding成功')
+            return embedding
+        except Exception as e:
+            if i == max_retries - 1:
+                raise e
+            logger.warning(f'获取embedding失败: {e}, 重试({i+1}/{max_retries})')
+            continue
+
+
+# 处理符卡查询语句
+def process_sc_query_text(text):
+    ret = []
+    for word in text.split(' '):
+        word = word.strip().lower()
+        if word == 'h' or word == 'h难度': word = 'Hard'
+        if word == 'n' or word == 'n难度': word = 'Normal'
+        if word == 'e' or word == 'e难度': word = 'Easy'
+        if word == 'l' or word == 'l难度': word = 'Lunatic'
+        if word == 'ex' or word == 'ex难度': word = 'Extra'
+        if word == 'ph' or word == 'ph难度': word = 'Phantasm'
+        ret.append(word)
+    return ' '.join(ret)
+
+
+# 查询符卡
+def query_sc(text, num):
+    global sc_embs
+    qemb = get_text_embedding(text)
+    scores = []
+    for emb, df, idx in sc_embs:
+        scores.append((np.linalg.norm(qemb - emb), df, idx))
+    scores.sort(key=lambda x: x[0])
+    ret = []
+    for i in range(num):
+        row = scores[i][1].iloc[scores[i][2]]
+        ret.append(row)
+    return ret
+
+
+# 从符卡row获取简介
+def get_sc_info_from_row(row):
+    ret = f"【{row['id']}】{row['game']} "
+    if '难度' in row.index:
+        ret += f"{row['难度']} "
+    if '关卡' in row.index:
+        ret += f"{row['关卡']} "
+    if '角色' in row.index:
+        ret += f"{row['角色']} "
+    if '符卡翻译名' in row.index:
+        ret += f"{row['符卡翻译名']} "
+    elif '符卡名' in row.index:
+        ret += f"{row['符卡名']} "
+    else:
+        ret += f"未知符卡 "
+    return ret
 
 
 # 查询符卡详细信息
 def get_sc_detail(name, link):
     return ""
+
+
+# ------------------------------------------ 指令 ------------------------------------------ #
+
 
 
 # id查询符卡
@@ -48,7 +150,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     except:
         await scid.finish(Message(f'[CQ:reply,id={event.message_id}] 符卡id不正确'))
 
-    logger.info(f"send: 查询符卡id={id}")
+    logger.info(f"查询符卡id={id}")
     for game_name, sc_list in sc_lists.items():
         if id in sc_list['id'].values:
             sc = sc_list[sc_list['id'] == id]
@@ -72,8 +174,38 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
             msg += detail_msg.strip()
             await scid.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
     
-    logger.info(f"send: 未找到符卡id={id}")
+    logger.info(f"未找到符卡id={id}")
     await scid.finish(Message(f'[CQ:reply,id={event.message_id}] 未找到符卡id={id}'))
+
+
+# 文本查询符卡
+sc = on_command('/sc', block=False, priority=100)
+@sc.handle()
+async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if not gbl.check(event, allow_private=True): return
+    if not cd.check(event): return
+    text = args.extract_plain_text()
+    if text.strip() == "": return
+    qtext = process_sc_query_text(text)
+    logger.info(f"查询符卡: {text} -> {qtext}")
+
+    try:
+        rows = query_sc(qtext, SC_QUERY_MAX_NUM)
+    except:
+        logger.print_exc(f"查询符卡失败")
+        await sc.finish(Message(f'[CQ:reply,id={event.message_id}] 查询符卡失败'))
+
+    msg = "查询到以下符卡 (使用 /scid <编号> 查询符卡详细信息)\n"
+    for row in rows:
+        msg += get_sc_info_from_row(row) + '\n'
+    await sc.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
+        
+        
+
+        
+        
+
+   
 
 
 

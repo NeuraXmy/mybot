@@ -7,14 +7,15 @@ from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE
 from ..utils import *
 
 config = get_config('chat')
+openai_config = get_config('openai')
 logger = get_logger("Chat")
 file_db = get_file_db("data/chat/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = get_group_white_list(file_db, logger, 'chat')
 
-API_KEY = config['api_key']
-API_BASE = config['api_base']
-PROXY = (None if config['proxy'] == "" else config['proxy'])
+API_KEY = openai_config['api_key']
+API_BASE = openai_config['api_base']
+PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
 MODEL_ID = config['model_id']
 FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']

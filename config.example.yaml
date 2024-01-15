@@ -7,6 +7,12 @@ superuser:
   - 22222222
 
 
+openai:
+  api_key: "sk-xxxxxxxxx"
+  api_base: "https://xxxxxxxxxx/v1"
+  proxy: ""
+
+
 alive:
   check_interval: 3                 # 存活检测间隔（秒）
   time_threshold: 10                # 状态改变多久后才发送提醒（秒）
@@ -31,9 +37,6 @@ helper:
 
 
 chat:
-  api_key: "sk-xxxxxxxxx"
-  api_base: "https://xxxxxxxxxx/v1"
-  proxy: ""
   model_id: "gpt-4-vision-preview"
   fold_response_threshold: 200    # 群聊中超过多少字折叠回复
   session_len_limit: 10           # 会话长度限制
@@ -84,6 +87,8 @@ statistics:
   plot_interval: 15             # 折线图的时间间隔（分钟）
 
 touhou:
+  model_id: "text-embedding-ada-002"  
+  sc_query_max_num: 5           # 符卡查询显示的最大数量
   cd: 60
 
 water:

@@ -82,7 +82,9 @@ touhou:
   name: "车万查询服务"
   help: | 
     施工中...
-    /scid [id] 查询特定id的符卡信息
+    /scid id 查询特定id的符卡信息
+    /sc text 查询符卡信息, text为以空格分隔的符卡信息
+    例如: /sc 反魂蝶 妖妖梦 hard
 
 water:
   name: "水果查询服务"
