@@ -1,6 +1,10 @@
 from ..utils import *
 import mail
 from datetime import datetime
+from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11.message import Message
+from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot import on_command
 
 
 config = get_config('alive')
@@ -80,3 +84,11 @@ async def alive_check():
 # 定时任务
 start_repeat_with_interval(CHECK_INTERVAL, alive_check, logger, "存活检测", start_offset=10, error_limit=999999)
 
+
+# 测试命令
+alive = on_command("/alive", priority=100, block=False)
+@alive.handle()
+async def handle_function(bot: Bot, event: MessageEvent):
+    if not check_superuser(event): return
+    msg = f"上次连接时间: {last_connect_time.strftime('%Y-%m-%d %H:%M:%S')}" 
+    await alive.finish(Message(f'[CQ:reply,id={event.message_id}]{msg}'))
