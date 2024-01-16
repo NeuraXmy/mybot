@@ -30,6 +30,8 @@ is_first_notify = True
 last_connect_time    = datetime.now()
 last_disconnect_time = datetime.now()
 
+last_resume_time     = datetime.now()
+resume_recorded = False
 
 # 发送通知
 async def send_noti(ok):
@@ -67,10 +69,14 @@ async def send_noti(ok):
 
 # 存活检测
 async def alive_check():
-    global last_connect_time, last_disconnect_time
+    global last_connect_time, last_disconnect_time, last_notify, is_first_notify, resume_recorded, last_resume_time
     try:
         from nonebot import get_bot
         bot = get_bot()
+
+        if not resume_recorded:
+            resume_recorded = True
+            last_resume_time = datetime.now()
 
         last_connect_time = datetime.now()
         if (datetime.now() - last_disconnect_time).total_seconds() > TIME_THRESHOLD \
@@ -78,7 +84,7 @@ async def alive_check():
             last_disconnect_time = very_future
             await send_noti(True)
     except:
-
+        resume_recorded = False
         last_disconnect_time = datetime.now()
         if (datetime.now() - last_connect_time).total_seconds() > TIME_THRESHOLD \
             and last_notify in ["connect", "none"]:
@@ -95,5 +101,5 @@ alive = on_command("/alive", priority=100, block=False)
 @alive.handle()
 async def handle_function(bot: Bot, event: MessageEvent):
     if not check_superuser(event): return
-    msg = f"上次连接时间: {last_connect_time.strftime('%Y-%m-%d %H:%M:%S')}" 
+    msg = f"上次连接时间: {last_resume_time.strftime('%Y-%m-%d %H:%M:%S')}" 
     await alive.finish(Message(f'[CQ:reply,id={event.message_id}]{msg}'))
