@@ -34,11 +34,13 @@ SC_QUERY_MAX_NUM = config['sc_query_max_num']
 
 
 SC_LIST_DIR = "data/touhou/sc_list"
+SC_ID_TO_GIF_PATH = "data/touhou/sc_id_to_gif.csv"
 sc_lists = {}
 sc_embs = []
+sc_id_to_gif = None
 # 初始化符卡列表
 def init_sc_list():
-    global sc_lists
+    global sc_lists, sc_embs, sc_id_to_gif
     files = glob(f"{SC_LIST_DIR}/*.csv")
     for file in files:
         try:
@@ -52,6 +54,15 @@ def init_sc_list():
         except:
             logger.print_exc(f"符卡列表初始化失败: {file}")
             return
+    try:
+        sc_id_to_gif_df = pd.read_csv(SC_ID_TO_GIF_PATH, sep='\t', encoding='utf8')
+        sc_id_to_gif = [None] * (sc_id_to_gif_df['id'].max() + 1)
+        for idx, row in sc_id_to_gif_df.iterrows():
+            sc_id_to_gif[row['id']] = row['gif']
+    except:
+        logger.print_exc(f"符卡id->gif初始化失败: {SC_ID_TO_GIF_PATH}")
+        return
+
     logger.info(f"符卡列表初始化完成: {sc_lists.keys()}")
 init_sc_list()
 
@@ -162,6 +173,15 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
             detail_link = sc['符卡翻译名_link'].values[0]
             sc_name = sc['符卡翻译名'].values[0]
             msg += f"Wiki页面: {detail_link}"
+
+            if sc_id_to_gif is not None and sc_id_to_gif[id] is not None and sc_id_to_gif[id] != 'None':
+                logger.info(f"读取符卡gif: {sc_id_to_gif[id]}")
+                # 读取gif 编码为base64
+                import base64
+                with open(sc_id_to_gif[id], 'rb') as f:
+                    gif = base64.b64encode(f.read()).decode()
+                msg += f"[CQ:image,file=base64://{gif}]"
+
             await scid.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
     
     logger.info(f"未找到符卡id={id}")
