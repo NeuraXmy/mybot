@@ -91,7 +91,7 @@ class Logger:
         traceback.print_exc()
 
 _loggers = {}
-def get_logger(name):
+def get_logger(name) -> Logger:
     global _loggers
     if name not in _loggers:
         _loggers[name] = Logger(name)
@@ -136,7 +136,7 @@ class FileDB:
             self.save()
 
 _file_dbs = {}
-def get_file_db(path, logger):
+def get_file_db(path, logger) -> FileDB:
     global _file_dbs
     if path not in _file_dbs:
         _file_dbs[path] = FileDB(path, logger)
@@ -564,14 +564,14 @@ class GroupBlackList:
     
 
 _gwls = {}
-def get_group_white_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
+def get_group_white_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None) -> GroupWhiteList:
     global _gwls
     if name not in _gwls:
         _gwls[name] = GroupWhiteList(db, logger, name, superuser, on_func, off_func)
     return _gwls[name]
 
 _gbls = {}
-def get_group_black_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None):
+def get_group_black_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None) -> GroupBlackList:
     global _gbls
     if name not in _gbls:
         _gbls[name] = GroupBlackList(db, logger, name, superuser, on_func, off_func)

@@ -18,7 +18,7 @@ gbl = get_group_black_list(file_db, logger, "runcode")
 runcode = on_command('/code', priority=100, block=False)
 @runcode.handle()
 async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
-    if not gbl.check(event): return
+    if not gbl.check(event, allow_private=True): return
     if not cd.check(event): return
 
     content = arg.extract_plain_text()

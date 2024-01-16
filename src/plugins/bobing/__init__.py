@@ -16,7 +16,7 @@ gbl = get_group_black_list(file_db, logger, 'bobing')
 bing = on_command("/bing", priority=100, block=False)
 @bing.handle()
 async def handle_function(bot: Bot, event: MessageEvent):
-    if not gbl.check(event): return
+    if not gbl.check(event, allow_private=True): return
     if not cd.check(event): return
     dices = [random.randint(1, 6) for _ in range(6)]
     dices = [chr(0x267F + dice) for dice in dices]
@@ -28,7 +28,7 @@ async def handle_function(bot: Bot, event: MessageEvent):
 rand = on_command("/rand", priority=100, block=False)
 @rand.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    if not gbl.check(event): return
+    if not gbl.check(event, allow_private=True): return
     if not cd.check(event): return
     l, r = 0, 100
     try:
@@ -44,7 +44,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
 choice = on_command("/choice", priority=100, block=False)
 @choice.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    if not gbl.check(event): return
+    if not gbl.check(event, allow_private=True): return
     if not cd.check(event): return
     choices = args.extract_plain_text().split()
     if len(choices) <= 1:

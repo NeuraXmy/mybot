@@ -130,11 +130,6 @@ def get_sc_info_from_row(row):
     return ret
 
 
-# 查询符卡详细信息
-def get_sc_detail(name, link):
-    return ""
-
-
 # ------------------------------------------ 指令 ------------------------------------------ #
 
 
@@ -166,12 +161,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
 
             detail_link = sc['符卡翻译名_link'].values[0]
             sc_name = sc['符卡翻译名'].values[0]
-            try:
-                detail_msg = get_sc_detail(sc_name, detail_link)
-            except:
-                logger.print_exc(f"获取符卡详细信息失败")
-                detail_msg = "!获取符卡详细信息失败"
-            msg += detail_msg.strip()
+            msg += f"Wiki页面: {detail_link}"
             await scid.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
     
     logger.info(f"未找到符卡id={id}")

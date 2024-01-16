@@ -132,7 +132,7 @@ get_vlive = on_command("/live", priority=1, block=False)
 @get_vlive.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not cd.check(event): return
-    if not gwl.check(event): return
+    if not gwl.check(event, allow_private=True): return
 
     msg = "当前的虚拟Lives:\n"
 
@@ -162,7 +162,7 @@ get_event = on_command("/event", priority=1, block=False)
 @get_event.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not cd.check(event): return
-    if not gwl.check(event): return
+    if not gwl.check(event, allow_private=True): return
     data = await get_event_data()
 
 
