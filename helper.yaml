@@ -4,6 +4,13 @@ alive:
     检测bot是否存活，当bot断线或恢复时发送邮件提醒
     /alive 测试存活（超级用户权限）
 
+bird:
+  name: "鸟类查询服务"
+  help: |
+    /bird 名称  
+    查询鸟类信息
+    数据来源: http://www.cnbird.org.cn/shouce/c.asp.htm 
+
 bobing:
   name: "骰子服务"
   help: |

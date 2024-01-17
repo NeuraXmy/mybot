@@ -28,6 +28,13 @@ alive:
     - "xxxxxxxx@qq.com"
 
 
+bird:
+  cd: 60
+  folk_name_max: 10                 # 俗名匹配显示的最大数量
+  query_topk: 10                    # 模糊查询显示的前k名
+  max_edit_distance: 2              # 模糊查询的最大编辑距离
+
+
 bobing:
   cd: 60         
 

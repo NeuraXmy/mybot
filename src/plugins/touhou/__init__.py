@@ -63,7 +63,7 @@ def init_sc_list():
         logger.print_exc(f"符卡id->gif初始化失败: {SC_ID_TO_GIF_PATH}")
         return
 
-    logger.info(f"符卡列表初始化完成: {sc_lists.keys()}")
+    logger.info(f"符卡列表初始化完成")
 init_sc_list()
 
 
