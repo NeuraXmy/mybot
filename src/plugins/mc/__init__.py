@@ -20,7 +20,6 @@ OFFSET = config['query_offset']
 DISCONNECT_NOTIFY_COUNT = config['disconnect_notify_count']
 
 
-
 # MC的gametick(一天24000ticks, tick=0是早上6:00)转换为HH:MM
 def gametick2time(tick):
     tick = tick % 24000
@@ -29,13 +28,13 @@ def gametick2time(tick):
     return f'{hour:02}:{minute:02}'
 
 # 向服务器请求信息
-async def query(url_base):
+async def query(url_base, ts):
     async with aiohttp.ClientSession() as session:
-        ts = int(datetime.now().timestamp() * 1000 - OFFSET)
         url = url_base + f'/up/world/world/{ts}'
         async with session.get(url) as resp:
             data = await resp.text()
             json_data = json.loads(data)
+            # print((ts - int(json_data['timestamp'])) / 1000)
             return json_data
 
 # 向服务器发送消息
@@ -66,6 +65,8 @@ class ServerData:
 
         self.players = {}
         self.messages = {}
+
+        self.next_query_ts = 0
 
         self.time       = 0
         self.storming   = False
@@ -106,7 +107,10 @@ class ServerData:
 
     # 通过向服务器请求信息更新数据
     async def update(self, mute=False):
-        data = await query(self.url)
+        data = await query(self.url, self.next_query_ts)
+        current_ts = int(data['timestamp'])
+        self.next_query_ts = int(current_ts + QUERY_INTERVAL * 1000 + OFFSET)
+
         # 更新全局信息
         self.time       = data['servertime']
         self.storming   = data['hasStorm']
