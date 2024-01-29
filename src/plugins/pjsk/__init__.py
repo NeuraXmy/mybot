@@ -191,44 +191,48 @@ async def vlive_notify():
         vlive = parse_vlive_data(vlive)
         if vlive is None: continue
 
-        # 开始的提醒
-        if vlive["id"] not in start_notified_vlives:
-            t = vlive["start"] - datetime.now()
-            if not (t.total_seconds() < 0 or t.total_seconds() > VLIVE_START_NOTIFY_BEFORE_MINUTE * 60):
-                logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
+        for start_notify_before_minute in VLIVE_START_NOTIFY_BEFORE_MINUTE:
+            vlive_key = f"{vlive['id']}_{start_notify_before_minute}"
+            # 开始的提醒
+            if vlive_key not in start_notified_vlives:
+                t = vlive["start"] - datetime.now()
+                if not (t.total_seconds() < 0 or t.total_seconds() > start_notify_before_minute * 60):
+                    logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
-                msg = f"PJSK Live提醒：\n【{vlive['name']}】将于 {get_readable_datetime(vlive['start'])} 开始"
+                    msg = f"PJSK Live提醒\n【{vlive['name']}】将于 {get_readable_datetime(vlive['start'])} 开始"
 
-                for group_id in gwl.get():
-                    try:
-                        await bot.send_group_msg(group_id=group_id, message=Message(msg))
-                    except:
-                        logger.print_exc(f'发送vlive开始提醒到群{group_id}失败')
-                        continue
-                start_notified_vlives.append(vlive["id"]) 
-                updated = True
+                    for group_id in gwl.get():
+                        try:
+                            await bot.send_group_msg(group_id=group_id, message=Message(msg))
+                        except:
+                            logger.print_exc(f'发送vlive开始提醒到群{group_id}失败')
+                            continue
+                    start_notified_vlives.append(vlive_key) 
+                    updated = True
 
-        # 结束的提醒
-        if vlive["id"] not in end_notified_vlives:
-            t = vlive["end"] - datetime.now()
-            if not (t.total_seconds() < 0 or t.total_seconds() > VLIVE_END_NOTIFY_BEFORE_MINUTE * 60):
-                logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
+        for end_notify_before_minute in VLIVE_END_NOTIFY_BEFORE_MINUTE:
+            vlive_key = f"{vlive['id']}_{end_notify_before_minute}"
+            # 结束的提醒
+            if vlive_key not in end_notified_vlives:
+                t = vlive["end"] - datetime.now()
+                if not (t.total_seconds() < 0 or t.total_seconds() > end_notify_before_minute * 60):
+                    logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
-                msg = f"PJSK Live提醒：\n【{vlive['name']}】将于 {get_readable_datetime(vlive['end'])} 结束\n"
+                    msg = f"PJSK Live提醒\n【{vlive['name']}】将于 {get_readable_datetime(vlive['end'])} 结束\n"
 
-                if vlive["living"]: 
-                    msg += f"当前Live进行中"
-                elif vlive["current"] is not None:
-                    msg += f"下一场: {get_readable_datetime(vlive['current'][0])}"
+                    if vlive["living"]: 
+                        msg += f"当前Live进行中"
+                    elif vlive["current"] is not None:
+                        msg += f"下一场: {get_readable_datetime(vlive['current'][0])}"
 
-                for group_id in gwl.get():
-                    try:
-                        await bot.send_group_msg(group_id=group_id, message=Message(msg))
-                    except:
-                        logger.print_exc(f'发送vlive结束提醒到群{group_id}失败')
-                        continue
-                end_notified_vlives.append(vlive["id"])
-                updated = True
+                    for group_id in gwl.get():
+                        try:
+                            await bot.send_group_msg(group_id=group_id, message=Message(msg))
+                        except:
+                            logger.print_exc(f'发送vlive结束提醒到群{group_id}失败')
+                            continue
+                    end_notified_vlives.append(vlive_key)
+                    updated = True
 
     if updated:
         file_db.set("start_notified_vlives", start_notified_vlives)

@@ -18,6 +18,7 @@ QUERY_INTERVAL = config['query_interval']
 QUEUE_CONSUME_INTERVAL = config['queue_consume_interval']
 OFFSET = config['query_offset']
 DISCONNECT_NOTIFY_COUNT = config['disconnect_notify_count']
+ASCII_ART_WIDTH = config['ascii_art_width']
 
 
 # MC的gametick(一天24000ticks, tick=0是早上6:00)转换为HH:MM
@@ -211,6 +212,7 @@ async def query_server():
                     logger.info(f'发送断连通知到 {server.group_id}')
                     server.queue.append('与卫星地图的连接断开')
                 server.failed_count += 1
+                server.next_query_ts = 0
 
 # 消费消息队列
 async def consume_queue():
@@ -330,7 +332,39 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not server.bot_on: 
         await sendmsg.finish("监听已关闭，无法发送消息")
 
-    text = str(event.get_message()).replace('/send', '').strip()
+    msg = await get_msg(bot, event.message_id)
+    cqs = extract_cq_code(msg)
+    reply_msg = await get_reply_msg(bot, msg)
+    image_url = None
+    if reply_msg is not None:
+        reply_cqs = extract_cq_code(reply_msg)
+        if 'image' in reply_cqs:
+            image_url = reply_cqs['image'][0]['url']
+
+    # 不是回复图片的情况，发送文本消息
+    if image_url is None:
+        text = str(event.get_message()).replace('/send', '').strip()
+    # 回复图片的情况，发送字符画
+    else:
+        # # 异步下载图片
+        # from PIL import Image
+        # from io import BytesIO
+        # try:
+        #     logger.info(f'下载图片: {image_url}')
+        #     async with aiohttp.ClientSession() as session:
+        #         async with session.get(image_url) as resp:
+        #             data = await resp.read()
+        #             image = Image.open(BytesIO(data))
+        # except Exception as e:
+        #     logger.print_exc(f'下载图片 {image_url} 失败')
+        #     await sendmsg.finish(f'发送失败: {e}')
+        # 
+        # # 输出字符画
+        # from ascii_magic import AsciiArt
+        # art = AsciiArt.from_pillow_image(image)
+        # text = "\n" + art.to_ascii(columns=ASCII_ART_WIDTH, monochrome=True)
+        text = ""
+
     user_name = await get_user_name(bot, event.group_id, event.user_id)
     msg = f'[{user_name}] {text}'
 

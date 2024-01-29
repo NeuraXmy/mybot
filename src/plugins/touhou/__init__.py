@@ -55,7 +55,7 @@ def init_sc_list():
             logger.print_exc(f"符卡列表初始化失败: {file}")
             return
     try:
-        sc_id_to_gif_df = pd.read_csv(SC_ID_TO_GIF_PATH, sep='\t', encoding='utf8')
+        sc_id_to_gif_df = pd.read_csv(SC_ID_TO_GIF_PATH, sep='\t', encoding='utf8', dtype={'gif': str})
         sc_id_to_gif = [None] * (sc_id_to_gif_df['id'].max() + 1)
         for idx, row in sc_id_to_gif_df.iterrows():
             sc_id_to_gif[row['id']] = row['gif']
