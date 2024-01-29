@@ -2,6 +2,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from datetime import datetime
 from nonebot import get_bot
 import aiohttp
@@ -157,13 +158,66 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     await get_vlive.finish(msg)
 
 
-# 获取最近的event信息
+# 获取最近的event信息（未完成）
 get_event = on_command("/event", priority=1, block=False)
 @get_event.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not cd.check(event): return
     if not gwl.check(event, allow_private=True): return
     data = await get_event_data()
+
+
+# 订阅提醒的at通知
+subscribe = on_command("/pjsk sub", priority=1, block=False)
+@subscribe.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not cd.check(event): return
+    if not gwl.check(event): return
+
+    sub_list_key = f"{event.group_id}_sub_list"
+    sub_list = file_db.get(sub_list_key, [])
+    if event.user_id in sub_list:
+        return await subscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]已经订阅过了'))
+    
+    sub_list.append(event.user_id)
+    file_db.set(sub_list_key, sub_list)
+    await subscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]订阅PJSK@通知成功'))
+
+
+# 取消订阅提醒的at通知
+unsubscribe = on_command("/pjsk unsub", priority=1, block=False)
+@unsubscribe.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not cd.check(event): return
+    if not gwl.check(event): return
+
+    sub_list_key = f"{event.group_id}_sub_list"
+    sub_list = file_db.get(sub_list_key, [])
+    if event.user_id not in sub_list:
+        return await unsubscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]未订阅过'))
+    
+    sub_list.remove(event.user_id)
+    file_db.set(sub_list_key, sub_list)
+    await unsubscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]取消订阅PJSK@通知成功'))
+
+
+# 查看订阅成员列表
+get_sub_list = on_command("/pjsk sub_list", priority=1, block=False)
+@get_sub_list.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not cd.check(event): return
+    if not gwl.check(event): return
+
+    sub_list_key = f"{event.group_id}_sub_list"
+    sub_list = file_db.get(sub_list_key, [])
+    if len(sub_list) == 0:
+        return await get_sub_list.finish(OutMessage(f'[CQ:reply,id={event.message_id}]当前没有订阅成员'))
+
+    msg = "当前订阅成员:\n"
+    for user_id in sub_list:
+        user_name = await get_user_name(bot, event.group_id, user_id)
+        msg += f"{user_name} ({user_id})\n"
+    await get_sub_list.finish(OutMessage(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
 
 
 # ----------------------------------------- 定时任务 ------------------------------------------ #
@@ -200,10 +254,14 @@ async def vlive_notify():
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
                     msg = f"PJSK Live提醒\n【{vlive['name']}】将于 {get_readable_datetime(vlive['start'])} 开始"
-
+                    
                     for group_id in gwl.get():
                         try:
-                            await bot.send_group_msg(group_id=group_id, message=Message(msg))
+                            sub_list = file_db.get(f"{group_id}_sub_list", [])
+                            group_msg = msg + "\n"
+                            for user_id in sub_list:
+                                group_msg += f"[CQ:at,qq={user_id}]"
+                            await bot.send_group_msg(group_id=group_id, message=OutMessage(group_msg.strip()))
                         except:
                             logger.print_exc(f'发送vlive开始提醒到群{group_id}失败')
                             continue
@@ -227,7 +285,11 @@ async def vlive_notify():
 
                     for group_id in gwl.get():
                         try:
-                            await bot.send_group_msg(group_id=group_id, message=Message(msg))
+                            sub_list = file_db.get(f"{group_id}_sub_list", [])
+                            group_msg = msg + "\n"
+                            for user_id in sub_list:
+                                group_msg += f"[CQ:at,qq={user_id}]"
+                            await bot.send_group_msg(group_id=group_id, message=OutMessage(group_msg.strip()))
                         except:
                             logger.print_exc(f'发送vlive结束提醒到群{group_id}失败')
                             continue

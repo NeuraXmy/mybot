@@ -53,6 +53,9 @@ pjsk:
   help: |
     /live 获取当前虚拟live信息
     虚拟live开始前和结束前会触发自动提醒
+    /pjsk sub 订阅提醒（提醒时会自动at订阅者）
+    /pjsk unsub 取消订阅
+    /pjsk sub_list 查看订阅成员列表
     每天更新一次live数据
     数据来源：sekai-world.github.io/sekai-master-db-diff
 
