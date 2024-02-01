@@ -58,4 +58,4 @@ async def _(bot: Bot, event: NoticeEvent):
 # 定时更新
 GROUP_INFO_UPDATE_INTERVAL = config['group_info_update_interval'] * 60
 start_repeat_with_interval(GROUP_INFO_UPDATE_INTERVAL, update_member_info, logger, 
-                           '群成员信息更新', start_offset=10, every_output=True)
+                           '群成员信息更新', start_offset=10)

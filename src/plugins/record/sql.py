@@ -7,10 +7,11 @@ config = get_config('record')
 logger = get_logger("Record")
 
 
-DB_PATH     = "data/record/record.db"
+DB_PATH     = "data/record/record.sqlite"
 MSG_TABLE_NAME  = "msg_{}"      
 TEXT_TABLE_NAME = "text_{}"   
-IMG_TABLE_NAME  = "img_{}"      
+IMG_TABLE_NAME  = "img_{}"     
+PHASH_TABLE_NAME = "phash_{}" 
 
 conn = None         # 连接
 group_vis = set()   # 记录访问过的群组，防止每次都创建表
@@ -61,6 +62,16 @@ def get_conn(group_id):
                 img_id TEXT
             )
         """)
+        # 创建图片phash表 (ID, 图片表ID, 图片URL, phash)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {PHASH_TABLE_NAME.format(group_id)} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                record_id INTEGER,
+                url TEXT,
+                phash TEXT
+            )
+        """)
+                       
         conn.commit()
         logger.debug(f"首次连接 {group_id} 群组 创建表")
     return conn
@@ -267,6 +278,23 @@ def img_all(group_id):
     logger.debug(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
+
+# 根据id获取图片表中的消息
+def img_by_id(group_id, id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {IMG_TABLE_NAME.format(group_id)}
+        WHERE id = ?
+    '''
+    cursor.execute(query, (id,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 ID {id} 的消息 {len(rows)} 条")
+    if len(rows) == 0:
+        return None
+    return img_row_to_ret(rows[0])
+
+
 # 按时间范围获取图片表中的消息 None则不限制
 def img_range(group_id, start_time, end_time):
     if start_time is None: start_time = datetime.fromtimestamp(0)
@@ -321,3 +349,77 @@ def img_id_match(group_id, img_id):
     logger.debug(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中 精确匹配图片ID {img_id} 的消息 {len(rows)} 条")
     return [img_row_to_ret(row) for row in rows]
 
+# 获取图片表下一个图片ID （从sqlite_sequence表中获取）
+def img_next_id(group_id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT seq FROM sqlite_sequence
+        WHERE name = ?
+    '''
+    cursor.execute(query, (IMG_TABLE_NAME.format(group_id),))
+    rows = cursor.fetchall()
+    if len(rows) == 0:
+        return 1
+    else:
+        return rows[0][0] + 1
+
+
+
+# 插入到图片phash表
+def phash_insert(group_id, record_id, url, phash=None):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    insert_query = f'''
+        INSERT INTO {PHASH_TABLE_NAME.format(group_id)} (record_id, url, phash)
+        VALUES (?, ?, ?)
+    '''
+    cursor.execute(insert_query, (record_id, url, phash))
+    logger.debug(f"插入图片 {url} 到 {PHASH_TABLE_NAME.format(group_id)} 表")
+
+# 图片phash表row转换为返回值
+def phash_row_to_ret(row):
+    return {
+        "id": row[0],
+        "record_id": row[1],
+        "url": row[2],
+        "phash": row[3]
+    }
+
+# 获取图片phash表中的所有记录
+def phash_all(group_id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
+    '''
+    cursor.execute(query)
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
+    return [phash_row_to_ret(row) for row in rows]
+
+# 按record_id获取图片phash表中的记录
+def phash_record_id(group_id, record_id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
+        WHERE record_id = ?
+    '''
+    cursor.execute(query, (record_id,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中的 record_id {record_id} 的消息 {len(rows)} 条")
+    return [phash_row_to_ret(row) for row in rows]
+
+# 按phash值查找所有匹配的记录
+def phash_match(group_id, phash):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
+        WHERE phash = ?
+    '''
+    cursor.execute(query, (phash,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中 phash {phash} 的消息 {len(rows)} 条")
+    return [phash_row_to_ret(row) for row in rows]

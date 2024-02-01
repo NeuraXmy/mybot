@@ -3,13 +3,32 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from ..utils import *
-from ..record.sql import text_content_match, img_id_match
+from ..record.sql import text_content_match, img_id_match, img_by_id, phash_match
+from PIL import Image
+import requests
 
 config = get_config("water")
 logger = get_logger("Water")
 file_db = get_file_db("data/water/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'water')
+
+
+# 计算图片的phash
+def calc_phash(image_url):
+    # 从网络下载图片
+    logger.info(f"下载图片 {image_url}")
+    image = Image.open(requests.get(image_url, stream=True).raw)
+    # 缩小尺寸
+    image = image.resize((8, 8)).convert('L')
+    # 计算平均值
+    avg = sum(list(image.getdata())) / 64
+    # 比较像素的灰度
+    hash = 0
+    for i, a in enumerate(list(image.getdata())):
+        hash += 1 << i if a >= avg else 0
+    return str(hash)
+
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
@@ -27,12 +46,30 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if reply_msg is None: return
     reply_text = extract_text(reply_msg)
     reply_imgs = extract_image_id(reply_msg)
+    reply_img_urls = extract_image_url(reply_msg)
     group_id = event.group_id
 
     if len(reply_imgs) > 0:
         # 图片只查询第一张
         logger.info(f'查询图片水果：{reply_imgs[0]}')
         recs = img_id_match(group_id=group_id, img_id=reply_imgs[0])
+        print(f'通过图片id查询到{len(recs)}条记录')
+
+        try:
+            phash = calc_phash(reply_img_urls[0])
+            logger.info(f'计算图片phash：{phash}')
+
+            phash_recs = phash_match(group_id=group_id, phash=phash)
+            phash_recs = [img_by_id(group_id, x['record_id']) for x in phash_recs]
+            logger.info(f'通过phash查询到{len(phash_recs)}条记录')
+
+            ids = set([x['id'] for x in recs])
+            for rec in phash_recs:
+                if rec['id'] not in ids:
+                    recs.append(rec)
+        except Exception as e:
+            logger.print_exc(f'计算图片phash失败')
+
     else:
         logger.info(f'查询文本水果：{reply_text}')
         recs = text_content_match(group_id=group_id, text=reply_text)
@@ -42,7 +79,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         res = "没有水果"
     else:
         recs = sorted(recs, key=lambda x: x['time'])
-        fst, lst = recs[1], recs[-1]
+        fst, lst = recs[0], recs[-2]
         res = f"水果总数：{len(recs) - 1}\n"
         res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
         res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})"

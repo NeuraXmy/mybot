@@ -301,7 +301,7 @@ async def vlive_notify():
         file_db.set("end_notified_vlives", end_notified_vlives)
 
 # 定时任务
-start_repeat_with_interval(VLIVE_NOTIFY_INTERVAL_MINUTE * 60, vlive_notify, logger, 'vlive自动提醒', every_output=True, error_limit=999999)
+start_repeat_with_interval(VLIVE_NOTIFY_INTERVAL_MINUTE * 60, vlive_notify, logger, 'vlive自动提醒')
 
 
 

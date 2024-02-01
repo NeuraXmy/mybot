@@ -48,7 +48,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
         nickname=user_name,
         text=msg_text,
     )
+
+    next_image_record_id = None
     for url, img_id in zip(img_urls, img_ids):
+        if next_image_record_id is None:
+            next_image_record_id = img_next_id(group_id)
+        else:
+            next_image_record_id += 1
+
         img_insert(
             group_id=group_id,
             time=time,
@@ -57,6 +64,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
             nickname=user_name,
             url=url,
             img_id=img_id,
+        )
+        phash_insert(
+            group_id=group_id,
+            record_id=next_image_record_id,
+            url=url,
         )
 
     commit()
