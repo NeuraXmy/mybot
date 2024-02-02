@@ -14,10 +14,11 @@ config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
 
-FONT_PATH = config['font_path'] 
+FONT_PATH = get_config('font_path')
+FONT_NAME = get_config('font_name')
 
 plt.switch_backend('agg')
-matplotlib.rcParams['font.sans-serif']=[config['font_name']]
+matplotlib.rcParams['font.sans-serif']=[FONT_NAME]
 matplotlib.rcParams['axes.unicode_minus']=False   
 
 

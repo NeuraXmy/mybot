@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 import random
 from ..record.sql import text_recent
 from argparse import ArgumentParser
+from .draw_usage import draw
+from PIL import Image
+import io
 
 config = get_config('chat')
 openai_config = get_config('openai')
@@ -106,7 +109,12 @@ async def _(bot: Bot, event: MessageEvent):
 
     # 进行询问
     try:
-        res, retry_count, ptokens, ctokens = await session.get_response(MAX_RETIRES)
+        res, retry_count, ptokens, ctokens = await session.get_response(
+            max_retries=MAX_RETIRES, 
+            group_id=(event.group_id if is_group(event) else None),
+            user_id=event.user_id,
+            is_autochat=False
+        )
         res = str(MessageSegment.text(res))
         if retry_count > 0:
             res += f"\n[重试次数:{retry_count}]"
@@ -115,14 +123,6 @@ async def _(bot: Bot, event: MessageEvent):
         if session_id_backup:
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
-    
-    # 记录token使用
-    group_user_usage = file_db.get("group_user_usage", {})
-    key = f"{event.group_id}_{event.user_id}"
-    if key not in group_user_usage:
-        group_user_usage[key] = 0
-    group_user_usage[key] += ptokens + ctokens
-    file_db.set("group_user_usage", group_user_usage)
     
     # 如果回复时关闭则取消回复
     if not gwl.check(event, allow_private=True, allow_super=True): return
@@ -180,10 +180,12 @@ async def _(bot: Bot, event: GroupMessageEvent):
     prob = file_db.get(f"{group_id}_auto_chat_prob", AUTO_CHAT_PROB_START)
 
     text = extract_text(await get_msg(bot, event.message_id))
+
+    cur_prob = prob
     if AUTO_CHAT_SELF_NAME in text:
-        prob = prob + (1.0 - prob) * 0.5
+        cur_prob = cur_prob + (1.0 - cur_prob) * 0.5
     
-    if random.random() > prob: 
+    if random.random() > cur_prob: 
         prob += AUTO_CHAT_PROB_INC
         file_db.set(f"{group_id}_auto_chat_prob", prob)
         return
@@ -218,15 +220,15 @@ async def _(bot: Bot, event: GroupMessageEvent):
     session.append_content(SYSTEM_ROLE, prompt, verbose=False)
 
     try:
-        res, retry_count, ptokens, ctokens = await session.get_response(MAX_RETIRES)
+        res, retry_count, ptokens, ctokens = await session.get_response(
+            max_retries=MAX_RETIRES, 
+            group_id=group_id,
+            user_id=None,
+            is_autochat=True
+        )
         res = str(MessageSegment.text(res))
     except Exception as error:
         logger.print_exc(f'自动聊天询问失败')
-
-    # 记录token使用
-    auto_chat_usage = file_db.get(f"{group_id}_auto_chat_usage", 0)
-    auto_chat_usage += ptokens + ctokens
-    file_db.set(f"{group_id}_auto_chat_usage", auto_chat_usage)
 
     if res.strip() == "":
         logger.info(f"自动聊天选择不回复")
@@ -242,7 +244,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         "time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "text": res
     })
-    if len(my_recent_msgs) > AUTO_CHAT_RECENT_LIMIT:
+    while len(my_recent_msgs) > AUTO_CHAT_RECENT_LIMIT:
         my_recent_msgs.pop(0)
     file_db.set(f"{group_id}_my_recent_msgs", my_recent_msgs)
     
@@ -252,41 +254,38 @@ token_usage = on_command("/chat_usage", block=False, priority=0)
 @token_usage.handle()
 async def _(bot: Bot, event: MessageEvent):
     if not check_superuser(event): return
-    day_token_usage = file_db.get("today_token_usage", [])
-    total_token_usage = file_db.get("total_token_usage", 0)
-
-    parser = ArgumentParser(exit_on_error=False)
-    parser.add_argument("--group", "-g",    type=int, default=None)
-    parser.add_argument("--user",  "-u",    type=int, default=None)
 
     try:
-        args = parser.parse_args(event.get_message().extract_plain_text().replace("/chat_usage", "").strip().split())
-    except Exception as e:
-        logger.print_exc(f"解析参数失败: {e}")
-        return await token_usage.finish("解析参数失败: " + str(e))
-    
-    if len(day_token_usage) == 0 or day_token_usage[-1]["date"] != datetime.now().strftime("%Y-%m-%d"):
-        today_token_usage = 0
-    else:
-        today_token_usage = day_token_usage[-1]["usage"]
-    if(len(day_token_usage) < 2 or day_token_usage[-2]["date"] != (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")):
-        yesterday_token_usage = 0
-    else:
-        yesterday_token_usage = day_token_usage[-2]["usage"]
+        today = datetime.now().strftime("%Y-%m-%d")
+        date = event.get_plaintext().split()[1].strip().lower()
+        if date == "":
+            date = today
+        elif date == "all" or date == "total":
+            date = None
+        else:
+            datetime.strptime(date, "%Y-%m-%d")
+    except:
+        logger.info(f'日期格式错误, 使用当前日期')
+        date = today
 
-    res = f"总token使用量: {total_token_usage} (今日: {today_token_usage} 昨日: {yesterday_token_usage})\n"
-
-    if args.group is not None or args.user is not None:
-        group_user_usage = file_db.get("group_user_usage", {})
-        token_sum = 0
-        for key in group_user_usage:
-            group_id, user_id = key.split("_")
-            group_id = int(group_id)
-            user_id = int(user_id)
-            if (args.group is None or group_id == args.group) and (args.user is None or user_id == args.user):
-                token_sum += group_user_usage[key]
-        if args.group is None: args.group = "All"
-        if args.user is None: args.user = "All"
-        res += f"群组{args.group}用户{args.user}: {token_sum}\n"
+    start_time, end_time = None, None
+    if date:
+        start_time = datetime.strptime(date, "%Y-%m-%d")
+        end_time = start_time + timedelta(days=1)
+    logger.info(f'查询token使用情况 从{start_time}到{end_time}')
     
-    await token_usage.finish(res.strip())
+    path, desc = draw(start_time, end_time)
+    img = Image.open(path)
+    imgByteArr = io.BytesIO()
+    img.save(imgByteArr, format='PNG')
+    imgByteArr = imgByteArr.getvalue()
+
+    if date is None:
+        desc = f"全部时间段\n{desc}"
+    else:
+        desc = f"{date}\n{desc}"
+    ret = (
+        desc,
+        MessageSegment.image(imgByteArr)
+    )
+    return await token_usage.finish(ret)

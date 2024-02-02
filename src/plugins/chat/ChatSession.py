@@ -1,6 +1,8 @@
 import openai
 from ..utils import *
 from datetime import datetime, timedelta
+from .sql import commit, insert
+import json
 
 config = get_config('chat')
 logger = get_logger("Chat")
@@ -54,7 +56,7 @@ class ChatSession:
         self.content = []
 
     # 获取回复 并且自动添加回复到消息列表
-    async def get_response(self, max_retries=3):
+    async def get_response(self, max_retries=3, group_id=None, user_id=None, is_autochat=False):
         logger.info(f"会话{self.id}请求回复")
         openai.api_key = self.api_key
         if self.api_base: openai.api_base = self.api_base
@@ -82,19 +84,17 @@ class ChatSession:
             res = res[1:]
         logger.info(f"会话{self.id}获取回复: {get_shortname(res, 32)}, 使用token数: {prompt_tokens}+{completion_tokens}")
 
-        day_token_usage = file_db.get("today_token_usage", [])
-        total_token_usage = file_db.get("total_token_usage", 0)
-        if len(day_token_usage) == 0 or day_token_usage[-1]["date"] != datetime.now().strftime("%Y-%m-%d"):
-            day_token_usage.append({
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "usage": 0
-            })
-        if len(day_token_usage) > 30:
-            day_token_usage.pop(0)
-        day_token_usage[-1]["usage"] += prompt_tokens + completion_tokens
-        total_token_usage += prompt_tokens + completion_tokens
-        file_db.set("today_token_usage", day_token_usage)
-        file_db.set("total_token_usage", total_token_usage)
+        insert(
+            time = datetime.now(),
+            input_text = json.dumps(self.content),
+            output_text = res,
+            input_token_usage = prompt_tokens,
+            output_token_usage = completion_tokens,
+            group_id = group_id,
+            user_id = user_id,
+            is_autochat = is_autochat
+        )
+        commit()
         
         self.append_content(BOT_ROLE, res)
         return res, i, prompt_tokens, completion_tokens

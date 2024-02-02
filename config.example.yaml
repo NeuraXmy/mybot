@@ -6,6 +6,8 @@ superuser:
   - 11111111
   - 22222222
 
+font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"  # 中文字体路径
+font_name: "Microsoft YaHei"                                  # Matplotlib库使用的中文字体名称
 
 openai:
   api_key: "sk-xxxxxxxxx"
@@ -45,6 +47,8 @@ helper:
 
 chat:
   model_id: "gpt-4-vision-preview"
+  prompt_token_pricing:     0.00001  # 每个输入token的价格（美元）
+  completion_token_pricing: 0.00003  # 每个输出token的价格（美元）
   fold_response_threshold: 200    # 群聊中超过多少字折叠回复
   session_len_limit: 10           # 会话长度限制
   max_retries: 5                  # 最大重试次数
@@ -54,6 +58,7 @@ chat:
   auto_chat_prob_inc: 0.001             # 自动聊天的概率增加
   auto_chat_recent_limit: 20      # 自动聊天时，最近多少条消息内的文本作为上下文
   auto_chat_self_name: ""     # 自动聊天时，自己的名字
+  per_user_usage_topk: 9          # 统计使用额度时展示前k名
   cd: 60                                
 
 
@@ -98,8 +103,6 @@ run_code:
 
 
 statistics:
-  font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"  # WordCloud库使用的中文字体路径
-  font_name: "Microsoft YaHei"                                  # Matplotlib库使用的中文字体名称
   statistic_time: [23, 45, 00]  # 统计时间 [hour, minute, second]
   name_len_limit: 16            # 用户名长度限制
   pie_topk: 9                   # 饼图显示的前k名
