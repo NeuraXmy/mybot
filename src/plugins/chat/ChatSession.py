@@ -1,8 +1,10 @@
 import openai
 from ..utils import *
+from datetime import datetime, timedelta
 
 config = get_config('chat')
 logger = get_logger("Chat")
+file_db = get_file_db("data/chat/db.json", logger)
 
 USER_ROLE = "user"
 BOT_ROLE = "assistant"
@@ -65,6 +67,8 @@ class ChatSession:
                     messages=self.content,
                     max_tokens=MAX_TOKENS
                 )
+                prompt_tokens = res_.usage.prompt_tokens
+                completion_tokens = res_.usage.completion_tokens
                 res = res_.choices[0].message.content
                 break
             except Exception as e:
@@ -76,7 +80,21 @@ class ChatSession:
        
         while res.startswith("\n") != res.startswith("？"):
             res = res[1:]
-        logger.info(f"会话{self.id}获取回复: {res}")
+        logger.info(f"会话{self.id}获取回复: {get_shortname(res, 32)}, 使用token数: {prompt_tokens}+{completion_tokens}")
+
+        day_token_usage = file_db.get("today_token_usage", [])
+        total_token_usage = file_db.get("total_token_usage", 0)
+        if len(day_token_usage) == 0 or day_token_usage[-1]["date"] != datetime.now().strftime("%Y-%m-%d"):
+            day_token_usage.append({
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "usage": 0
+            })
+        if len(day_token_usage) > 30:
+            day_token_usage.pop(0)
+        day_token_usage[-1]["usage"] += prompt_tokens + completion_tokens
+        total_token_usage += prompt_tokens + completion_tokens
+        file_db.set("today_token_usage", day_token_usage)
+        file_db.set("total_token_usage", total_token_usage)
         
         self.append_content(BOT_ROLE, res)
-        return res, i
+        return res, i, prompt_tokens, completion_tokens
