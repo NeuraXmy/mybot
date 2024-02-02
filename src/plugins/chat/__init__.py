@@ -181,11 +181,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = extract_text(await get_msg(bot, event.message_id))
 
-    cur_prob = prob
     if AUTO_CHAT_SELF_NAME in text:
-        cur_prob = cur_prob + (1.0 - cur_prob) * 0.5
+        prob = prob + (1.0 - prob) * 0.5
     
-    if random.random() > cur_prob: 
+    if random.random() > prob: 
         prob += AUTO_CHAT_PROB_INC
         file_db.set(f"{group_id}_auto_chat_prob", prob)
         return
@@ -199,25 +198,26 @@ async def _(bot: Bot, event: GroupMessageEvent):
     recent_msgs.reverse()
     recent_msg_str = ""
     for msg in recent_msgs:
+        if msg['text'] == "": continue
         recent_msg_str += f"{msg['time'].strftime('%Y-%m-%d %H:%M:%S')}"
-        recent_msg_str += f" 消息ID:{msg['msg_id']} 用户ID:{msg['user_id']} 用户昵称:{msg['nickname']} 说:\n"
+        recent_msg_str += f" msgid:{msg['msg_id']} user:{msg['nickname']}({msg['user_id']}) 说:\n"
         recent_msg_str += f"{msg['text']}\n"
 
     # 获取最近自己发的消息
     my_recent_msgs = file_db.get(f"{group_id}_my_recent_msgs", [])
     my_recent_msg_str = ""
     for msg in my_recent_msgs:
-        my_recent_msg_str += f"{msg['time']}: {msg['text']}"
+        my_recent_msg_str += f"{msg['time']}: {msg['text']}\n"
 
     with open(AUTO_CHAT_PROMPT_PATH, "r", encoding="utf-8") as f:
         prompt = f.read()
     prompt = prompt.replace("<BOT_NAME>", BOT_NAME)
     prompt = prompt.replace("<bot.self_id>", str(bot.self_id))
-    prompt = prompt.replace("<recent_msg_str>", recent_msg_str)
-    prompt = prompt.replace("<my_recent_msg_str>", my_recent_msg_str)
+    prompt = prompt.replace("<recent_msg_str>", recent_msg_str.strip())
+    prompt = prompt.replace("<my_recent_msg_str>", my_recent_msg_str.strip())
 
     session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
-    session.append_content(SYSTEM_ROLE, prompt, verbose=False)
+    session.append_content(SYSTEM_ROLE, prompt, verbose=True)
 
     try:
         res, retry_count, ptokens, ctokens = await session.get_response(
@@ -275,15 +275,20 @@ async def _(bot: Bot, event: MessageEvent):
     logger.info(f'查询token使用情况 从{start_time}到{end_time}')
     
     path, desc = draw(start_time, end_time)
+    
+    if date is None:
+        desc = f"全部时间段\n{desc}"
+    else:
+        desc = f"{date}\n{desc}"
+
+    if path is None:
+        return await token_usage.finish(desc)
+
     img = Image.open(path)
     imgByteArr = io.BytesIO()
     img.save(imgByteArr, format='PNG')
     imgByteArr = imgByteArr.getvalue()
 
-    if date is None:
-        desc = f"全部时间段\n{desc}"
-    else:
-        desc = f"{date}\n{desc}"
     ret = (
         desc,
         MessageSegment.image(imgByteArr)

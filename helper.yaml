@@ -83,6 +83,8 @@ statistics:
     /sta [date]
     发送指定日期的群消息统计图（需要超级用户权限）
     date格式为Year-Month-Day，不填默认为当天
+    /sta2 [days]
+    发送最近days天的群消息关于时间的统计图（需要超级用户权限）
     /sta_add [word1] [word2] ...
     添加词汇到用户词典（需要超级用户权限）
     /sta_ban [word1] [word2] ...

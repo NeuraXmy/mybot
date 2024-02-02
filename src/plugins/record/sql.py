@@ -135,6 +135,21 @@ def msg_range(group_id, start_time, end_time):
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
+# 按时间范围计数
+def msg_count(group_id, start_time, end_time):
+    if start_time is None: start_time = datetime.fromtimestamp(0)
+    if end_time is None: end_time = datetime.fromtimestamp(9999999999)
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT COUNT(*) FROM {MSG_TABLE_NAME.format(group_id)}
+        WHERE time >= ? AND time <= ?
+    '''
+    cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息数")
+    return rows[0][0]
+
 # 按用户名获取消息表中的消息
 def msg_user(group_id, user_id):
     conn = get_conn(group_id)

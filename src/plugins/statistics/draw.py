@@ -232,3 +232,19 @@ def draw_all(recs, interval, topk1, topk2, user, name, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     plt.savefig(path)
     logger.info(f"绘制完成")
+
+
+# 绘制群总聊天数关于时间的折线图 
+def draw_date_count_plot(dates, counts, path):
+    logger.info(f"开始绘制群总聊天数关于时间的折线图到{path}")
+    plt.figure(figsize=(8, 4))
+    plt.bar(dates, counts)
+    plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    plt.xlabel('日期')
+    plt.ylabel('消息总数')
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.savefig(path)
+    logger.info(f"绘制完成")
+    

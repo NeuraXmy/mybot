@@ -24,6 +24,8 @@ def draw(start_time, end_time):
     logger.info(f"开始绘制token使用统计图: {start_time} - {end_time}")
     recs = get_range(start_time, end_time)
 
+    if len(recs) == 0: return None, "无使用记录"
+
     query_total, autochat_total = 0, 0
     per_user_usage, per_group_usage, autochat_usage = Counter(), Counter(), Counter()
 

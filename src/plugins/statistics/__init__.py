@@ -6,8 +6,8 @@ from datetime import datetime
 from PIL import Image
 import io
 from ..utils import *
-from .draw import draw_all, reset_jieba
-from ..record.sql import msg_range
+from .draw import draw_all, reset_jieba, draw_date_count_plot
+from ..record.sql import msg_range, msg_count
 
 
 config = get_config("statistics")
@@ -56,9 +56,29 @@ async def get_statistic(bot, group_id, date=None):
     img.save(imgByteArr, format='PNG')
     imgByteArr = imgByteArr.getvalue()
     # 发送图片
-    ret = (
-        MessageSegment.image(imgByteArr)
-    )
+    ret = (MessageSegment.image(imgByteArr))
+    return ret
+
+# 获取总消息量关于时间的统计图数据
+def get_date_count_statistic(bot, group_id, days):
+    t = datetime.now()
+    dates, counts = [], []
+    for i in range(days):
+        date = (t - timedelta(days=i)).strftime("%Y-%m-%d")
+        start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
+        end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
+        cnt = msg_count(group_id, 
+                         datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
+                         datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
+        dates.append(datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"))
+        counts.append(cnt)
+    save_path = PLOT_PATH + f"plot_{group_id}_date_count.jpg"
+    draw_date_count_plot(dates, counts, save_path)
+    img = Image.open(save_path)
+    imgByteArr = io.BytesIO()
+    img.save(imgByteArr, format='PNG')
+    imgByteArr = imgByteArr.getvalue()
+    ret = (MessageSegment.image(imgByteArr))
     return ret
 
 
@@ -70,6 +90,7 @@ sta = on_command("/sta", priority=100, block=False)
 @sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
+    if not check_superuser(event): return
     try:
         try:
             date = event.get_plaintext().split()[1]
@@ -82,6 +103,21 @@ async def _(bot: Bot, event: GroupMessageEvent):
         logger.print_exc(f'发送统计图失败')
         return await sta.finish(f'发送统计图失败：{e}')
     await sta.finish(res)
+
+
+# 发送总消息量关于时间的统计图
+sta2 = on_command("/sta2", priority=100, block=False)
+@sta2.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not check_superuser(event): return
+    try:
+        days = int(event.get_plaintext().split()[1])
+        res = get_date_count_statistic(bot, event.group_id, days)
+    except Exception as e:
+        logger.print_exc(f'发送总消息量关于时间的统计图失败')
+        return await sta2.finish(f'发送总消息量关于时间的统计图失败：{e}')
+    await sta2.finish(res)
 
 
 # 添加用户词汇
@@ -128,6 +164,7 @@ async def _(bot: Bot, event: MessageEvent):
         logger.print_exc(f'添加停用词汇失败')
         return await msgban.finish(f'添加停用词汇失败：{e}')
     await msgban.finish(f"成功添加{len(words)}条停用词汇")
+
 
 
 # ------------------------------------------------ 定时任务 ------------------------------------------------
