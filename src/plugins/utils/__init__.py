@@ -586,18 +586,22 @@ class GroupBlackList:
     
 
 _gwls = {}
-def get_group_white_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None) -> GroupWhiteList:
-    global _gwls
-    if name not in _gwls:
-        _gwls[name] = GroupWhiteList(db, logger, name, superuser, on_func, off_func)
-    return _gwls[name]
+def get_group_white_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None, is_service=True) -> GroupWhiteList:
+    if is_service:
+        global _gwls
+        if name not in _gwls:
+            _gwls[name] = GroupWhiteList(db, logger, name, superuser, on_func, off_func)
+        return _gwls[name]
+    return GroupWhiteList(db, logger, name, superuser, on_func, off_func)
 
 _gbls = {}
-def get_group_black_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None) -> GroupBlackList:
-    global _gbls
-    if name not in _gbls:
-        _gbls[name] = GroupBlackList(db, logger, name, superuser, on_func, off_func)
-    return _gbls[name]
+def get_group_black_list(db, logger, name, superuser=SUPERUSER, on_func=None, off_func=None, is_service=True) -> GroupBlackList:
+    if is_service:
+        global _gbls
+        if name not in _gbls:
+            _gbls[name] = GroupBlackList(db, logger, name, superuser, on_func, off_func)
+        return _gbls[name]
+    return GroupBlackList(db, logger, name, superuser, on_func, off_func)
 
 
 # 获取当前群聊开启和关闭的服务 或 获取某个服务在哪些群聊开启

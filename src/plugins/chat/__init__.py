@@ -3,8 +3,11 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE
+from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE, SYSTEM_ROLE
 from ..utils import *
+from datetime import datetime, timedelta
+import random
+from ..record.sql import text_recent
 
 config = get_config('chat')
 openai_config = get_config('openai')
@@ -12,6 +15,7 @@ logger = get_logger("Chat")
 file_db = get_file_db("data/chat/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = get_group_white_list(file_db, logger, 'chat')
+auto_chat_gwl = get_group_white_list(file_db, logger, 'autochat', is_service=False)
 
 API_KEY = openai_config['api_key']
 API_BASE = openai_config['api_base']
@@ -21,16 +25,25 @@ FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']
 MAX_RETIRES = config['max_retries']
 
+AUTO_CHAT_PROB_START = config['auto_chat_prob_start']
+AUTO_CHAT_PROB_INC = config['auto_chat_prob_inc']
+AUTO_CHAT_SELF_NAME = config['auto_chat_self_name']
+AUTO_CHAT_RECENT_LIMIT = config['auto_chat_recent_limit']
+AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
+
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
+
 
 # 会话列表 索引为最后一次消息的id
 sessions = {}
+# 询问的消息id集合
+query_msg_ids = set()
 
-# 不带记忆的对话
+# 询问
 chat_request = on_command("", block=False, priority=0)
 @chat_request.handle()
 async def _(bot: Bot, event: MessageEvent):
-    global sessions
+    global sessions, query_msg_ids
     
     # 获取内容
     query_msg_obj = await get_msg_obj(bot, event.message_id)
@@ -52,6 +65,7 @@ async def _(bot: Bot, event: MessageEvent):
     if not cd.check(event): return
     
     logger.log(f"收到询问: {query_msg}")
+    query_msg_ids.add(event.message_id)
 
     # 用于备份的session_id
     session_id_backup = None
@@ -82,7 +96,7 @@ async def _(bot: Bot, event: MessageEvent):
 
             session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
             if len(reply_imgs) > 0 or reply_text.strip() != "":
-                role = USER_ROLE if reply_uid != bot.self_id else BOT_ROLE
+                role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
                 session.append_content(role, reply_text, reply_imgs)
     else:
         session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
@@ -140,3 +154,85 @@ async def _(bot: Bot, event: MessageEvent):
         ret_id = str(ret["message_id"])
         sessions[ret_id] = session
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
+
+
+
+# 自动聊天
+auto_chat = on_command("", block=False, priority=100)
+@auto_chat.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not auto_chat_gwl.check(event): return
+    if not gwl.check(event): return
+    group_id = event.group_id
+
+    if event.message_id in query_msg_ids:
+        return
+
+    prob = file_db.get(f"{group_id}_auto_chat_prob", AUTO_CHAT_PROB_START)
+
+    text = extract_text(await get_msg(bot, event.message_id))
+    if AUTO_CHAT_SELF_NAME in text:
+        prob = prob + (1.0 - prob) * 0.5
+    
+    if random.random() > prob: 
+        prob += AUTO_CHAT_PROB_INC
+        file_db.set(f"{group_id}_auto_chat_prob", prob)
+        return
+    
+    logger.info(f"自动聊天在群组{group_id}中触发")
+    prob = AUTO_CHAT_PROB_START
+    file_db.set(f"{group_id}_auto_chat_prob", prob)
+
+    # 获取最近的消息
+    recent_msgs = text_recent(group_id, AUTO_CHAT_RECENT_LIMIT)
+    recent_msgs.reverse()
+    recent_msg_str = ""
+    for msg in recent_msgs:
+        recent_msg_str += f"{msg['time'].strftime('%Y-%m-%d %H:%M:%S')}"
+        recent_msg_str += f" 消息ID:{msg['msg_id']} 用户ID:{msg['user_id']} 用户昵称:{msg['nickname']} 说:\n"
+        recent_msg_str += f"{msg['text']}\n"
+
+    # 获取最近自己发的消息
+    my_recent_msgs = file_db.get(f"{group_id}_my_recent_msgs", [])
+    my_recent_msg_str = ""
+    for msg in my_recent_msgs:
+        my_recent_msg_str += f"{msg['time']}: {msg['text']}"
+
+    with open(AUTO_CHAT_PROMPT_PATH, "r", encoding="utf-8") as f:
+        prompt = f.read()
+    prompt = prompt.replace("<BOT_NAME>", BOT_NAME)
+    prompt = prompt.replace("<bot.self_id>", str(bot.self_id))
+    prompt = prompt.replace("<recent_msg_str>", recent_msg_str)
+    prompt = prompt.replace("<my_recent_msg_str>", my_recent_msg_str)
+
+    session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
+    session.append_content(SYSTEM_ROLE, prompt, verbose=False)
+
+    try:
+        res, retry_count = await session.get_response(MAX_RETIRES)
+        res = str(MessageSegment.text(res))
+    except Exception as error:
+        logger.print_exc(f'自动聊天询问失败')
+
+    if res.strip() == "":
+        logger.info(f"自动聊天选择不回复")
+        return
+    
+    res = res.replace("&#91;", "[").replace("&#93;", "]")
+    
+    logger.info(f"自动聊天回复: {res}")
+    await bot.send_group_msg(group_id=event.group_id, message=OutMessage(res.strip()))
+
+    # 加入会话历史
+    my_recent_msgs.append({
+        "time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "text": res
+    })
+    if len(my_recent_msgs) > AUTO_CHAT_RECENT_LIMIT:
+        my_recent_msgs.pop(0)
+    file_db.set(f"{group_id}_my_recent_msgs", my_recent_msgs)
+    
+
+
+
+

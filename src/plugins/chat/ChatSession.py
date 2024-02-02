@@ -6,6 +6,7 @@ logger = get_logger("Chat")
 
 USER_ROLE = "user"
 BOT_ROLE = "assistant"
+SYSTEM_ROLE = "system"
 MAX_TOKENS = config['max_tokens']
 RETRY_INTERVAL = config['retry_interval']
 session_id = 0
@@ -24,7 +25,7 @@ class ChatSession:
         self.proxy = proxy
 
     # 添加一条消息
-    def append_content(self, role, text, imgs=None):
+    def append_content(self, role, text, imgs=None, verbose=True):
         if imgs and len(imgs) > 0:
             content = [{"type": "text", "text": text}]
             for img in imgs:
@@ -38,7 +39,8 @@ class ChatSession:
             "role": role, 
             "content": content
         })
-        logger.info(f"会话{self.id}添加消息: role:{role} text:{text} imgs:{imgs}, 目前会话长度:{len(self)}")
+        if verbose:
+            logger.info(f"会话{self.id}添加消息: role:{role} text:{text} imgs:{imgs}, 目前会话长度:{len(self)}")
 
     # 会话长度
     def __len__(self):

@@ -201,6 +201,28 @@ def text_range(group_id, start_time, end_time):
     logger.debug(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
+# 获取最近的若干条文本消息，可以筛选掉空消息
+def text_recent(group_id, limit, no_null=True):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    if no_null:
+        query = f'''
+            SELECT * FROM {TEXT_TABLE_NAME.format(group_id)}
+            WHERE content != ""
+            ORDER BY time DESC
+            LIMIT ?
+        '''
+    else:
+        query = f'''
+            SELECT * FROM {TEXT_TABLE_NAME.format(group_id)}
+            ORDER BY time DESC
+            LIMIT ?
+        '''
+    cursor.execute(query, (limit,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 最近 {limit} 条消息 {len(rows)} 条")
+    return [text_row_to_ret(row) for row in rows]
+
 # 按用户名获取文本表中的消息
 def text_user(group_id, user_id):
     conn = get_conn(group_id)
