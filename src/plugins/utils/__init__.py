@@ -212,7 +212,7 @@ async def get_msg_obj(bot, message_id):
 async def get_user_name(bot, group_id, user_id):
     user_info = await bot.call_api('get_group_member_list', **{'group_id': int(group_id)})
     for info in user_info:
-        if info['user_id'] == user_id:
+        if str(info['user_id']) == str(user_id):
             if info['card'] != "":
                 return info['card']
             else:

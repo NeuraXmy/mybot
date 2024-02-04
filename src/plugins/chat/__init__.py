@@ -7,11 +7,12 @@ from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE, SYSTEM_ROLE
 from ..utils import *
 from datetime import datetime, timedelta
 import random
-from ..record.sql import text_recent
+from ..record.sql import text_recent, text_user
 from argparse import ArgumentParser
 from .draw_usage import draw
 from PIL import Image
 import io
+
 
 config = get_config('chat')
 openai_config = get_config('openai')
@@ -24,16 +25,40 @@ auto_chat_gwl = get_group_white_list(file_db, logger, 'autochat', is_service=Fal
 API_KEY = openai_config['api_key']
 API_BASE = openai_config['api_base']
 PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
-MODEL_ID = config['model_id']
+
+QUERY_MODEL = config['query_model']
 FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']
 MAX_RETIRES = config['max_retries']
 
+AUTO_CHAT_MODEL = config['autochat_model']
 AUTO_CHAT_PROB_START = config['auto_chat_prob_start']
 AUTO_CHAT_PROB_INC = config['auto_chat_prob_inc']
 AUTO_CHAT_SELF_NAME = config['auto_chat_self_name']
 AUTO_CHAT_RECENT_LIMIT = config['auto_chat_recent_limit']
+AUTO_CHAT_SELF_LIMIT = config['auto_chat_self_limit']
+AUTO_CHAT_MIMIC_LIMIT = config['auto_chat_mimic_limit']
+
 AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
+AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
+
+
+def get_autochat_emotion_value(group_id):
+    value = file_db.get(f"{group_id}_auto_chat_emotion", 50)
+    time = datetime.now()
+    if value == "schedule:daynight":
+        # 2:00值为0 14:00值为100 sine函数
+        import math
+        x = time.hour - 2 + 6
+        T = 24
+        value = int(50 * (1 + math.sin(2 * math.pi * x / T)))
+        value = min(100, max(0, value))
+    elif value == "schedule:random":
+        # 随机0-100
+        import random
+        value = random.randint(0, 100)
+    return value
+
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
@@ -98,12 +123,12 @@ async def _(bot: Bot, event: MessageEvent):
                 return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
             logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
-            session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
+            session = ChatSession(API_KEY, API_BASE, QUERY_MODEL, PROXY)
             if len(reply_imgs) > 0 or reply_text.strip() != "":
                 role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
                 session.append_content(role, reply_text, reply_imgs)
     else:
-        session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
+        session = ChatSession(API_KEY, API_BASE, QUERY_MODEL, PROXY)
 
     session.append_content(USER_ROLE, query_text, query_imgs)
 
@@ -165,6 +190,55 @@ async def _(bot: Bot, event: MessageEvent):
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
 
 
+# 指定自动聊天模仿的用户
+mimic_chat = on_command("/chat_mimic", block=False, priority=0)
+@mimic_chat.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not auto_chat_gwl.check(event): return
+    if not gwl.check(event): return
+
+    key = f"{event.group_id}_auto_chat_mimic"
+    
+    cqs = extract_cq_code(await get_msg(bot, event.message_id))
+    if "at" not in cqs:
+        file_db.set(key, "None")
+        return await mimic_chat.finish("已关闭自动聊天模仿")
+    
+    mimic_id = cqs["at"][0]["qq"]
+    file_db.set(key, str(mimic_id))
+    user_name = await get_user_name(bot, event.group_id, mimic_id)
+    return await mimic_chat.finish(f"已设置自动聊天模仿用户为 {user_name}({mimic_id})")
+
+
+# 设置自动聊天情绪值
+emotion_chat = on_command("/chat_emo", block=False, priority=0)
+@emotion_chat.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not auto_chat_gwl.check(event): return
+    if not gwl.check(event): return
+
+    key = f"{event.group_id}_auto_chat_emotion"
+    text = event.get_plaintext().replace("/chat_emo", "").strip()
+    if text == "":
+        return await emotion_chat.send(f"当前群聊的自动聊天情绪值为{get_autochat_emotion_value(event.group_id)}")
+    
+    if text == "daynight":
+        value = "schedule:daynight"
+    elif text == "random":
+        value = "schedule:random"
+    else:
+        try:
+            value = int(text)
+            if value < 0 or value > 100:
+                return await emotion_chat.send("情绪值必须在0-100之间")
+        except:
+            return await emotion_chat.send("情绪值格式错误")
+
+    file_db.set(key, value)
+    return await emotion_chat.send(f"已设置自动聊天情绪值为 {value}")
+
 
 # 自动聊天
 auto_chat = on_command("", block=False, priority=100)
@@ -178,46 +252,80 @@ async def _(bot: Bot, event: GroupMessageEvent):
         return
 
     prob = file_db.get(f"{group_id}_auto_chat_prob", AUTO_CHAT_PROB_START)
-
-    text = extract_text(await get_msg(bot, event.message_id))
-
-    if AUTO_CHAT_SELF_NAME in text:
-        prob = prob + (1.0 - prob) * 0.5
+    prob_bonus = 0
     
-    if random.random() > prob: 
+    # 提到名字的奖励
+    text = extract_text(await get_msg(bot, event.message_id))
+    if AUTO_CHAT_SELF_NAME in text:
+        prob_bonus = (1.0 - prob) * 0.5
+        logger.info(f"自动聊天名字被消息{event.message_id}提到 prob_bonus={prob_bonus:.4f}")
+
+    # 检测是否手动触发
+    if '/chat_trigger' in text and check_superuser(event):
+        prob_bonus = 1.0
+        logger.info(f"自动聊天触发命令 prob_bonus={prob_bonus:.4f}")
+    
+    if random.random() > prob + prob_bonus:
         prob += AUTO_CHAT_PROB_INC
         file_db.set(f"{group_id}_auto_chat_prob", prob)
         return
-    
-    logger.info(f"自动聊天在群组{group_id}中触发")
+    logger.info(f"自动聊天在群组{group_id}中触发 prob={prob:.4f}+{prob_bonus:.4f}")
     prob = AUTO_CHAT_PROB_START
     file_db.set(f"{group_id}_auto_chat_prob", prob)
 
+    # 检测模仿模式
+    mimic_id = file_db.get(f"{group_id}_auto_chat_mimic", "None")
+    mimic_mode = mimic_id != "None"
+    if mimic_mode:
+        mimic_id = int(mimic_id)
+        logger.info(f"自动聊天模仿用户{mimic_id}")
+    else:
+        logger.info(f"自动聊天不模仿用户")
+
+    # 加载prompt
+    prompt_path = AUTO_CHAT_PROMPT_PATH if not mimic_mode else AUTO_CHAT_MIMIC_PROMPT_PATH
+    with open(prompt_path, "r", encoding="utf-8") as f:
+        prompt = f.read()
+    prompt = prompt.replace("<BOT_NAME>", BOT_NAME)
+    prompt = prompt.replace("<bot.self_id>", str(bot.self_id))
+    
     # 获取最近的消息
-    recent_msgs = text_recent(group_id, AUTO_CHAT_RECENT_LIMIT)
+    recent_msgs = text_recent(group_id, AUTO_CHAT_RECENT_LIMIT, no_null=True)
     recent_msgs.reverse()
     recent_msg_str = ""
     for msg in recent_msgs:
         if msg['text'] == "": continue
+        if msg['msg_id'] in query_msg_ids: continue
         recent_msg_str += f"{msg['time'].strftime('%Y-%m-%d %H:%M:%S')}"
         recent_msg_str += f" msgid:{msg['msg_id']} user:{msg['nickname']}({msg['user_id']}) 说:\n"
         recent_msg_str += f"{msg['text']}\n"
-
-    # 获取最近自己发的消息
-    my_recent_msgs = file_db.get(f"{group_id}_my_recent_msgs", [])
-    my_recent_msg_str = ""
-    for msg in my_recent_msgs:
-        my_recent_msg_str += f"{msg['time']}: {msg['text']}\n"
-
-    with open(AUTO_CHAT_PROMPT_PATH, "r", encoding="utf-8") as f:
-        prompt = f.read()
-    prompt = prompt.replace("<BOT_NAME>", BOT_NAME)
-    prompt = prompt.replace("<bot.self_id>", str(bot.self_id))
     prompt = prompt.replace("<recent_msg_str>", recent_msg_str.strip())
-    prompt = prompt.replace("<my_recent_msg_str>", my_recent_msg_str.strip())
 
-    session = ChatSession(API_KEY, API_BASE, MODEL_ID, PROXY)
-    session.append_content(SYSTEM_ROLE, prompt, verbose=True)
+    if not mimic_mode:
+        # 获取最近自己发的消息
+        my_recent_msgs = file_db.get(f"{group_id}_my_recent_msgs", [])
+        my_recent_msg_str = ""
+        for msg in my_recent_msgs:
+            my_recent_msg_str += f"{msg['time']}: {msg['text']}\n"
+        prompt = prompt.replace("<my_recent_msg_str>", my_recent_msg_str.strip())
+        # 获取情绪值
+        emotion_value = get_autochat_emotion_value(group_id)
+        prompt = prompt.replace("<emotion_value>", str(emotion_value))
+        logger.info(f"自动聊天情绪值: {emotion_value}")
+    
+    if mimic_mode:
+        # 获取模仿用户的最近消息
+        mimic_msgs = text_user(group_id, mimic_id, AUTO_CHAT_MIMIC_LIMIT, no_null=True)
+        mimic_msgs.reverse()
+        mimic_msg_str = ""
+        for msg in mimic_msgs:
+            if msg['text'] == "": continue
+            if msg['text'].strip()[0] == "/": continue
+            mimic_msg_str += f"{msg['text']}\n"
+        prompt = prompt.replace("<mimic_recent_msg_str>", mimic_msg_str.strip())
+
+    session = ChatSession(API_KEY, API_BASE, AUTO_CHAT_MODEL, PROXY)
+    session.append_content(SYSTEM_ROLE, prompt, verbose=False)
 
     try:
         res, retry_count, ptokens, ctokens = await session.get_response(
@@ -229,6 +337,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         res = str(MessageSegment.text(res))
     except Exception as error:
         logger.print_exc(f'自动聊天询问失败')
+        return await auto_chat.finish(OutMessage(f"自动聊天失败: {error}"))
 
     if res.strip() == "":
         logger.info(f"自动聊天选择不回复")
@@ -240,13 +349,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
     await bot.send_group_msg(group_id=event.group_id, message=OutMessage(res.strip()))
 
     # 加入会话历史
-    my_recent_msgs.append({
-        "time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "text": res
-    })
-    while len(my_recent_msgs) > AUTO_CHAT_RECENT_LIMIT:
-        my_recent_msgs.pop(0)
-    file_db.set(f"{group_id}_my_recent_msgs", my_recent_msgs)
+    if not mimic_mode:
+        my_recent_msgs.append({
+            "time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "text": res
+        })
+        while len(my_recent_msgs) > AUTO_CHAT_SELF_LIMIT:
+            my_recent_msgs.pop(0)
+        file_db.set(f"{group_id}_my_recent_msgs", my_recent_msgs)
     
 
 # 查询token使用情况
@@ -294,3 +404,14 @@ async def _(bot: Bot, event: MessageEvent):
         MessageSegment.image(imgByteArr)
     )
     return await token_usage.finish(ret)
+
+
+# 查询当前群聊auto_chat概率
+auto_chat_prob = on_command("/chat_prob", block=False, priority=0)
+@auto_chat_prob.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not auto_chat_gwl.check(event): return
+    if not gwl.check(event): return
+    prob = file_db.get(f"{event.group_id}_auto_chat_prob", AUTO_CHAT_PROB_START)
+    return await auto_chat_prob.finish(f"当前群聊的自动聊天概率为{prob:.4f}")

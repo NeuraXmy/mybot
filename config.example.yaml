@@ -46,20 +46,29 @@ helper:
 
 
 chat:
-  model_id: "gpt-4-vision-preview"
-  prompt_token_pricing:     0.00001  # 每个输入token的价格（美元）
-  completion_token_pricing: 0.00003  # 每个输出token的价格（美元）
+  query_model:                    # 询问使用的模型
+    id: "gpt-4-vision-preview"
+    input_pricing:  0.00001       # 每个输入token的价格（美元）
+    output_pricing: 0.00003       # 每个输出token的价格（美元）
+    
+  autochat_model:                 # 自动聊天使用的模型
+    id: "gpt-3.5-turbo-16k"
+    input_pricing:  0.0000005     # 每个输入token的价格（美元）
+    output_pricing: 0.0000015     # 每个输出token的价格（美元）
+
   fold_response_threshold: 200    # 群聊中超过多少字折叠回复
   session_len_limit: 10           # 会话长度限制
   max_retries: 5                  # 最大重试次数
   retry_interval: 1               # 重试间隔（秒） 
   max_tokens: 2048                # 最大生成长度
-  auto_chat_prob_start: 0.01            # 自动聊天的初始概率
-  auto_chat_prob_inc: 0.001             # 自动聊天的概率增加
-  auto_chat_recent_limit: 20      # 自动聊天时，最近多少条消息内的文本作为上下文
-  auto_chat_self_name: ""     # 自动聊天时，自己的名字
+  auto_chat_prob_start: 0.0050    # 自动聊天的初始概率
+  auto_chat_prob_inc:   0.0025    # 自动聊天的概率增加
+  auto_chat_recent_limit: 20      # 自动聊天时，提供多少条最近的消息作为参考
+  auto_chat_self_limit: 20        # 自动聊天时，提供多少自己的最近发言作为参考
+  auto_chat_mimic_limit: 50       # 自动聊天时，提供多少模仿对象的最近发言作为参考
+  auto_chat_self_name: ""         # 自动聊天时，自己的名字
   per_user_usage_topk: 9          # 统计使用额度时展示前k名
-  cd: 60                                
+  cd: 60                                  
 
 
 mc:

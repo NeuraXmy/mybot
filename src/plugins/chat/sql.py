@@ -32,7 +32,9 @@ def get_conn():
                 output_token_usage INTEGER,
                 group_id INTEGER,
                 user_id INTEGER,
-                is_autochat BOOLEAN
+                is_autochat BOOLEAN,
+                input_price DOUBLE,
+                output_price DOUBLE
             )
         """)
         conn.commit()
@@ -46,14 +48,14 @@ def commit(verbose=True):
 
 
 # 插入一条消息
-def insert(time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat):
+def insert(time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price):
     cursor = get_conn().cursor()
     time = int(time.timestamp())
     cursor.execute(f"""
-        INSERT INTO {TABLE_NAME} (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat))
-    logger.debug(f"插入chat消息: {time} group_id={group_id} user_id={user_id} is_autochat={is_autochat}")
+        INSERT INTO {TABLE_NAME} (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price))
+    logger.debug(f"插入chat消息: {time} group_id={group_id} user_id={user_id} is_autochat={is_autochat} input_price={input_price} output_price={output_price}")
 
 
 # 消息列转换为字典
@@ -67,7 +69,10 @@ def row_to_ret(row):
         "output_token_usage": row[5],
         "group_id": row[6],
         "user_id": row[7],
-        "is_autochat": row[8]
+        "is_autochat": row[8],
+        "input_price": row[9],
+        "output_price": row[10],
+        "cost": row[9] * row[4] + row[10] * row[5]
     }
 
 

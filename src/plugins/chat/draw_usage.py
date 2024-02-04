@@ -7,8 +7,6 @@ from .sql import get_range
 config = get_config('chat')
 logger = get_logger("Chat")
 
-PROMPT_TOKEN_PRCING = config['prompt_token_pricing']
-COMPLETION_TOKEN_PRCING = config['completion_token_pricing']
 PER_USER_USAGE_TOPK = config['per_user_usage_topk']
 
 PLT_SAVE_PATH = "data/chat/tmp/usage.jpg"
@@ -30,16 +28,16 @@ def draw(start_time, end_time):
     per_user_usage, per_group_usage, autochat_usage = Counter(), Counter(), Counter()
 
     for rec in recs:
-        usage = rec['input_token_usage'] * PROMPT_TOKEN_PRCING + rec['output_token_usage'] * COMPLETION_TOKEN_PRCING
+        cost = rec['cost']
         if rec['is_autochat']:
-            autochat_usage.inc(str(rec['group_id']), usage)
-            autochat_total += usage
+            autochat_usage.inc(str(rec['group_id']), cost)
+            autochat_total += cost
         else:
             if rec['user_id'] is not None:
-                per_user_usage.inc(str(rec['user_id']), usage)
+                per_user_usage.inc(str(rec['user_id']), cost)
             if rec['group_id'] is not None:
-                per_group_usage.inc(str(rec['group_id']), usage)
-            query_total += usage
+                per_group_usage.inc(str(rec['group_id']), cost)
+            query_total += cost
         
     per_user_usage = sorted(per_user_usage.items(), key=lambda x: x[1], reverse=True)
     per_user_usage_x = [x[0] for x in per_user_usage[:PER_USER_USAGE_TOPK]] + ['其他']

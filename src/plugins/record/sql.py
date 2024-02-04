@@ -238,14 +238,24 @@ def text_recent(group_id, limit, no_null=True):
     logger.debug(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 最近 {limit} 条消息 {len(rows)} 条")
     return [text_row_to_ret(row) for row in rows]
 
-# 按用户名获取文本表中的消息
-def text_user(group_id, user_id):
+# 按用户名获取文本表中最近的消息
+def text_user(group_id, user_id, limit=None, no_null=False):
     conn = get_conn(group_id)
     cursor = conn.cursor()
-    query = f'''
-        SELECT * FROM {TEXT_TABLE_NAME.format(group_id)}
-        WHERE user_id = ?
-    '''
+    if no_null:
+        query = f'''
+            SELECT * FROM {TEXT_TABLE_NAME.format(group_id)}
+            WHERE user_id = ? AND content != ""
+            ORDER BY time DESC
+        '''
+    else:
+        query = f'''
+            SELECT * FROM {TEXT_TABLE_NAME.format(group_id)}
+            WHERE user_id = ?
+            ORDER BY time DESC
+        '''
+    if limit is not None:
+        query += f" LIMIT {limit}"
     cursor.execute(query, (user_id,))
     rows = cursor.fetchall()
     logger.debug(f"获取 {TEXT_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")

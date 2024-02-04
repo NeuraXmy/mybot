@@ -16,7 +16,7 @@ RETRY_INTERVAL = config['retry_interval']
 session_id = 0
 
 class ChatSession:
-    def __init__(self, api_key, api_base, model_id, proxy):
+    def __init__(self, api_key, api_base, model, proxy):
         global session_id
         session_id += 1
         self.id = session_id
@@ -25,7 +25,7 @@ class ChatSession:
         self.content = []
         self.api_key = api_key
         self.api_base = api_base
-        self.model_id = model_id
+        self.model = model
         self.proxy = proxy
 
     # 添加一条消息
@@ -65,7 +65,7 @@ class ChatSession:
         for i in range(max_retries):
             try:
                 res_ = await openai.ChatCompletion.acreate(
-                    model=self.model_id,
+                    model=self.model['id'],
                     messages=self.content,
                     max_tokens=MAX_TOKENS
                 )
@@ -82,7 +82,7 @@ class ChatSession:
        
         while res.startswith("\n") != res.startswith("？"):
             res = res[1:]
-        logger.info(f"会话{self.id}获取回复: {get_shortname(res, 32)}, 使用token数: {prompt_tokens}+{completion_tokens}")
+        logger.info(f"会话{self.id}获取回复: {get_shortname(res, 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
 
         insert(
             time = datetime.now(),
@@ -92,9 +92,11 @@ class ChatSession:
             output_token_usage = completion_tokens,
             group_id = group_id,
             user_id = user_id,
-            is_autochat = is_autochat
+            is_autochat = is_autochat,
+            input_price = self.model['input_pricing'],
+            output_price = self.model['output_pricing'],
         )
         commit()
         
-        self.append_content(BOT_ROLE, res)
+        self.append_content(BOT_ROLE, res, verbose=False)
         return res, i, prompt_tokens, completion_tokens
