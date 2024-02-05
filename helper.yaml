@@ -34,6 +34,15 @@ chat:
     /autochat_off 关闭自动聊天(超级用户权限)
     /chat_mimic @user 开启模仿某人聊天 不at则取消模仿(需要超级用户权限)
     /chat_trigger 立刻触发自动聊天(需要超级用户权限)
+    /chat_emo [emo] 设置聊天情绪值 [emo]为0到100的整数
+    或使用 random: 随机情绪值 daynight: 根据时间设置情绪值
+    [emo]为空时为查看当前情绪值
+
+imgexp:
+  name: "搜图服务"
+  help: |
+    使用/search回复图片
+    搜图来源：GoogleLens SauceNAO
     
 mc:
   name: "MC服务器服务"

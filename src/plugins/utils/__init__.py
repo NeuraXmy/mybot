@@ -137,6 +137,9 @@ class FileDB:
             self.logger.debug(f'加载数据库 {self.path} 失败 使用空数据')
             self.data = {}
 
+    def keys(self):
+        return self.data.keys()
+
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         with open(self.path, 'w') as f:

@@ -51,7 +51,7 @@ def get_autochat_emotion_value(group_id):
         import math
         x = time.hour - 2 + 6
         T = 24
-        value = int(50 * (1 + math.sin(2 * math.pi * x / T)))
+        value = int(50 * (1 - math.sin(2 * math.pi * x / T)))
         value = min(100, max(0, value))
     elif value == "schedule:random":
         # 随机0-100
@@ -415,3 +415,4 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     prob = file_db.get(f"{event.group_id}_auto_chat_prob", AUTO_CHAT_PROB_START)
     return await auto_chat_prob.finish(f"当前群聊的自动聊天概率为{prob:.4f}")
+        
