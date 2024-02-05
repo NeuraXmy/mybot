@@ -23,34 +23,26 @@ MAIL_USER = config['mail_user']
 MAIL_PASS = config['mail_pass']
 MAIL_RECEIVERS = config['mail_receivers']
 
+NONE_STATE = "none"
+CONNECT_STATE = "connect"
+DISCONNECT_STATE = "disconnect"
 
-very_future = datetime.now() + timedelta(weeks=10000)
-last_notify = "none"
-is_first_notify = True
-last_connect_time    = datetime.now()
-last_disconnect_time = datetime.now()
+cur_state = NONE_STATE      # 当前连接状态
+noti_state = NONE_STATE     # 认为的连接状态
+cur_elapsed = timedelta(seconds=0)  # 当前连接状态持续时间
+last_check_time = None      # 上次检测时间
 
-last_resume_time     = datetime.now()
-resume_recorded = False
 
 # 发送通知
-async def send_noti(ok):
-    global is_first_notify
-    if is_first_notify and not NOTIFY_AT_FIRST:
-        is_first_notify = False
-        return
-    if not ok:
-        if not NOTIFY_AT_DISCONNECT: return
-        logger.info("存活检测失败，开始发送通知")
-    else:
-        if not NOTIFY_AT_CONNECT: return
-        logger.info("存活检测成功，开始发送通知")
-    
+async def send_noti(state):
+    if state == DISCONNECT_STATE    and not NOTIFY_AT_DISCONNECT:   return
+    if state == CONNECT_STATE       and not NOTIFY_AT_CONNECT:      return
+    logger.info(f"存活检测发送通知：{state}")
     if SEND_EMAIL:
         for receiver in MAIL_RECEIVERS:
             try:
                 await send_mail_async(
-                    subject=f"Bot {BOT_NAME} {'断开连接' if not ok else '恢复连接'}",
+                    subject=f"Bot {BOT_NAME} {'断开连接' if state == DISCONNECT_STATE else '恢复连接'}",
                     recipient=receiver,
                     body=f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                     smtp_server=MAIL_HOST,
@@ -63,34 +55,39 @@ async def send_noti(ok):
             except Exception as e:
                 logger.print_exc(f"发送邮件到 {receiver} 失败")
 
-    global last_notify
-    last_notify = "disconnect" if not ok else "connect"
-
 
 # 存活检测
 async def alive_check():
-    global last_connect_time, last_disconnect_time, last_notify, is_first_notify, resume_recorded, last_resume_time
+    global cur_state, noti_state, cur_elapsed, last_check_time
+    # 检测连接状态
     try:
         from nonebot import get_bot
         bot = get_bot()
-
-        if not resume_recorded:
-            resume_recorded = True
-            last_resume_time = datetime.now()
-
-        last_connect_time = datetime.now()
-        if (datetime.now() - last_disconnect_time).total_seconds() > TIME_THRESHOLD \
-            and last_notify in ["disconnect", "none"]:
-            last_disconnect_time = very_future
-            await send_noti(True)
+        new_state = CONNECT_STATE
     except:
-        resume_recorded = False
-        last_disconnect_time = datetime.now()
-        if (datetime.now() - last_connect_time).total_seconds() > TIME_THRESHOLD \
-            and last_notify in ["connect", "none"]:
-            last_connect_time = very_future
-            await send_noti(False)
-        
+        new_state = DISCONNECT_STATE
+
+    # 第一次检测
+    if last_check_time is None:
+        last_check_time = datetime.now()
+        return
+
+    # 更新elapsed
+    if new_state != cur_state:
+        cur_elapsed = timedelta(seconds=0)
+    else:
+        cur_elapsed += datetime.now() - last_check_time
+    cur_state = new_state
+
+    # 如果当前状态不等于认为的状态且持续时间超过阈值，发送通知
+    if cur_state != noti_state and cur_elapsed >= timedelta(seconds=TIME_THRESHOLD):
+        logger.info(f"存活检测发生变更：{noti_state} -> {cur_state}，持续时间：{cur_elapsed}")
+        if NOTIFY_AT_FIRST or noti_state != NONE_STATE:
+            await send_noti(cur_state)
+        noti_state = cur_state
+    
+    last_check_time = datetime.now()
+
 
 # 定时任务
 start_repeat_with_interval(CHECK_INTERVAL, alive_check, logger, "存活检测", start_offset=10, error_limit=999999)
@@ -101,5 +98,5 @@ alive = on_command("/alive", priority=100, block=False)
 @alive.handle()
 async def handle_function(bot: Bot, event: MessageEvent):
     if not check_superuser(event): return
-    msg = f"上次连接时间: {last_resume_time.strftime('%Y-%m-%d %H:%M:%S')}" 
+    msg = f"存活持续时间：{cur_elapsed}"
     await alive.finish(Message(f'[CQ:reply,id={event.message_id}]{msg}'))
