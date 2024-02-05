@@ -29,7 +29,7 @@ def draw(start_time, end_time):
 
     for rec in recs:
         cost = rec['cost']
-        if rec['is_autochat']:
+        if rec['type'] == 'chat_auto':
             autochat_usage.inc(str(rec['group_id']), cost)
             autochat_total += cost
         else:

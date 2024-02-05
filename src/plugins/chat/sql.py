@@ -21,7 +21,6 @@ def get_conn():
         logger.info(f"连接sqlite数据库 {DB_PATH} 成功")
     
         cursor = conn.cursor()
-        # 创建消息表 (ID, 时间戳, 消息ID, 用户ID, 昵称, json内容)
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,9 +31,9 @@ def get_conn():
                 output_token_usage INTEGER,
                 group_id INTEGER,
                 user_id INTEGER,
-                is_autochat BOOLEAN,
                 input_price DOUBLE,
-                output_price DOUBLE
+                output_price DOUBLE,
+                type TEXT
             )
         """)
         conn.commit()
@@ -48,14 +47,14 @@ def commit(verbose=True):
 
 
 # 插入一条消息
-def insert(time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price):
+def insert(time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, input_price, output_price, type):
     cursor = get_conn().cursor()
     time = int(time.timestamp())
     cursor.execute(f"""
-        INSERT INTO {TABLE_NAME} (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price)
+        INSERT INTO {TABLE_NAME} (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, input_price, output_price, type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, is_autochat, input_price, output_price))
-    logger.debug(f"插入chat消息: {time} group_id={group_id} user_id={user_id} is_autochat={is_autochat} input_price={input_price} output_price={output_price}")
+    """, (time, input_text, output_text, input_token_usage, output_token_usage, group_id, user_id, input_price, output_price, type))
+    logger.debug(f"插入chat消息: {time} group_id={group_id} user_id={user_id} input_price={input_price} output_price={output_price} type={type}")
 
 
 # 消息列转换为字典
@@ -69,15 +68,15 @@ def row_to_ret(row):
         "output_token_usage": row[5],
         "group_id": row[6],
         "user_id": row[7],
-        "is_autochat": row[8],
-        "input_price": row[9],
-        "output_price": row[10],
-        "cost": row[9] * row[4] + row[10] * row[5]
+        "input_price": row[8],
+        "output_price": row[9],
+        "type": row[10],
+        "cost": row[8] * row[4] + row[9] * row[5]
     }
 
 
-# 查询范围内的消息（支持用group_id, user_id, is_autochat过滤）
-def get_range(start_time, end_time, group_id=None, user_id=None, is_autochat=None):
+# 查询范围内的消息（支持用group_id, user_id, type过滤）
+def get_range(start_time, end_time, group_id=None, user_id=None, type=None):
     cursor = get_conn().cursor()
     sql = f"""
         SELECT * FROM {TABLE_NAME}
@@ -90,9 +89,9 @@ def get_range(start_time, end_time, group_id=None, user_id=None, is_autochat=Non
     if user_id is not None:
         sql += " AND user_id = ?"
         params.append(user_id)
-    if is_autochat is not None:
-        sql += " AND is_autochat = ?"
-        params.append(is_autochat)
+    if type is not None:
+        sql += " AND type = ?"
+        params.append(type)
     cursor.execute(sql, params)
     rows = cursor.fetchall()
     logger.debug(f"查询到{len(rows)}条chat消息")

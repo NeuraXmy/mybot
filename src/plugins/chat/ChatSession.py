@@ -92,9 +92,9 @@ class ChatSession:
             output_token_usage = completion_tokens,
             group_id = group_id,
             user_id = user_id,
-            is_autochat = is_autochat,
             input_price = self.model['input_pricing'],
             output_price = self.model['output_pricing'],
+            type = "chat_auto" if is_autochat else "chat_query"
         )
         commit()
         
