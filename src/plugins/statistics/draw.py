@@ -235,16 +235,19 @@ def draw_all(recs, interval, topk1, topk2, user, name, path):
 
 
 # 绘制群总聊天数关于时间的折线图 
-def draw_date_count_plot(dates, counts, path):
+def draw_date_count_plot(dates, counts, path, user_counts=None):
     logger.info(f"开始绘制群总聊天数关于时间的折线图到{path}")
     plt.figure(figsize=(8, 4))
-    plt.bar(dates, counts)
+    plt.bar(dates, counts, label='其他消息数', color='#bbbbbb')
+    if user_counts is not None:
+        plt.bar(dates, user_counts, label='用户消息数', color='#dddddd')
     plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
     plt.xlabel('日期')
     plt.ylabel('消息总数')
     plt.xticks(fontsize=8)
     plt.yticks(fontsize=8)
+    plt.legend(fontsize=8)
     plt.savefig(path)
     logger.info(f"绘制完成")
     

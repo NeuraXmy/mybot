@@ -136,16 +136,23 @@ def msg_range(group_id, start_time, end_time):
     return [msg_row_to_ret(row) for row in rows]
 
 # 按时间范围计数
-def msg_count(group_id, start_time, end_time):
+def msg_count(group_id, start_time, end_time, user_id=None):
     if start_time is None: start_time = datetime.fromtimestamp(0)
     if end_time is None: end_time = datetime.fromtimestamp(9999999999)
     conn = get_conn(group_id)
     cursor = conn.cursor()
-    query = f'''
-        SELECT COUNT(*) FROM {MSG_TABLE_NAME.format(group_id)}
-        WHERE time >= ? AND time <= ?
-    '''
-    cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
+    if user_id is None:
+        query = f'''
+            SELECT COUNT(*) FROM {MSG_TABLE_NAME.format(group_id)}
+            WHERE time >= ? AND time <= ?
+        '''
+        cursor.execute(query, (start_time.timestamp(), end_time.timestamp()))
+    else:
+        query = f'''
+            SELECT COUNT(*) FROM {MSG_TABLE_NAME.format(group_id)}
+            WHERE time >= ? AND time <= ? AND user_id = ?
+        '''
+        cursor.execute(query, (start_time.timestamp(), end_time.timestamp(), user_id))
     rows = cursor.fetchall()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息数")
     return rows[0][0]
@@ -340,6 +347,20 @@ def img_by_id(group_id, id):
     if len(rows) == 0:
         return None
     return img_row_to_ret(rows[0])
+
+
+# 根据msg_id获取图片表中的消息
+def img_by_msg_id(group_id, msg_id):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {IMG_TABLE_NAME.format(group_id)}
+        WHERE msg_id = ?
+    '''
+    cursor.execute(query, (msg_id,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {IMG_TABLE_NAME.format(group_id)} 表中的 msg_id {msg_id} 的消息 {len(rows)} 条")
+    return [img_row_to_ret(row) for row in rows]
 
 
 # 按时间范围获取图片表中的消息 None则不限制

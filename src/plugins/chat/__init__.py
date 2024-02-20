@@ -43,11 +43,12 @@ AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
 AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
 
 
+# 获取某个群组的自动聊天情绪值
 def get_autochat_emotion_value(group_id):
     value = file_db.get(f"{group_id}_auto_chat_emotion", 50)
     time = datetime.now()
     if value == "schedule:daynight":
-        # 2:00值为0 14:00值为100 sine函数
+        # 2:00为0 14:00为100 sin插值
         import math
         x = time.hour - 2 + 6
         T = 24

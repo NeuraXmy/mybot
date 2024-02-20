@@ -104,7 +104,7 @@ class ServerData:
         self.rcon_url = data.get('rcon_url', '')
         self.rcon_password = data.get('rcon_password', '')
         self.admin = data.get('admin', [])
-        logger.info(f'在 {self.group_id} 中加载服务器 {data}')
+        logger.info(f'在 {self.group_id} 中加载服务器 url={data["url"]}')
 
     # 通过向服务器请求信息更新数据
     async def update(self, mute=False):
