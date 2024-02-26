@@ -87,6 +87,7 @@ mc:
   query_offset: 2000             # 查询时间的偏移量
   disconnect_notify_count: 3      # 和服务器断联多少次后提醒
   ascii_art_width: 20            # 字符画的宽度
+  player_time_update_interval: 60   # 超过多少秒自动更新玩家在线时间
   cd: 5
 
 
@@ -115,7 +116,10 @@ pjsk:
 
 
 record:
-  
+
+rpc:
+  host: "0.0.0.0"
+  port: 24444
 
 run_code:
   cd: 60                       

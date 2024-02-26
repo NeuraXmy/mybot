@@ -19,7 +19,11 @@ QUEUE_CONSUME_INTERVAL = config['queue_consume_interval']
 OFFSET = config['query_offset']
 DISCONNECT_NOTIFY_COUNT = config['disconnect_notify_count']
 ASCII_ART_WIDTH = config['ascii_art_width']
+PLAYER_TIME_UPDATE_INTERVAL = config['player_time_update_interval']
 
+
+def timedelta2hour(td):
+    return td.days * 24 + td.seconds / 3600
 
 # MC的gametick(一天24000ticks, tick=0是早上6:00)转换为HH:MM
 def gametick2time(tick):
@@ -65,6 +69,7 @@ class ServerData:
         self.failed_count = 0
 
         self.players = {}
+        self.player_login_time = {}
         self.messages = {}
 
         self.next_query_ts = 0
@@ -83,7 +88,8 @@ class ServerData:
             'info': self.info,
             'admin': self.admin,
             'rcon_url': self.rcon_url,
-            'rcon_password': self.rcon_password
+            'rcon_password': self.rcon_password,
+            'player_time': self.player_time
         }
         file_db.set(f'{self.group_id}.server_info', data)
         logger.info(f'在 {self.group_id} 中保存服务器 {data}')
@@ -96,7 +102,8 @@ class ServerData:
             'info': '',
             'admin': [],
             'rcon_url': '',
-            'rcon_password': ''
+            'rcon_password': '',
+            'player_time': {}
         })
         self.url    = data.get('url', '')
         self.bot_on = data.get('bot_on', True)
@@ -104,6 +111,7 @@ class ServerData:
         self.rcon_url = data.get('rcon_url', '')
         self.rcon_password = data.get('rcon_password', '')
         self.admin = data.get('admin', [])
+        self.player_time = data.get('player_time', {})
         logger.info(f'在 {self.group_id} 中加载服务器 url={data["url"]}')
 
     # 通过向服务器请求信息更新数据
@@ -123,7 +131,10 @@ class ServerData:
                 logger.info(f'{player["name"]} 加入了游戏')
                 if not mute:
                     self.queue.append(f'{player["name"]} 加入了游戏')
-            self.players[account] = player
+                self.players[account] = player
+                self.player_login_time[account] = datetime.now()
+            else:
+                self.players[account] = player
         remove_list = []
         for account in self.players:
             if account not in [player['account'] for player in data['players']]:
@@ -131,8 +142,24 @@ class ServerData:
                 if not mute:
                     self.queue.append(f'{self.players[account]["name"]} 离开了游戏')
                 remove_list.append(account)
+                play_time = timedelta2hour(datetime.now() - self.player_login_time[account])
+                self.player_login_time.pop(account)
+                if account in self.player_time:
+                    self.player_time[account] += play_time
+                else:
+                    self.player_time[account] = play_time
         for account in remove_list:
             self.players.pop(account)
+
+        player_time_updated = False
+        for account in self.player_login_time:
+            if datetime.now() - self.player_login_time[account] > timedelta(seconds=PLAYER_TIME_UPDATE_INTERVAL):
+                self.player_time[account] += timedelta2hour(datetime.now() - self.player_login_time[account])
+                self.player_login_time[account] = datetime.now()
+                player_time_updated = True
+        if len(remove_list) > 0 or player_time_updated:
+            self.save()
+
         # 检测消息更新
         for upd in data['updates']:
             logger.debug(f'{self.url} 消息更新: {upd}')
@@ -476,6 +503,31 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，无响应'))
     else:
         await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，响应:\n{resp}'))
+
+# 查询游玩时间统计
+sta = on_command("/mc_sta", priority=100, block=False)
+@sta.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not cd.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    msg = '游玩时间统计:\n'
+    for account, play_time in server.player_time.items():
+        msg += f'{account}: {play_time:.2f}h\n'
+    await sta.finish(msg.strip())
+
+# 清空游玩时间统计
+clear_sta = on_command("/mc_clear", priority=100, block=False)
+@clear_sta.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    server.player_time = {}
+    server.save()
+    await clear_sta.finish('游玩时间统计已清空')
+
     
     
 

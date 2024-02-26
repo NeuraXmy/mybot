@@ -1,6 +1,6 @@
-from nonebot import on_command, on_message
+from nonebot import on_command, on_message, on
 from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, Bot, Event
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from datetime import datetime
 from ..utils import *
@@ -11,15 +11,29 @@ logger = get_logger("Record")
 file_db = get_file_db("data/record/db.json", logger)
 gbl = get_group_black_list(file_db, logger, "record")
 
+
+# 防止神秘原因导致的重复消息
+message_id_set = set()
+
+
+# 记录消息的钩子: 异步函数 hook(bot, event)
+record_hook_funcs = []
+def record_hook(func):
+    record_hook_funcs.append(func)
+    return func
+
+
 # 记录消息
-add = on_message(block=False)
-@add.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
+async def record_message(bot, event, is_self=False):
+    if event.message_id in message_id_set: return
+    message_id_set.add(event.message_id)
+
+    for hook in record_hook_funcs:
+        await hook(bot, event)
 
     time = datetime.now()
-
     msg_obj = await get_msg_obj(bot, event.message_id)
+
     msg = msg_obj['message']
     msg_id = msg_obj['message_id']
     msg_text = extract_text(msg)
@@ -30,7 +44,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
     group_id = event.group_id
     user_name = await get_user_name(bot, group_id, user_id)
 
-    logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg)}")
+    if is_self:
+        logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg)}")
+    else:
+        logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg)}")
 
     msg_insert(
         group_id=group_id,
@@ -75,5 +92,17 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 
-
+# 记录消息
+add = on_message(block=False)
+@add.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gbl.check(event): return
+    await record_message(bot, event)
     
+
+# 记录自身消息
+add_self = on("message_sent", block=False)
+@add_self.handle()
+async def _(bot: Bot, event: Event):
+    if not gbl.check_id(event.group_id): return
+    await record_message(bot, event, is_self=True)

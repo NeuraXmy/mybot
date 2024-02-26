@@ -135,6 +135,20 @@ def msg_range(group_id, start_time, end_time):
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
+# 获取最近的若干条消息
+def msg_recent(group_id, limit):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {MSG_TABLE_NAME.format(group_id)}
+        ORDER BY time DESC
+        LIMIT ?
+    '''
+    cursor.execute(query, (limit,))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 最近 {limit} 条消息 {len(rows)} 条")
+    return [msg_row_to_ret(row) for row in rows]
+
 # 按时间范围计数
 def msg_count(group_id, start_time, end_time, user_id=None):
     if start_time is None: start_time = datetime.fromtimestamp(0)

@@ -340,6 +340,16 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
             logger.print_exc(f'循环执行 {name} 任务失败')
 
 
+# 开始执行某个异步任务
+def start_async_task(func, logger, name, start_offset=5):   
+    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset))
+    async def _():
+        try:
+            logger.info(f'开始异步执行 {name} 任务', flush=True)
+            await func()
+        except Exception as e:
+            logger.print_exc(f'异步执行 {name} 任务失败')
+
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #
 
