@@ -31,7 +31,7 @@ async def record_message(bot, event, is_self=False):
     for hook in record_hook_funcs:
         await hook(bot, event)
 
-    time = datetime.now()
+    time = datetime.fromtimestamp(event.time)
     msg_obj = await get_msg_obj(bot, event.message_id)
 
     msg = msg_obj['message']

@@ -226,6 +226,16 @@ async def get_msg_obj(bot, message_id):
     return await bot.get_msg(message_id=int(message_id))
 
 
+# 获取陌生人信息
+async def get_stranger_info(bot, user_id):
+    return await bot.call_api('get_stranger_info', **{'user_id': int(user_id)})
+
+
+# 获取头像url
+def get_avatar_url(user_id):
+    return f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
+
+
 # 获取用户名 如果有群名片则返回群名片 否则返回昵称
 async def get_user_name(bot, group_id, user_id):
     user_info = await bot.call_api('get_group_member_list', **{'group_id': int(group_id)})

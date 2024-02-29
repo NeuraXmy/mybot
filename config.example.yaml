@@ -136,3 +136,5 @@ water:
 
 welcome:
   group_info_update_interval: 30  # 群组信息更新间隔（分钟）
+
+misc:
