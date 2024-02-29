@@ -92,7 +92,7 @@ async def _(bot: Bot, event: MessageEvent):
         return
     
     # cd检测
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     
     logger.log(f"收到询问: {query_msg}")
     query_msg_ids.add(event.message_id)

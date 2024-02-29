@@ -18,7 +18,7 @@ gbl = get_group_black_list(file_db, logger, 'imgexp')
 search = on_command('/search', priority=0, block=False)
 @search.handle()
 async def handle(bot: Bot, event: MessageEvent):
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     if not gbl.check(event, allow_private=True): return
 
     reply_msg = await get_reply_msg(bot, await get_msg(bot, event.message_id))
@@ -49,7 +49,27 @@ async def handle(bot: Bot, event: MessageEvent):
     await search.finish(ret)
 
 
+full_pic = on_command('/full_pic', priority=0, block=False)
+@full_pic.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    if not (await cd.check(event)): return
+
+    url, prompt = event.get_plaintext().replace('/full_pic', '').strip().split(' ', 1)
+    logger.info(f'发送特殊图片: {url} {prompt}')
+
+    template = r'{"app":"com.tencent.gxhServiceIntelligentTip","desc":"#desc#","view":"gxhServiceIntelligentTip","bizsrc":"","ver":"","prompt":"#prompt#","appID":"","sourceName":"","actionData":"","actionData_A":"","sourceUrl":"","meta":{"gxhServiceIntelligentTip":{"action":"","appid":"gxhServiceIntelligentTip","bgImg":"#url#","reportParams":{}}},"text":"shiyan","extraApps":[],"sourceAd":"","extra":""}'
+
+    msg = {
+        "type": "json",
+        "data": {
+            "data": template.replace("#desc#", prompt).replace("#prompt#", prompt).replace("#url#", url)
+        }
+    }
 
 
-
+    try:
+        await bot.send_group_msg(group_id=event.group_id, message=[msg])
+    except Exception as e:
+        await full_pic.send(MessageSegment(f"发送失败: {e}"))
 

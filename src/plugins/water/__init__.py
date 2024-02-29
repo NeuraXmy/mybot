@@ -39,7 +39,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     msg = await get_msg(bot, event.message_id)
     cmd = extract_text(msg).strip()
     if cmd != '/water': return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
 
     # 获取回复的内容
     reply_msg = await get_reply_msg(bot, msg)

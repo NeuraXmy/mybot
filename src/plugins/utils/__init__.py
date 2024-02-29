@@ -2,7 +2,7 @@ import json
 import yaml
 from datetime import datetime, timedelta
 import traceback
-from nonebot import on_command
+from nonebot import on_command, get_bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 import os
 from copy import deepcopy
@@ -31,6 +31,8 @@ BOT_NAME  = get_config()['bot_name']
 LOG_LEVEL = get_config()['log_level']
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
 print(f'使用日志等级: {LOG_LEVEL}')
+
+CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
@@ -186,6 +188,19 @@ def get_readable_datetime(time):
     if diff.total_seconds() < 60 * 60 * 12:
         return f"{int(diff.total_seconds() / 60 / 60)}小时{int(diff.total_seconds() / 60 % 60)}分钟后"
     return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+# 转换时间段为可读字符串
+def get_readable_timedelta(delta):
+    if delta.total_seconds() < 0:
+        return f"0秒"
+    if delta.total_seconds() < 60:
+        return f"{int(delta.total_seconds())}秒"
+    if delta.total_seconds() < 60 * 60:
+        return f"{int(delta.total_seconds() / 60)}分钟"
+    if delta.total_seconds() < 60 * 60 * 12:
+        return f"{int(delta.total_seconds() / 60 / 60)}小时{int(delta.total_seconds() / 60 % 60)}分钟"
+    return str(delta)
 
 
 # 获取加入的所有群id
@@ -370,7 +385,7 @@ class ColdDown:
         self.group_seperate = group_seperate
         self.cold_down_name = f'cold_down' if cold_down_name is None else f'cold_down_{cold_down_name}'
     
-    def check(self, event, interval=None, allow_super=True):
+    async def check(self, event, interval=None, allow_super=True, verbose=True):
         if allow_super and check_superuser(event, self.superuser):
             self.logger.debug(f'{self.cold_down_name}检查: 超级用户{event.user_id}')
             return True
@@ -385,8 +400,25 @@ class ColdDown:
             self.db.set(self.cold_down_name, last_use)
             self.logger.debug(f'{self.cold_down_name}检查: {key} 未使用过')
             return True
-        if now - last_use[key] < self.default_interval:
+        if now - last_use[key] < interval:
             self.logger.debug(f'{self.cold_down_name}检查: {key} CD中')
+            if verbose:
+                try:
+                    verbose_key = f'verbose_{key}'
+                    if verbose_key not in last_use:
+                        last_use[verbose_key] = 0
+                    if now - last_use[verbose_key] > CD_VERBOSE_INTERVAL:
+                        last_use[verbose_key] = now
+                        self.db.set(self.cold_down_name, last_use)
+                        rest_time = timedelta(seconds=interval - (now - last_use[key]))
+                        verbose_msg = f'冷却中, 剩余时间: {get_readable_timedelta(rest_time)}'
+                        if hasattr(event, 'message_id'):
+                            if hasattr(event, 'group_id'):
+                                await get_bot().send_group_msg(group_id=event.group_id, message=f'[CQ:reply,id={event.message_id}] {verbose_msg}')
+                            else:
+                                await get_bot().send_private_msg(user_id=event.user_id, message=f'[CQ:reply,id={event.message_id}] {verbose_msg}')
+                except Exception as e:
+                    self.logger.print_exc(f'{self.cold_down_name}检查: {key} CD中, 发送冷却中消息失败')
             return False
         last_use[key] = now
         self.db.set(self.cold_down_name, last_use)

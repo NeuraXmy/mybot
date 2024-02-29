@@ -150,7 +150,7 @@ scid = on_command('/scid', block=False, priority=100)
 @scid.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if not gbl.check(event, allow_private=True): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     try:
         id = int(args.extract_plain_text())
     except:
@@ -193,7 +193,7 @@ sc = on_command('/sc', block=False, priority=100)
 @sc.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if not gbl.check(event, allow_private=True): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     text = args.extract_plain_text()
     if text.strip() == "": return
     qtext = process_sc_query_text(text)

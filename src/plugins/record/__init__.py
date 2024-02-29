@@ -104,5 +104,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
 add_self = on("message_sent", block=False)
 @add_self.handle()
 async def _(bot: Bot, event: Event):
-    if not gbl.check_id(event.group_id): return
-    await record_message(bot, event, is_self=True)
+    try:
+        if not hasattr(event, 'group_id'): return
+        if not gbl.check_id(event.group_id): return
+        await record_message(bot, event, is_self=True)
+    except Exception as e:
+        logger.print_exc("记录自身消息时错误")

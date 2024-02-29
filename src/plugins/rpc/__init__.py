@@ -40,6 +40,7 @@ async def record_new_message(bot, event):
             group_msgs[group_id] = []
         group_msgs[group_id].append({
             'id': event.message_id,
+            'msg_id': event.message_id,
             'time': datetime.now(),
             'user_id': event.user_id,
             'nickname': user_name,

@@ -38,7 +38,7 @@ bird = on_command('/bird', priority=100, block=False)
 @bird.handle()
 async def handle_bird(bot: Bot, event: MessageEvent):
     if not gbl.check(event, allow_private=True): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     init_birds()
 
     bird_name = event.get_message().extract_plain_text().replace('/bird', '').strip()

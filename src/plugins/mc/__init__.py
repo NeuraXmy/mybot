@@ -271,7 +271,7 @@ info = on_command("/info", priority=100, block=False)
 @info.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     
     msg = server.info.strip() 
@@ -333,7 +333,7 @@ get_url = on_command("/geturl", priority=100, block=False)
 @get_url.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     await get_url.finish(f'本群设置的卫星地图地址为: {server.url}')
 
@@ -354,7 +354,7 @@ sendmsg = on_command("/send", priority=100, block=False)
 @sendmsg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     if not server.bot_on: 
         await sendmsg.finish("监听已关闭，无法发送消息")
@@ -468,7 +468,7 @@ get_rcon = on_command("/getrconurl", priority=100, block=False)
 @get_rcon.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     await get_rcon.finish(f'服务器rcon地址为: {server.rcon_url}')
 
@@ -477,7 +477,7 @@ rcon = on_command("/rcon", priority=100, block=False)
 @rcon.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
     if server.rcon_url == '':
@@ -509,7 +509,7 @@ sta = on_command("/mc_sta", priority=100, block=False)
 @sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not cd.check(event): return
+    if not (await cd.check(event)): return
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
     msg = '游玩时间统计:\n'
