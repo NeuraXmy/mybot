@@ -26,7 +26,8 @@ API_KEY = openai_config['api_key']
 API_BASE = openai_config['api_base']
 PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
 
-QUERY_MODEL = config['query_model']
+QUERY_TEXT_MODEL = config['query_text_model']
+QUERY_MM_MODEL = config['query_mm_model']
 FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']
 MAX_RETIRES = config['max_retries']
@@ -39,9 +40,22 @@ AUTO_CHAT_RECENT_LIMIT = config['auto_chat_recent_limit']
 AUTO_CHAT_SELF_LIMIT = config['auto_chat_self_limit']
 AUTO_CHAT_MIMIC_LIMIT = config['auto_chat_mimic_limit']
 
+SYSTEM_PROMPT_PATH = "data/chat/system_prompt.txt"
 AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
 AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
 
+# 使用工具
+async def use_tool(handle, session, type, data):
+    if type == "python":
+        logger.info(f"使用python工具, data: {data}")
+        await handle.send("正在执行python代码...")
+        from ..run_code.run import run as run_code
+        str_code = "py\n" + data
+        res = await run_code(str_code)
+        logger.info(f"python执行结果: {res}")
+        session.append_content(SYSTEM_ROLE, res)
+    else:
+        raise Exception(f"unknown tool type")
 
 # 获取某个群组的自动聊天情绪值
 def get_autochat_emotion_value(group_id):
@@ -88,8 +102,19 @@ async def _(bot: Bot, event: MessageEvent):
     if not gwl.check(event, allow_private=True, allow_super=True): return
 
     # 群组内只有at机器人的消息才会被回复
-    if is_group(event) and ("at" not in query_cqs or query_cqs["at"][0]["qq"] != bot.self_id):
-        return
+    if is_group(event):
+        has_at = False
+        if "at" in query_cqs:
+            for cq in query_cqs["at"]:
+                if cq["qq"] == bot.self_id:
+                    has_at = True
+                    break
+        if "text" in query_cqs:
+            for cq in query_cqs["text"]:
+                if f"@{BOT_NAME}" in cq['text']:
+                    has_at = True
+                    break
+        if not has_at: return
     
     # cd检测
     if not (await cd.check(event)): return
@@ -99,6 +124,12 @@ async def _(bot: Bot, event: MessageEvent):
 
     # 用于备份的session_id
     session_id_backup = None
+
+    with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
+        system_prompt = f.read().format(
+            bot_name=BOT_NAME,
+            current_date=datetime.now().strftime("%Y-%m-%d")
+        )
 
     reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
     if reply_msg_obj is not None:
@@ -124,35 +155,42 @@ async def _(bot: Bot, event: MessageEvent):
                 return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
             logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
-            session = ChatSession(API_KEY, API_BASE, QUERY_MODEL, PROXY)
+            session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
             if len(reply_imgs) > 0 or reply_text.strip() != "":
                 role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
                 session.append_content(role, reply_text, reply_imgs)
     else:
-        session = ChatSession(API_KEY, API_BASE, QUERY_MODEL, PROXY)
+        session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
 
     session.append_content(USER_ROLE, query_text, query_imgs)
 
     # 进行询问
     try:
-        res, retry_count, ptokens, ctokens = await session.get_response(
-            max_retries=MAX_RETIRES, 
-            group_id=(event.group_id if is_group(event) else None),
-            user_id=event.user_id,
-            is_autochat=False
-        )
-        res = str(MessageSegment.text(res))
-        if retry_count > 0:
-            res += f"\n[重试次数:{retry_count}]"
+        while True:
+            res, retry_count, ptokens, ctokens = await session.get_response(
+                max_retries=MAX_RETIRES, 
+                group_id=(event.group_id if is_group(event) else None),
+                user_id=event.user_id,
+                is_autochat=False
+            )
+            res = str(MessageSegment.text(res))
+
+            # 如果回复时关闭则取消回复
+            if not gwl.check(event, allow_private=True, allow_super=True): return
+
+            try:
+                # 调用工具
+                ret = json.loads(res)
+                await use_tool(chat_request, session, ret["tool"], ret["data"])
+            except Exception as exc:
+                logger.info(f"工具调用失败: {exc}")
+                break
     except Exception as error:
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
     
-    # 如果回复时关闭则取消回复
-    if not gwl.check(event, allow_private=True, allow_super=True): return
-
     # 进行回复
     if len(res) < FOLD_LENGTH_THRESHOLD or not is_group(event):
         logger.info(f"非折叠回复")

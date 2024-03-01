@@ -16,17 +16,20 @@ RETRY_INTERVAL = config['retry_interval']
 session_id = 0
 
 class ChatSession:
-    def __init__(self, api_key, api_base, model, proxy):
+    def __init__(self, api_key, api_base, text_model, mm_model, proxy, system_prompt=None):
         global session_id
         session_id += 1
         self.id = session_id
         logger.info(f"创建会话{self.id}")
-
         self.content = []
         self.api_key = api_key
         self.api_base = api_base
-        self.model = model
+        self.text_model = text_model
+        self.mm_model = mm_model
         self.proxy = proxy
+        self.system_prompt = system_prompt
+        if self.system_prompt:
+            self.append_content(SYSTEM_ROLE, self.system_prompt, verbose=False)
 
     # 添加一条消息
     def append_content(self, role, text, imgs=None, verbose=True):
@@ -57,15 +60,22 @@ class ChatSession:
 
     # 获取回复 并且自动添加回复到消息列表
     async def get_response(self, max_retries=3, group_id=None, user_id=None, is_autochat=False):
-        logger.info(f"会话{self.id}请求回复")
         openai.api_key = self.api_key
         if self.api_base: openai.api_base = self.api_base
         if self.proxy:    openai.proxy    = self.proxy
 
+        model = self.text_model
+        for msg in self.content:
+            for c in msg['content']:
+                if isinstance(c, dict) and c['type'] == "image_url":
+                    model = self.mm_model
+                    break
+        logger.info(f"会话{self.id}请求回复, 使用模型: {model['id']}")
+        
         for i in range(max_retries):
             try:
                 res_ = await openai.ChatCompletion.acreate(
-                    model=self.model['id'],
+                    model=model['id'],
                     messages=self.content,
                     max_tokens=MAX_TOKENS
                 )
@@ -92,8 +102,8 @@ class ChatSession:
             output_token_usage = completion_tokens,
             group_id = group_id,
             user_id = user_id,
-            input_price = self.model['input_pricing'],
-            output_price = self.model['output_pricing'],
+            input_price = model['input_pricing'],
+            output_price = model['output_pricing'],
             type = "chat_auto" if is_autochat else "chat_query"
         )
         commit()

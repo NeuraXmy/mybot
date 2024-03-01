@@ -69,6 +69,10 @@ class Counter:
         return self.count.get(key, 0)
     def items(self):
         return self.count.items()
+    def keys(self):
+        return self.count.keys()
+    def values(self):
+        return self.count.values()
     def __len__(self):
         return len(self.count)
     def __str__(self):
@@ -76,7 +80,7 @@ class Counter:
     def clear(self):
         self.count.clear()
     def __getitem__(self, key):
-        return self.count[key]
+        return self.count.get(key, 0)
     def __setitem__(self, key, value):
         self.count[key] = value
     def keys(self):
@@ -132,7 +136,7 @@ class FileDB:
 
     def load(self):
         try:
-            with open(self.path, 'r') as f:
+            with open(self.path, 'r', encoding='utf-8') as f:
                 self.data = json.load(f)
             self.logger.debug(f'加载数据库 {self.path} 成功')
         except:
@@ -144,8 +148,8 @@ class FileDB:
 
     def save(self):
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with open(self.path, 'w') as f:
-            json.dump(self.data, f, indent=4)
+        with open(self.path, 'w', encoding='utf-8') as f:
+            json.dump(self.data, f, indent=4, ensure_ascii=False)
         self.logger.debug(f'保存数据库 {self.path}')
 
     def get(self, key, default=None):

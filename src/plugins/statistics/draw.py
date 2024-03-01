@@ -251,3 +251,38 @@ def draw_date_count_plot(dates, counts, path, user_counts=None):
     plt.savefig(path)
     logger.info(f"绘制完成")
     
+
+# 绘制词汇统计
+def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_counts, word, path):
+    logger.info(f"开始绘制词汇统计到{path}")
+
+    k, n = len(topk_user), len(dates)
+    other_users = [user for user in user_counts.keys() if user not in topk_user]
+
+    plt.figure(figsize=(8, 8))
+    ax1 = plt.subplot(211)
+    ax2 = plt.subplot(212)
+
+    topk_user_count = [user_counts[user_id] for user_id in topk_user]
+    topk_user_count += [sum([user_counts[user_id] for user_id in other_users])]
+    labels = [f'{topk_name[i]} ({topk_user_count[i]})' for i in range(k)]
+    labels += [f'其他 ({topk_user_count[k]})']
+    ax1.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
+
+    date_topk_count = [[user_date_counts[i][user_id] for i in range(n)] for user_id in topk_user]
+    date_topk_count += [[sum([user_date_counts[i][user_id] for user_id in other_users]) for i in range(n)]]
+    bottom = [0] * n
+    for i in range(k):
+        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom)
+        bottom = [bottom[j] + date_topk_count[i][j] for j in range(n)]
+    ax2.bar(dates, date_topk_count[k], label='其他', bottom=bottom)
+    ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax2.legend(fontsize=8)
+    ax2.set_xlabel('日期')
+    ax2.set_ylabel(f'消息数')
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.tight_layout()
+    plt.savefig(path)
+    logger.info(f"绘制完成")

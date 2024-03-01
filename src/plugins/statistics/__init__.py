@@ -6,14 +6,15 @@ from datetime import datetime
 from PIL import Image
 import io
 from ..utils import *
-from .draw import draw_all, reset_jieba, draw_date_count_plot
-from ..record.sql import msg_range, msg_count
+from .draw import draw_all, reset_jieba, draw_date_count_plot, draw_word_count_plot
+from ..record.sql import msg_range, msg_count, text_range
 
 
 config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
 gwl = get_group_white_list(file_db, logger, "sta")
+cd = ColdDown(file_db, logger, config['cd'])
 
 
 STATICSTIC_TIME = config['statistic_time']
@@ -23,6 +24,8 @@ PLOT_TOPK1 = config['pie_topk']
 PLOT_TOPK2 = config['plot_topk']
 PLOT_INTERVAL = config['plot_interval']
 PLOT_PATH = "./data/statistics/plots/"
+STA_WORD_TOPK = config['sta_word_topk']
+
 
 
 # 获取某天统计图数据
@@ -88,6 +91,35 @@ def get_date_count_statistic(bot, group_id, days, user_id=None):
     ret = (MessageSegment.image(imgByteArr))
     return ret
 
+# 获取某个词的统计图
+async def get_word_statistic(bot, group_id, days, word):
+    t = datetime.now()
+    dates = []
+    user_counts = Counter()
+    user_date_counts = [Counter() for _ in range(days)]
+    for i in range(days):
+        date = (t - timedelta(days=i)).strftime("%Y-%m-%d")
+        start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
+        end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
+        msgs = text_range(group_id,
+                            datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
+                            datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
+        for msg in msgs:
+            if word in msg['text']:
+                user_counts.inc(str(msg['user_id']))
+                user_date_counts[i].inc(str(msg['user_id']))
+        dates.append(datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"))
+    sorted_user_counts = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)
+    topk_user = [str(user) for user, _ in sorted_user_counts[:STA_WORD_TOPK]]
+    topk_name = [await get_user_name(bot, group_id, user) for user in topk_user]
+    save_path = PLOT_PATH + f"plot_{group_id}_word_count.jpg"
+    draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_counts, word, save_path)
+    img = Image.open(save_path)
+    imgByteArr = io.BytesIO()
+    img.save(imgByteArr, format='PNG')
+    imgByteArr = imgByteArr.getvalue()
+    ret = (MessageSegment.image(imgByteArr))
+    return ret
 
 # ------------------------------------------------ 聊天逻辑 ------------------------------------------------
 
@@ -97,7 +129,7 @@ sta = on_command("/sta", priority=100, block=False)
 @sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not check_superuser(event): return
+    if not (await cd.check(event)): return
     try:
         try:
             date = event.get_plaintext().split()[1]
@@ -117,8 +149,7 @@ sta2 = on_command("/sta2", priority=100, block=False)
 @sta2.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
-    if not check_superuser(event): return
-
+    if not (await cd.check(event)): return
     msg = await get_msg(bot, event.message_id)
     cqs = extract_cq_code(msg)
     user_id = None
@@ -136,6 +167,28 @@ async def _(bot: Bot, event: GroupMessageEvent):
         logger.print_exc(f'发送总消息量关于时间的统计图失败')
         return await sta2.finish(f'发送总消息量关于时间的统计图失败：{e}')
     await sta2.finish(res)
+
+
+# 发送某个词的统计图
+sta_word = on_command("/sta_word", priority=100, block=False)
+@sta_word.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not (await cd.check(event)): return
+    args = event.get_plaintext().removeprefix('/sta_word').strip().split()
+    try:
+        word = args[0]
+        try:
+            days = int(args[1])
+        except:
+            logger.info(f'日期格式错误, 使用默认30天')
+            days = 30
+            word = event.get_plaintext().split()[1]
+        res = await get_word_statistic(bot, event.group_id, days, word)
+    except Exception as e:
+        logger.print_exc(f'发送某个词的统计图失败')
+        return await sta_word.finish(f'发送某个词的统计图失败：{e}')
+    await sta_word.finish(res)
 
 
 # 添加用户词汇

@@ -58,15 +58,15 @@ imgexp:
 
 
 chat:
-  query_model:                    # 询问使用的模型
+  query_text_model:                    # 询问使用的文本模型
+    id: "gpt-4-1106-preview"
+    input_pricing:  0.00001       # 每个输入token的价格（美元）
+    output_pricing: 0.00003       # 每个输出token的价格（美元）
+  
+  query_mm_model:                     # 询问使用的多模态模型
     id: "gpt-4-vision-preview"
     input_pricing:  0.00001       # 每个输入token的价格（美元）
     output_pricing: 0.00003       # 每个输出token的价格（美元）
-    
-  autochat_model:                 # 自动聊天使用的模型
-    id: "gpt-3.5-turbo-16k"
-    input_pricing:  0.0000005     # 每个输入token的价格（美元）
-    output_pricing: 0.0000015     # 每个输出token的价格（美元）
 
   fold_response_threshold: 200    # 群聊中超过多少字折叠回复
   session_len_limit: 10           # 会话长度限制
@@ -124,6 +124,8 @@ statistics:
   pie_topk: 9                   # 饼图显示的前k名
   plot_topk: 5                  # 折线图显示的前k名
   plot_interval: 15             # 折线图的时间间隔（分钟）
+  sta_word_topk: 10             # 词汇统计显示前k个用户
+  cd: 60
 
 touhou:
   model_id: "text-embedding-ada-002"  
