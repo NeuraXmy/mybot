@@ -88,11 +88,12 @@ def get_date_count_statistic(bot, group_id, days, user_id=None):
     imgByteArr = io.BytesIO()
     img.save(imgByteArr, format='PNG')
     imgByteArr = imgByteArr.getvalue()
-    ret = (MessageSegment.image(imgByteArr))
+    ret = [MessageSegment.image(imgByteArr)]
     return ret
 
 # 获取某个词的统计图
 async def get_word_statistic(bot, group_id, days, word):
+    words = word.split('，') if '，' in word else word.split(',')
     t = datetime.now()
     dates = []
     user_counts = Counter()
@@ -105,7 +106,7 @@ async def get_word_statistic(bot, group_id, days, word):
                             datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
                             datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
         for msg in msgs:
-            if word in msg['text']:
+            if any([word in msg['text'] for word in words]):
                 user_counts.inc(str(msg['user_id']))
                 user_date_counts[i].inc(str(msg['user_id']))
         dates.append(datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"))
@@ -118,7 +119,7 @@ async def get_word_statistic(bot, group_id, days, word):
     imgByteArr = io.BytesIO()
     img.save(imgByteArr, format='PNG')
     imgByteArr = imgByteArr.getvalue()
-    ret = (MessageSegment.image(imgByteArr))
+    ret = [MessageSegment.image(imgByteArr)]
     return ret
 
 # ------------------------------------------------ 聊天逻辑 ------------------------------------------------
@@ -155,8 +156,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
     user_id = None
     if 'at' in cqs and len(cqs['at']) > 0:
         user_id = cqs['at'][0]['qq']
-
     try:
+        if event.get_plaintext().removeprefix('/sta2').strip() == '': return
         try:
             days = int(event.get_plaintext().split()[1])
         except:
@@ -166,6 +167,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f'发送总消息量关于时间的统计图失败')
         return await sta2.finish(f'发送总消息量关于时间的统计图失败：{e}')
+    res.insert(0, MessageSegment.reply(event.message_id))
     await sta2.finish(res)
 
 
@@ -176,6 +178,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     if not (await cd.check(event)): return
     args = event.get_plaintext().removeprefix('/sta_word').strip().split()
+    if len(args) == 0: return
     try:
         word = args[0]
         try:
@@ -183,11 +186,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         except:
             logger.info(f'日期格式错误, 使用默认30天')
             days = 30
-            word = event.get_plaintext().split()[1]
         res = await get_word_statistic(bot, event.group_id, days, word)
     except Exception as e:
         logger.print_exc(f'发送某个词的统计图失败')
         return await sta_word.finish(f'发送某个词的统计图失败：{e}')
+    res.insert(0, MessageSegment.reply(event.message_id))
     await sta_word.finish(res)
 
 
