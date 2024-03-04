@@ -133,3 +133,18 @@ async def handle_get_group_new_msg(cid, group_id):
         process_msg(msg)
     return new_msg
 
+# 获取客户端数据
+@rpc('get_client_data')
+async def handle_get_client_data(cid, name):
+    try:
+        with open(f'data/rpc/client_data/{name}.json', 'r') as f:
+            return json.load(f)
+    except:
+        return None
+    
+# 设置客户端数据
+@rpc('set_client_data')
+async def handle_set_client_data(cid, name, data):
+    with open(f'data/rpc/client_data/{name}.json', 'w') as f:
+        json.dump(data, f)
+    return True

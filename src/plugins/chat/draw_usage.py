@@ -70,6 +70,7 @@ def draw(start_time, end_time):
     # 保存图片
     os.makedirs(os.path.dirname(PLT_SAVE_PATH), exist_ok=True)
     plt.savefig(PLT_SAVE_PATH)
+    plt.close()
 
     logger.info(f"token使用统计图绘制完成: {PLT_SAVE_PATH}")
 

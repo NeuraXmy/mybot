@@ -231,6 +231,7 @@ def draw_all(recs, interval, topk1, topk2, user, name, path):
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)
     plt.savefig(path)
+    plt.close()
     logger.info(f"绘制完成")
 
 
@@ -238,9 +239,9 @@ def draw_all(recs, interval, topk1, topk2, user, name, path):
 def draw_date_count_plot(dates, counts, path, user_counts=None):
     logger.info(f"开始绘制群总聊天数关于时间的折线图到{path}")
     plt.figure(figsize=(8, 4))
-    plt.bar(dates, counts, label='其他消息数', color='#bbbbbb')
+    plt.bar(dates, counts, label='其他消息数', color='#bbbbbb', width=1)
     if user_counts is not None:
-        plt.bar(dates, user_counts, label='用户消息数', color='#dddddd')
+        plt.bar(dates, user_counts, label='用户消息数', color='#dddddd', width=1)
     plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator())
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
     plt.xlabel('日期')
@@ -249,6 +250,7 @@ def draw_date_count_plot(dates, counts, path, user_counts=None):
     plt.yticks(fontsize=8)
     plt.legend(fontsize=8)
     plt.savefig(path)
+    plt.close()
     logger.info(f"绘制完成")
     
 
@@ -273,9 +275,9 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
     date_topk_count += [[sum([user_date_counts[i][user_id] for user_id in other_users]) for i in range(n)]]
     bottom = [0] * n
     for i in range(k):
-        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom)
+        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom, width=1)
         bottom = [bottom[j] + date_topk_count[i][j] for j in range(n)]
-    ax2.bar(dates, date_topk_count[k], label='其他', bottom=bottom)
+    ax2.bar(dates, date_topk_count[k], label='其他', bottom=bottom, width=1)
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
     ax2.legend(fontsize=8)
@@ -285,4 +287,5 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
     plt.yticks(fontsize=8)
     plt.tight_layout()
     plt.savefig(path)
+    plt.close()
     logger.info(f"绘制完成")
