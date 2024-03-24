@@ -38,6 +38,22 @@ chat:
     或使用 random: 随机情绪值 daynight: 根据时间设置情绪值
     [emo]为空时为查看当前情绪值
 
+cron:
+  name: "定时提醒服务"
+  help: |
+    /cron_add 指示 添加定时提醒
+    /cron_del id 删除定时提醒（仅创建者和超级用户）
+    /cron_list 查看定时提醒列表
+    /cron_clear 清空定时提醒列表（仅超级用户）
+    /cron_sub id 为自己订阅提醒，提醒时会自动at订阅者 如果附加@则可以添加指定用户（仅创建者和超级用户）
+    /cron_unsub id 为自己取消订阅提醒 ，用法同/cron_sub
+    /cron_sublist id 查看订阅成员列表
+    /cron_unsuball id 取消所有订阅（仅创建者和超级用户）
+    /cron_mute id 关闭提醒（仅创建者和超级用户）
+    /cron_unmute id 开启提醒（仅创建者和超级用户）
+    /cron_muteall 关闭所有提醒（仅超级用户）
+    /cron_mysub 查看自己订阅的提醒
+
 imgexp:
   name: "搜图服务"
   help: |
@@ -70,6 +86,7 @@ pjsk:
     /pjsk sub 订阅提醒（提醒时会自动at订阅者）
     /pjsk unsub 取消订阅
     /pjsk sub_list 查看订阅成员列表
+    /活动剧情对话角色搜索 角色名1 角色名2 ... 搜索包含所有指定角色的活动剧情对话
     每天更新一次live数据
     数据来源：sekai-world.github.io/sekai-master-db-diff
 
