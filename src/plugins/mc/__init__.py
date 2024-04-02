@@ -558,7 +558,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
-    server.game_name = str(event.get_message()).replace('/mc_start', '').strip()
+    server.game_name = str(event.get_message()).replace('/start_game', '').strip()
     server.save()
     await start.finish(f'切换到周目: {server.game_name}')
     

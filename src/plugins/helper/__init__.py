@@ -43,7 +43,7 @@ def init_helper():
         if cmd == "/help":
             help = on_command(cmd, block=False, priority=100, rule=to_me())
         else:
-            help = on_command(cmd, block=False, priority=100)
+            help = on_command(cmd, block=False, priority=100, aliases={f"/help_{key}", f"/{key} help", f"/{key}_help"})
 
         @help.handle()
         async def _(event: MessageEvent, help_text=help_text, cd_index=cd_index):

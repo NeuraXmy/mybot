@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from datetime import datetime
 from nonebot import get_bot
+from dataclasses import dataclass
 import aiohttp
 import json
 from ..utils import *
@@ -15,19 +16,24 @@ file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = get_group_white_list(file_db, logger, 'pjsk')
 
-VLIVE_URL         = "https://sekai-world.github.io/sekai-master-db-diff/virtualLives.json"
-EVENT_URL         = "https://sekai-world.github.io/sekai-master-db-diff/events.json"
-EVENT_STORY_URL   = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
-CHARACTER_URL     = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
-CHARACTER_2DS_URL = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
+MUSIC_URL               = "https://sekai-world.github.io/sekai-master-db-diff/musics.json"
+MUSIC_DIFFICULTY_URL    = "https://sekai-world.github.io/sekai-master-db-diff/musicDifficulties.json"
+VLIVE_URL               = "https://sekai-world.github.io/sekai-master-db-diff/virtualLives.json"
+EVENT_URL               = "https://sekai-world.github.io/sekai-master-db-diff/events.json"
+EVENT_STORY_URL         = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
+CHARACTER_URL           = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
+CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
+USER_PROFILE_URL        = "http://suite.unipjsk.com/api/user/{uid}/profile"
 
 VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
 
-VLIVE_SAVE_PATH         = "data/pjsk/vlive.json"
-EVENT_SAVE_PATH         = "data/pjsk/event.json"
-EVENT_STORY_SAVE_PATH   = "data/pjsk/event_story.json"
-CHARACTER_SAVE_PATH     = "data/pjsk/character.json"
-CHARACTER_2DS_SAVE_PATH = "data/pjsk/character_2ds.json"
+MUSIC_SAVE_PATH             = "data/pjsk/music.json"
+MUSIC_DIFFICULTY_SAVE_PATH  = "data/pjsk/music_difficulty.json"
+VLIVE_SAVE_PATH             = "data/pjsk/vlive.json"
+EVENT_SAVE_PATH             = "data/pjsk/event.json"
+EVENT_STORY_SAVE_PATH       = "data/pjsk/event_story.json"
+CHARACTER_SAVE_PATH         = "data/pjsk/character.json"
+CHARACTER_2DS_SAVE_PATH     = "data/pjsk/character_2ds.json"
 
 EVENT_STORY_DETAIL_URL = "https://storage.sekai.best/sekai-assets/event_story/{asset_bundle_name}/scenario_rip/{event_scene_id}.asset"
 EVENT_STORY_DETAIL_SAVE_PATH = "data/pjsk/story/event_story_details.json"
@@ -43,7 +49,95 @@ EVENT_END_NOTIFY_BEFORE_MINUTE      = config['event_end_notify_before_minute']
 
 DATA_UPDATE_TIME                   = config['data_update_time']
 
-# ------------------------------------------ 工具函数 ------------------------------------------ #
+
+@dataclass
+class Mine:
+    coin: int = 0
+    crystal: int = 0
+    shard: int = 0
+    def __str__(self):
+        if self.coin == 0 and self.crystal == 0 and self.shard == 0: return "无"
+        res = ""
+        if self.coin > 0: res += f"{self.coin}金币 "
+        if self.crystal > 0: res += f"{self.crystal}石头 "
+        if self.shard > 0: res += f"{self.shard}碎片 "
+        return res.strip()
+    def __add__(self, other):
+        return Mine(self.coin + other.coin, self.crystal + other.crystal, self.shard + other.shard)
+    def __sub__(self, other):
+        return Mine(self.coin - other.coin, self.crystal - other.crystal, self.shard - other.shard)
+    
+MUSIC_ACHIEVEMENT_MINE = [
+    Mine(0, 10, 0), # C
+    Mine(0, 20, 0), # B
+    Mine(0, 30, 0), # A
+    Mine(0, 50, 0), # S
+    Mine(500, 0, 0), # Easy
+    Mine(1000, 0, 0),
+    Mine(2000, 0, 0),
+    Mine(5000, 0, 0),
+    Mine(1000, 0, 0), # Normal
+    Mine(2000, 0, 0),
+    Mine(4000, 0, 0), 
+    Mine(10000, 0, 0), 
+    Mine(1500, 0, 0), # Hard
+    Mine(3000, 0, 0),
+    Mine(6000, 0, 0),
+    Mine(0, 50, 0),
+    Mine(2000, 0, 0), # Expert
+    Mine(4000, 0, 0),
+    Mine(0, 20, 0),
+    Mine(0, 50, 0),
+    Mine(3000, 0, 0), # Master
+    Mine(6000, 0, 0),
+    Mine(0, 20, 0),
+    Mine(0, 50, 0),
+    Mine(3000, 0, 0), # Append
+    Mine(6000, 0, 0),
+    Mine(0, 0, 5),
+    Mine(0, 0, 10),
+]
+
+
+# ------------------------------------------ 数据管理 ------------------------------------------ #
+
+# 下载用户信息 返回json
+async def get_user_profile(user_id):
+    url = USER_PROFILE_URL.format(uid=user_id)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            else:
+                raise Exception(resp.status)
+
+# 下载音乐数据到本地
+async def download_music_data():
+    logger.info(f"开始下载音乐数据")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(MUSIC_URL) as resp:
+            if resp.status == 200:
+                musics = await resp.json()
+                with open(MUSIC_SAVE_PATH, 'wb') as f:
+                    f.write(json.dumps(musics, indent=4, ensure_ascii=False).encode('utf8'))
+                logger.info(f"下载音乐数据成功: 共获取{len(musics)}条")
+                return
+            else:
+                raise Exception("下载音乐数据失败")
+
+# 下载音乐难度数据到本地
+async def download_music_difficulty_data():
+    logger.info(f"开始下载音乐难度数据")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(MUSIC_DIFFICULTY_URL) as resp:
+            if resp.status == 200:
+                difficulties = await resp.json()
+                with open(MUSIC_DIFFICULTY_SAVE_PATH, 'wb') as f:
+                    f.write(json.dumps(difficulties, indent=4, ensure_ascii=False).encode('utf8'))
+                logger.info(f"下载音乐难度数据成功: 共获取{len(difficulties)}条")
+                return
+            else:
+                raise Exception("下载音乐难度数据失败")
 
 # 下载vlive数据到本地
 async def download_vlive_data():
@@ -177,7 +271,27 @@ async def update_event_story_detail(force_update=False):
     with open(EVENT_STORY_DETAIL_SAVE_PATH, 'wb') as f:
         f.write(json.dumps(details, indent=4, ensure_ascii=False).encode('utf8'))
             
-    
+
+# 读取音乐数据，如果不存在则下载
+async def get_music_data():
+    try:
+        with open(MUSIC_SAVE_PATH, 'r') as f:
+            return json.load(f)
+    except:
+        await download_music_data()
+        with open(MUSIC_SAVE_PATH, 'r') as f:
+            return json.load(f)
+
+# 读取音乐难度数据，如果不存在则下载
+async def get_music_difficulty_data():
+    try:
+        with open(MUSIC_DIFFICULTY_SAVE_PATH, 'r') as f:
+            return json.load(f)
+    except:
+        await download_music_difficulty_data()
+        with open(MUSIC_DIFFICULTY_SAVE_PATH, 'r') as f:
+            return json.load(f)
+
 # 读取vlive数据，如果不存在则下载
 async def get_vlive_data():
     try:
@@ -278,7 +392,133 @@ def parse_event_story_data(event_story):
             })
     return ret
 
+# 从music数据中解析出需要的信息
+def parse_music_data(music_data, music_difficulty_data):
+    ret = {}
+    for item in music_data:
+        ret[item["id"]] = item
+        ret[item["id"]]["has_append"] = False
+        ret[item["id"]]["diff"] = {}
+    for diff in music_difficulty_data:
+        mid = diff["musicId"]
+        if diff["musicDifficulty"] == "append":
+            ret[mid]["has_append"] = True
+        ret[mid]["diff"][diff["musicDifficulty"]] = diff
+    return ret
+
+# ------------------------------------------ 工具函数 ------------------------------------------ #
+
+# 获取用户游戏id
+def get_user_game_id(user_id):
+    user_binds = file_db.get("user_binds", {})
+    return user_binds.get(str(user_id), None)
+
+# 统计矿产资源
+async def count_mineral(user_profile):
+    music_data = await get_music_data()
+    music_difficulty_data = await get_music_difficulty_data()
+    music_data = parse_music_data(music_data, music_difficulty_data)
+
+    res = {
+        "purchased_music": {
+            "music_count": 0,
+            "score": Mine(),
+            "easy": Mine(),
+            "normal": Mine(),
+            "hard": Mine(),
+            "expert": Mine(),
+            "master": Mine(),
+            "append": Mine(),
+        },
+        "unpurchased_music": {
+            "music_count": 0,
+            "master": Mine(),
+            "append": Mine(),
+        },
+    }
+
+    now = datetime.now().timestamp() * 1000
+
+    # 已经购买的歌
+    purchased_musics = set()
+    for user_music in user_profile["userMusics"]:
+        # 排除未发布和全曲
+        music = music_data[user_music["musicId"]]
+        if music['isFullLength'] or music['publishedAt'] > now:
+            continue
+        
+        res["purchased_music"]["music_count"] += 1
+        purchased_musics.add(user_music["musicId"])
+        
+        # 统计矿产
+        achievements = {a['musicAchievementId'] for a in user_music.get('userMusicAchievements', [])}
+        for i in range(1, 5):
+            if i not in achievements:
+                res["purchased_music"]["score"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        for i in range(5, 9):
+            if i not in achievements:
+                res["purchased_music"]["easy"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        for i in range(9, 13):
+            if i not in achievements:
+                res["purchased_music"]["normal"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        for i in range(13, 17):
+            if i not in achievements:
+                res["purchased_music"]["hard"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        for i in range(17, 21):
+            if i not in achievements:
+                res["purchased_music"]["expert"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        for i in range(21, 25):
+            if i not in achievements:
+                res["purchased_music"]["master"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        if music["has_append"]:
+            for i in range(25, 29):
+                if i not in achievements:
+                    res["purchased_music"]["append"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+
+    # 未购买的歌
+    for music in music_data.values():
+        # 排除未发布和全曲
+        if music['isFullLength'] or music['publishedAt'] > now:
+            continue
+        if music['id'] in purchased_musics:
+            continue
+
+        res["unpurchased_music"]["music_count"] += 1
+
+        # 默认只统计 master append 的奖励
+        for i in range(21, 25):
+            if i not in achievements:
+                res["unpurchased_music"]["master"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+        if music["has_append"]:
+            for i in range(25, 29):
+                if i not in achievements:
+                    res["unpurchased_music"]["append"] += MUSIC_ACHIEVEMENT_MINE[i-1]
+    
+    return res
+
+
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
+
+# 绑定用户id
+bind_user_id = on_command("/pjsk bind", priority=1, block=False)
+@bind_user_id.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gwl.check(event, allow_private=True): return
+
+    user_id = event.get_plaintext().replace("/pjsk bind", "").strip()
+
+    if not user_id.isdigit():
+        return await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]请输入正确的游戏ID"))
+
+    user_binds = file_db.get("user_binds", {})
+    user_binds[str(event.user_id)] = str(user_id)
+    file_db.set("user_binds", user_binds)
+
+    logger.info(f"用户 {event.user_id} 绑定游戏ID {user_id}")
+
+    await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定成功"))
+
 
 # 获取最近的vlive信息
 get_vlive = on_command("/live", priority=1, block=False)
@@ -440,11 +680,54 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
 
 
+# 矿产资源查询
+mineral_search = on_command("/矿产资源", priority=1, block=False)
+@mineral_search.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gwl.check(event, allow_private=True): return
+
+    game_id = get_user_game_id(event.user_id)
+    if game_id is None:
+        return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定"))
+    
+    try:
+        profile = await get_user_profile(game_id)
+    except Exception as e:
+        logger.print_exc(f"获取用户 {game_id} profile失败: {e}")
+        return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，请确认已经上传抓包数据且上传时选择公开可读"))
+    
+    mine = await count_mineral(profile)
+    game_name = profile["user"]["userGamedata"]["name"]
+    update_time = datetime.fromtimestamp(profile["updatedAt"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+
+    res = f"{game_name} 的矿产资源 (更新时间:{update_time})\n"
+
+    pm_mine = mine['purchased_music']
+    res += f"已拥有的歌曲{pm_mine['music_count']}首:\n"
+    res += f"【评级奖励】{pm_mine['score'].crystal}\n"
+    # res += f"【Easy奖励】{pm_mine['easy'].crystal}\n"
+    # res += f"【Normal奖励】{pm_mine['normal'].crystal}\n"
+    res += f"【Hard奖励】{pm_mine['hard'].crystal}\n"
+    res += f"【Expert奖励】{pm_mine['expert'].crystal}\n"
+    res += f"【Master奖励】{pm_mine['master'].crystal}\n"
+    res += f"【Append奖励】{pm_mine['append'].shard}(碎片)\n"
+
+    upm_mine = mine['unpurchased_music']
+    res += f"未拥有的歌曲{upm_mine['music_count']}首:\n"
+    res += f"【Master奖励】{upm_mine['master'].crystal}\n"
+    res += f"【Append奖励】{upm_mine['append'].shard}(碎片)\n"
+
+    return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]{res.strip()}"))
+
+
 # ----------------------------------------- 定时任务 ------------------------------------------ #
 
 # 定时更新所有数据
 @scheduler.scheduled_job("cron", hour=DATA_UPDATE_TIME[0], minute=DATA_UPDATE_TIME[1], second=DATA_UPDATE_TIME[2])
 async def update_data():
+    await download_music_data()
+    await download_music_difficulty_data()
     await download_vlive_data()
     await download_event_data()
     await download_event_story_data()
