@@ -30,7 +30,24 @@ def get_task_next_run_time_str(group_id, task_id):
         return "无下次提醒"
     if task_job.next_run_time is None:
         return "无下次提醒"
-    return f"下次提醒: {task_job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    return f"下次: {task_job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+# 获取时间描述
+def get_task_time_desc(task):
+    param = task['parameters']
+    desc = ""
+    desc += param.get('year', "*") + " "
+    desc += param.get('month', "*") + " "
+    desc += param.get('day', "*") + " "
+    desc += param.get('hour', "*") + " "
+    desc += param.get('minute', "*") + " "
+    desc += param.get('second', "*")
+    if 'week'           in param: desc += f" w={param['week']}"
+    if 'day_of_week'    in param: desc += f" dow={param['day_of_week']}"
+    if 'start_date'     in param: desc += f" s={param['start_date']}"
+    if 'end_date'       in param: desc += f" t={param['end_date']}"
+    return desc
 
 
 # 获取task描述字符串
@@ -38,7 +55,7 @@ def task_to_str(task):
     res = f"【{task['id']}】{'(muted) ' if task['mute'] else ''}\n"
     res += f"创建者: {task['user_id']} 订阅者: {len(task['sub_users'])}人\n"
     res += f"内容: {get_shortname(task['content'], 64)}\n"
-    res += f"时间: {task['desc']}\n"
+    res += f"时间: {get_task_time_desc(task)}\n"
     res += f"{get_task_next_run_time_str(task['group_id'], task['id'])}\n"
     return res
 
@@ -83,21 +100,6 @@ async def parse_instruction(group_id, user_id, user_instruction):
             task['sub_users'] = [ str(user_id) ]
             task['count'] = 0
             task['mute'] = False
-
-            if 'error' not in task:
-                param = task['parameters']
-                desc = ""
-                desc += param.get('year', "*") + " "
-                desc += param.get('month', "*") + " "
-                desc += param.get('day', "*") + " "
-                desc += param.get('hour', "*") + " "
-                desc += param.get('minute', "*") + " "
-                desc += param.get('second', "*")
-                if 'week'           in param: desc += f" w={param['week']}"
-                if 'day_of_week'    in param: desc += f" dow={param['day_of_week']}"
-                if 'start_date'     in param: desc += f" s={param['start_date']}"
-                if 'end_date'       in param: desc += f" t={param['end_date']}"
-                task['desc'] = desc
 
             return task
         except Exception as e:
@@ -257,7 +259,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 cron_clear = on_command("/cron_clear", block=False, priority=0)
 @cron_clear.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not check_superuser(event.user_id): return
+    if not check_superuser(event): return
     if not gbl.check(event, allow_super=True): return
     if not (await cd.check(event)): return
 

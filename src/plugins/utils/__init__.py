@@ -7,6 +7,8 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 import os
 from copy import deepcopy
 import asyncio
+import base64
+import aiohttp
 from nonebot import require
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -36,6 +38,27 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+
+# 异步下载图片并且转化为CQ码
+async def download_image_to_cq(image_url):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as resp:
+                if resp.status != 200:
+                    return "[图片加载失败]"
+                image = await resp.read()
+                return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
+    except Exception as e:
+        return "[图片加载失败]"
+        
+# 读取本地图片并且转化为CQ码
+def read_image_to_cq(image_path):
+    try:
+        with open(image_path, 'rb') as f:
+            image = f.read()
+            return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'    
+    except Exception as e:
+        return "[图片加载失败]"    
 
 # 编辑距离
 def levenshtein_distance(s1, s2):

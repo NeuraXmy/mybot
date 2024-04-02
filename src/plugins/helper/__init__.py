@@ -2,6 +2,7 @@ import yaml
 from ..utils import *
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.rule import to_me
 
 config = get_config('helper')
 logger = get_logger('Helper')
@@ -38,13 +39,18 @@ def init_helper():
         help_text = help_text.strip()
         # 注册指令
         cmd = "/help" if key == '_global' else f"/help {key}"
-        help = on_command(cmd, block=False, priority=100)
+
+        if cmd == "/help":
+            help = on_command(cmd, block=False, priority=100, rule=to_me())
+        else:
+            help = on_command(cmd, block=False, priority=100)
+
         @help.handle()
         async def _(event: MessageEvent, help_text=help_text, cd_index=cd_index):
             fake_event = deepcopy(event)
             fake_event.user_id = 1
             if not gbl.check(fake_event, allow_private=True): return
-            if not cds[cd_index].check(event): return
+            if not (await cds[cd_index].check(event)): return
             await help.finish(help_text)
 
     logger.info(f'初始化帮助完成')

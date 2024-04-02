@@ -20,6 +20,9 @@ EVENT_URL         = "https://sekai-world.github.io/sekai-master-db-diff/events.j
 EVENT_STORY_URL   = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
 CHARACTER_URL     = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
 CHARACTER_2DS_URL = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
+
+VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
+
 VLIVE_SAVE_PATH         = "data/pjsk/vlive.json"
 EVENT_SAVE_PATH         = "data/pjsk/event.json"
 EVENT_STORY_SAVE_PATH   = "data/pjsk/event_story.json"
@@ -259,6 +262,7 @@ def parse_vlive_data(vlive):
     ret["rest_num"] = rest_num
     ret["start"] = ret["schedule"][0][0]
     ret["end"]   = ret["schedule"][-1][1]
+    ret["img_url"] = VLIVE_BANNER_URL.format(assetbundleName=vlive["assetbundleName"])
     return ret
 
 # 从eventstory数据中解析出需要的信息
@@ -273,7 +277,6 @@ def parse_event_story_data(event_story):
                 "title": scene["title"],
             })
     return ret
-
 
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
 
@@ -292,19 +295,20 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         if vlive is None: continue
         if datetime.now() > vlive["end"]: continue
         msg += f"【{vlive['name']}】\n"
+        msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
         msg += f"开始时间: {vlive['start'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         msg += f"结束时间: {vlive['end'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         if vlive["living"]: 
-            msg += f"虚拟Live进行中! "
+            msg += f"虚拟Live进行中!\n"
         elif vlive["current"] is not None:
-            msg += f"下一场: {get_readable_datetime(vlive['current'][0])}"
-        msg += f" 剩余场次: {vlive['rest_num']}\n"
+            msg += f"下一场: {get_readable_datetime(vlive['current'][0])}\n"
+        msg += f"剩余场次: {vlive['rest_num']}\n"
 
     if msg.endswith("\n"): msg = msg[:-1]
 
     if msg == "当前的虚拟Lives:": 
         return await get_vlive.finish("当前没有虚拟Live")
-    await get_vlive.finish(msg)
+    await get_vlive.finish(OutMessage(msg))
 
 
 # 获取最近的event信息（未完成）
@@ -470,7 +474,9 @@ async def vlive_notify():
                 if not (t.total_seconds() < 0 or t.total_seconds() > start_notify_before_minute * 60):
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
-                    msg = f"PJSK Live提醒\n【{vlive['name']}】将于 {get_readable_datetime(vlive['start'])} 开始"
+                    msg = f"【{vlive['name']}\n"
+                    msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
+                    msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
                     
                     for group_id in gwl.get():
                         try:
@@ -493,7 +499,9 @@ async def vlive_notify():
                 if not (t.total_seconds() < 0 or t.total_seconds() > end_notify_before_minute * 60):
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
-                    msg = f"PJSK Live提醒\n【{vlive['name']}】将于 {get_readable_datetime(vlive['end'])} 结束\n"
+                    msg = f"【{vlive['name']}】\n"
+                    msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
+                    msg += f"将于 {get_readable_datetime(vlive['end'])} 结束\n"
 
                     if vlive["living"]: 
                         msg += f"当前Live进行中"

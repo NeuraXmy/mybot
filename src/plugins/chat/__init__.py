@@ -95,7 +95,13 @@ async def _(bot: Bot, event: MessageEvent):
     query_text = extract_text(query_msg)
     query_imgs = extract_image_url(query_msg)
     query_cqs = extract_cq_code(query_msg)
+
+    # 空消息不回复
     if query_text == "" or query_text is None:
+        return
+    
+    # /开头的消息不回复
+    if query_text.strip()[0] == "/":
         return
 
     # 群组名单检测

@@ -77,6 +77,10 @@ mc:
     /opdel @user 删除用户的op（超级用户权限）
     /oplist 获取op列表
     /rcon cmd 向服务器发送rcon命令（超级用户/op权限）
+    /playtime 查询玩家游玩时间
+    /playtime_clear 清空玩家游玩时间（超级用户/op权限）
+    /start_game 切换到新周目（超级用户/op权限）
+
 
 pjsk:
   name: "世界计划服务"

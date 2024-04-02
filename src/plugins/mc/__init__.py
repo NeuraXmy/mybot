@@ -89,7 +89,8 @@ class ServerData:
             'admin': self.admin,
             'rcon_url': self.rcon_url,
             'rcon_password': self.rcon_password,
-            'player_time': self.player_time
+            'player_time': self.player_time,
+            'game_name': self.game_name
         }
         file_db.set(f'{self.group_id}.server_info', data)
         logger.info(f'在 {self.group_id} 中保存服务器 {data}')
@@ -103,7 +104,8 @@ class ServerData:
             'admin': [],
             'rcon_url': '',
             'rcon_password': '',
-            'player_time': {}
+            'player_time': {},
+            'game_name': 'unknown_game'
         })
         self.url    = data.get('url', '')
         self.bot_on = data.get('bot_on', True)
@@ -112,7 +114,21 @@ class ServerData:
         self.rcon_password = data.get('rcon_password', '')
         self.admin = data.get('admin', [])
         self.player_time = data.get('player_time', {})
+        self.game_name = data.get('game_name', 'unknown_game')
         logger.info(f'在 {self.group_id} 中加载服务器 url={data["url"]}')
+
+    # 增加玩家游玩时间
+    def inc_player_time(self, account, delta):
+        if self.game_name not in self.player_time:
+            self.player_time[self.game_name] = {}
+        if account in self.player_time[self.game_name]:
+            self.player_time[self.game_name][account] += delta
+        else:
+            self.player_time[self.game_name][account] = delta
+
+    # 清空当前周目玩家游玩时间
+    def clear_player_time(self):
+        self.player_time[self.game_name] = {}
 
     # 通过向服务器请求信息更新数据
     async def update(self, mute=False):
@@ -142,21 +158,24 @@ class ServerData:
                 if not mute:
                     self.queue.append(f'{self.players[account]["name"]} 离开了游戏')
                 remove_list.append(account)
+
+                # 玩家下线后更新游玩时间
                 play_time = timedelta2hour(datetime.now() - self.player_login_time[account])
                 self.player_login_time.pop(account)
-                if account in self.player_time:
-                    self.player_time[account] += play_time
-                else:
-                    self.player_time[account] = play_time
+                self.inc_player_time(account, play_time)
+
         for account in remove_list:
             self.players.pop(account)
 
+        # 定期更新玩家游玩时间
         player_time_updated = False
         for account in self.player_login_time:
             if datetime.now() - self.player_login_time[account] > timedelta(seconds=PLAYER_TIME_UPDATE_INTERVAL):
-                self.player_time[account] += timedelta2hour(datetime.now() - self.player_login_time[account])
+                self.inc_player_time(account, timedelta2hour(datetime.now() - self.player_login_time[account]))
                 self.player_login_time[account] = datetime.now()
                 player_time_updated = True
+        
+        # 如果有玩家下线或者游玩时间更新，保存数据
         if len(remove_list) > 0 or player_time_updated:
             self.save()
 
@@ -228,7 +247,7 @@ async def query_server():
         if server.bot_on:
             try:
                 await server.update(mute=server.first_update)
-                if server.failed_count > DISCONNECT_NOTIFY_COUNT:
+                if server.failed_count >= DISCONNECT_NOTIFY_COUNT:
                     logger.info(f'发送重连通知到 {server.group_id}')
                     server.queue.append('重新建立到卫星地图的连接')
                 server.failed_count = 0
@@ -236,8 +255,8 @@ async def query_server():
                 if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
                     logger.warning(f'{server.url} 定时查询失败: {e}')
                 if server.failed_count == DISCONNECT_NOTIFY_COUNT:
-                    logger.info(f'发送断连通知到 {server.group_id}')
-                    server.queue.append('与卫星地图的连接断开')
+                    logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
+                    server.queue.append(f'与卫星地图的连接断开: {e}')
                 server.failed_count += 1
                 server.next_query_ts = 0
 
@@ -274,7 +293,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
     server = get_server(event.group_id)
     
-    msg = server.info.strip() 
+    msg = f"【{server.game_name}】\n"
+    msg += server.info.strip() 
     if server.info.strip() != '':
         msg += '\n------------------------\n'
 
@@ -505,7 +525,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，响应:\n{resp}'))
 
 # 查询游玩时间统计
-sta = on_command("/mc_sta", priority=100, block=False)
+sta = on_command("/playtime", priority=100, block=False)
 @sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
@@ -513,21 +533,34 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
     msg = '游玩时间统计:\n'
-    for account, play_time in server.player_time.items():
-        msg += f'{account}: {play_time:.2f}h\n'
+    if server.game_name not in server.player_time or len(server.player_time[server.game_name]) == 0:
+        msg += '暂无数据'
+    else:
+        for account, play_time in server.player_time[server.game_name].items():
+            msg += f'{account}: {play_time:.2f}h\n'
     await sta.finish(msg.strip())
 
 # 清空游玩时间统计
-clear_sta = on_command("/mc_clear", priority=100, block=False)
+clear_sta = on_command("/playtime_clear", priority=100, block=False)
 @clear_sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
-    server.player_time = {}
+    server.clear_player_time()
     server.save()
     await clear_sta.finish('游玩时间统计已清空')
 
+# 开始新周目
+start = on_command("/start_game", priority=100, block=False)
+@start.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    server.game_name = str(event.get_message()).replace('/mc_start', '').strip()
+    server.save()
+    await start.finish(f'切换到周目: {server.game_name}')
     
     
 
