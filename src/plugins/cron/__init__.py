@@ -82,6 +82,7 @@ async def parse_instruction(group_id, user_id, user_instruction):
     with open('data/cron/system_prompt.txt', 'r', encoding='utf-8') as f:
         system_prompt = f.read()
     system_prompt = system_prompt.format(time=datetime.now().strftime('%Y-%m-%d %H:%M:%S %A'))
+    # print(system_prompt)
 
     session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_TEXT_MODEL, PROXY, system_prompt)
     session.append_content(USER_ROLE, user_instruction)

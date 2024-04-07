@@ -101,7 +101,7 @@ async def _(bot: Bot, event: MessageEvent):
         return
     
     # /开头的消息不回复
-    if query_text.strip()[0] == "/":
+    if query_text.strip().startswith("/"):
         return
 
     # 群组名单检测

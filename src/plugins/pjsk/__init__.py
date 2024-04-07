@@ -23,6 +23,8 @@ EVENT_URL               = "https://sekai-world.github.io/sekai-master-db-diff/ev
 EVENT_STORY_URL         = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
 CHARACTER_URL           = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
 CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
+
+BASIC_USER_PROFILE_URL  = "http://api.unipjsk.com/api/user/{uid}/profile"
 USER_PROFILE_URL        = "http://suite.unipjsk.com/api/user/{uid}/profile"
 
 VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
@@ -100,6 +102,16 @@ MUSIC_ACHIEVEMENT_MINE = [
 
 
 # ------------------------------------------ 数据管理 ------------------------------------------ #
+
+# 下载用户基本信息 返回json
+async def get_basic_user_profile(user_id):
+    url = BASIC_USER_PROFILE_URL.format(uid=user_id)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            else:
+                raise Exception(resp.status)
 
 # 下载用户信息 返回json
 async def get_user_profile(user_id):
@@ -511,13 +523,24 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     if not user_id.isdigit():
         return await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]请输入正确的游戏ID"))
 
+    try:
+        profile = await get_basic_user_profile(user_id)
+        if len(profile) == 0:
+            raise Exception("未查询到用户")
+        print(json.dumps(profile, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.print_exc(f"获取用户 {user_id} 基本profile失败: {e}")
+        return await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定失败，请确认游戏ID是否正确"))
+
+    game_name = profile["user"]["name"]
+
     user_binds = file_db.get("user_binds", {})
     user_binds[str(event.user_id)] = str(user_id)
     file_db.set("user_binds", user_binds)
 
     logger.info(f"用户 {event.user_id} 绑定游戏ID {user_id}")
 
-    await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定成功"))
+    await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定成功: {game_name}"))
 
 
 # 获取最近的vlive信息
@@ -695,7 +718,12 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         profile = await get_user_profile(game_id)
     except Exception as e:
         logger.print_exc(f"获取用户 {game_id} profile失败: {e}")
-        return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，请确认已经上传抓包数据且上传时选择公开可读"))
+        if int(e.args[0]) == 403:
+            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，抓包数据未选择公开可读"))
+        elif int(e.args[0]) == 404:
+            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，未查询到抓包数据"))
+        else:
+            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，未知错误"))
     
     mine = await count_mineral(profile)
     game_name = profile["user"]["userGamedata"]["name"]
