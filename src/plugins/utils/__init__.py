@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command, get_bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
 from copy import deepcopy
 import asyncio
@@ -341,6 +342,27 @@ async def get_reply_msg_obj(bot, msg):
     if "reply" not in cqs or len(cqs["reply"]) == 0: return None
     reply_id = cqs["reply"][0]["id"]
     return await get_msg_obj(bot, reply_id)
+
+
+# 发送回复消息
+async def send_reply_msg(handler, reply_id, message):
+    return await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
+
+# 发送at消息
+async def send_at_msg(handler, user_id, message):
+    return await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}'))
+
+# 发送群聊折叠消息 其中contents是text的列表
+async def send_group_fold_msg(bot, group_id, contents):
+    msg_list = [{
+        "type": "node",
+        "data": {
+            "user_id": bot.self_id,
+            "nickname": BOT_NAME,
+            "content": content
+        }
+    } for content in contents]
+    return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
 
 
 # 缩短名字

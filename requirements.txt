@@ -12,3 +12,4 @@ mcrcon
 ascii_magic
 PicImageSearch
 aiorpcx
+asteval

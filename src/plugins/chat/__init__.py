@@ -45,10 +45,16 @@ AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
 AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
 
 # 使用工具
-async def use_tool(handle, session, type, data):
+async def use_tool(handle, session, type, data, event):
     if type == "python":
         logger.info(f"使用python工具, data: {data}")
-        await handle.send("正在执行python代码...")
+
+        notify_msg = f"正在执行python代码:\n\n{data}"
+        if is_group(event):
+            await send_group_fold_msg(get_bot(), event.group_id, [notify_msg])
+        else:
+            await handle.send(notify_msg)
+
         from ..run_code.run import run as run_code
         str_code = "py\n" + data
         res = await run_code(str_code)
@@ -187,7 +193,7 @@ async def _(bot: Bot, event: MessageEvent):
             try:
                 # 调用工具
                 ret = json.loads(res)
-                await use_tool(chat_request, session, ret["tool"], ret["data"])
+                await use_tool(chat_request, session, ret["tool"], ret["data"], event)
             except Exception as exc:
                 logger.info(f"工具调用失败: {exc}")
                 break

@@ -92,6 +92,10 @@ cron:
   cd: 60                                  
 
 
+eval:
+  cd: 30
+
+
 mc:
   query_interval: 0.5            # 向卫星地图查询的间隔（秒）
   queue_consume_interval: 1      # 队列消费间隔（秒）

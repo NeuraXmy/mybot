@@ -54,6 +54,11 @@ cron:
     /cron_muteall 关闭所有提醒（仅超级用户）
     /cron_mysub 查看自己订阅的提醒
 
+eval:
+  name: "科学计算器服务"
+  help: |
+    /eval 计算式
+
 imgexp:
   name: "搜图服务"
   help: |
