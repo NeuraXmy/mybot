@@ -40,7 +40,16 @@ async def get_reply_image(handler, bot: Bot, event: MessageEvent, need_gif=False
         return None
     return img
 
-    
+
+async def apply_trans_and_reply(handler, event, img, trans, tmp_path):
+    if is_gif(img):
+        frames = [trans(frame.copy()) for frame in ImageSequence.Iterator(img)]
+        frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=img.info['duration'], loop=0)
+        await send_reply_msg(handler, event.message_id, get_image_cq(tmp_path))
+    else:
+        await send_reply_msg(handler, event.message_id, get_image_cq(trans(img)))
+
+
 gif = on_command("/img gif", priority=5, block=False)
 @gif.handle()
 async def handle(bot: Bot, event: MessageEvent):
@@ -98,18 +107,20 @@ async def handle(bot: Bot, event: MessageEvent):
     mode = "horizontal"
 
     args = event.get_plaintext().replace("/img mirror", "").strip()
-    if 'vertical' in args: 
+    if 'v' in args: 
         mode = "vertical"
 
     img = await get_reply_image(mirror, bot, event)
     if not img: return
 
     try:
-        if mode == "horizontal":
-            img = img.transpose(Image.FLIP_LEFT_RIGHT)
-        else:
-            img = img.transpose(Image.FLIP_TOP_BOTTOM)
-        await send_reply_msg(mirror, event.message_id, get_image_cq(img))
+        def trans(img):
+            if mode == "horizontal":
+                return img.transpose(Image.FLIP_LEFT_RIGHT)
+            else:
+                return img.transpose(Image.FLIP_TOP_BOTTOM)
+            
+        await apply_trans_and_reply(mirror, event, img, trans, "data/imgtool/tmp/mirror.gif")
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -132,8 +143,10 @@ async def handle(bot: Bot, event: MessageEvent):
     if not img: return
 
     try:
-        img = img.rotate(angle, expand=True)
-        await send_reply_msg(rotate, event.message_id, get_image_cq(img))
+        def trans(img):
+            return img.rotate(angle, expand=True)
+        
+        await apply_trans_and_reply(rotate, event, img, trans, "data/imgtool/tmp/rotate.gif")
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -191,3 +204,121 @@ async def handle(bot: Bot, event: MessageEvent):
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
         await send_reply_msg(speed, event.message_id, "处理图片失败")
+
+
+gray = on_command("/img gray", priority=5, block=False)
+@gray.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(gray, bot, event)
+    if not img: return
+
+    try:
+        def trans(img):
+            return img.convert("L")
+        
+        await apply_trans_and_reply(gray, event, img, trans, "data/imgtool/tmp/gray.gif")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(gray, event.message_id, "处理图片失败")
+
+
+mirror_mid = on_command("/img mid", priority=5, block=False)
+@mirror_mid.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(mirror_mid, bot, event)
+    if not img: return
+
+    mode = "horizontal"
+    args = event.get_plaintext().replace("/img mid", "").strip().split()
+    if 'vertical' in args or 'v' in args:
+        mode = "vertical"
+    if 'right' in args or 'r' in args or 'down' in args or 'd' in args:
+        mode += "_right"
+
+    try:
+        def trans(img):
+            width, height = img.size
+            if mode == "horizontal":
+                left_img = img.crop((0, 0, width // 2, height))
+                right_img = left_img.transpose(Image.FLIP_LEFT_RIGHT)
+                new_img = Image.new("RGBA", (width, height))
+                new_img.paste(left_img, (0, 0))
+                new_img.paste(right_img, (width // 2, 0))
+            elif mode == "vertical":
+                top_img = img.crop((0, 0, width, height // 2))
+                bottom_img = top_img.transpose(Image.FLIP_TOP_BOTTOM)
+                new_img = Image.new("RGBA", (width, height))
+                new_img.paste(top_img, (0, 0))
+                new_img.paste(bottom_img, (0, height // 2))
+            elif mode == "horizontal_right":
+                right_img = img.crop((width // 2, 0, width, height))
+                left_img = right_img.transpose(Image.FLIP_LEFT_RIGHT)
+                new_img = Image.new("RGBA", (width, height))
+                new_img.paste(left_img, (0, 0))
+                new_img.paste(right_img, (width // 2, 0))
+            else:
+                bottom_img = img.crop((0, height // 2, width, height))
+                top_img = bottom_img.transpose(Image.FLIP_TOP_BOTTOM)
+                new_img = Image.new("RGBA", (width, height))
+                new_img.paste(top_img, (0, 0))
+                new_img.paste(bottom_img, (0, height // 2))
+            return new_img
+            
+        await apply_trans_and_reply(mirror_mid, event, img, trans, "data/imgtool/tmp/mirror_mid.gif")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(mirror_mid, event.message_id, "处理图片失败")
+
+
+resize = on_command("/img resize", priority=5, block=False)
+@resize.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(resize, bot, event)
+    if not img: return
+
+    width, height = img.size
+
+    args = event.get_plaintext().replace("/img resize", "").strip()
+    try:
+        if args.endswith("x"):
+            width = int(width * float(args[:-1]))
+            height = int(height * float(args[:-1]))
+        else:
+            t = args.split("x")
+            if len(t) == 1:
+                t = int(t[0])
+                if width > height:
+                    height = int(height / width * t)
+                    width = t
+                else:
+                    width = int(width / height * t)
+                    height = t
+            else:
+                width = int(t[0])
+                height = int(t[1])
+        assert width > 0 and height > 0
+    except:
+        return await send_reply_msg(resize, event.message_id, "请输入缩放参数(格式参考: 2x, 512, 512x512)")
+    
+    try:
+        def trans(img):
+            return img.resize((width, height))
+        
+        await apply_trans_and_reply(resize, event, img, trans, "data/imgtool/tmp/resize.gif")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(resize, event.message_id, "处理图片失败")
+    
+

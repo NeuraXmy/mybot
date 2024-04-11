@@ -379,19 +379,18 @@ def is_gif(image):
 
 # 获取图片的cq码用于发送
 def get_image_cq(image):
-    if isinstance(image, str):
-        if image.startswith("http"):
-            return f'[CQ:image,file={image}]'
-        else:
-            with open(image, 'rb') as f:
-                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
     if isinstance(image, Image.Image):
-        format = 'GIF' if is_gif(image) else 'PNG'
-        from io import BytesIO
-        with BytesIO() as output:
-            image.save(output, format)
-            return f'[CQ:image,file=base64://{base64.b64encode(output.getvalue()).decode()}]'
-    raise Exception(f'未知的图片类型 {type(image)}')
+        tmp_file_path = 'data/imgtool/tmp/tmp'
+        tmp_file_path += '.gif' if is_gif(image) else '.png'
+        os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
+        image.save(tmp_file_path)
+        image = tmp_file_path
+    if image.startswith("http"):
+        return f'[CQ:image,file={image}]'
+    else:
+        with open(image, 'rb') as f:
+            return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+
 
 
 # 缩短名字
