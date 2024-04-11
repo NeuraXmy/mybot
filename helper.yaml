@@ -70,16 +70,20 @@ imgtool:
   help: |
     使用命令回复某张图片进行处理
     /img check 检查图片属性
-    /img gif png转gif
-    /img mirror 水平翻转 加上v为垂直翻转
-    /img rotate <angle> 逆时针旋转图片
+    /img gif 图片转gif
+    /img mirror 水平翻转 
+    /img mirror v 垂直翻转
+    /img rotate 逆时针旋转图片 
+    示例: /img rotate 90
     /img back 反转动图
-    /img speed <speed> 调整动图速度
-    <speed>为数字时直接调整动图duration 为类似 2x 时加倍动图速度
-    /img mid 左右对称，默认左边翻转到右边，加上v则上下对称，加上r反向
-    /img resize <size> 调整图片大小
-    <size>可能的格式: 0.5x 512 512x512
+    /img speed 调整动图速度
+    示例: /img speed 2x 加速到2倍速 /img speed 50 设置间隔为50
+    /img mid 左右对称，默认左边翻转到右边
+    示例: /img mid v 上面翻转到下面 /img mid r 右边翻转到左边 /img mid r v 下面翻转到上面
+    /img resize 调整图片大小
+    示例: /img resize 0.5x 缩小到50% /img resize 100x100 调整到100x100 /img resize 100 保持宽高比缩放到长边为100
     /img gray 灰度化
+    /img revcolor 反色
     
 mc:
   name: "MC服务器服务"

@@ -33,7 +33,7 @@ async def get_reply_image(handler, bot: Bot, event: MessageEvent, need_gif=False
                 img = Image.open(BytesIO(await resp.read()))
     except Exception as e:
         logger.print_exc(f"获取图片 {img_url} 失败: {e}")
-        await send_reply_msg(eval, event.message_id, "获取图片失败")
+        await send_reply_msg(handler, event.message_id, "获取图片失败")
         return None
     if need_gif and not is_gif(img):
         await send_reply_msg(handler, event.message_id, "图片不是动图")
@@ -322,3 +322,23 @@ async def handle(bot: Bot, event: MessageEvent):
         await send_reply_msg(resize, event.message_id, "处理图片失败")
     
 
+rev_color = on_command("/img revcolor", priority=5, block=False)
+@rev_color.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(rev_color, bot, event)
+    if not img: return
+
+    try:
+        def trans(img):
+            from PIL import ImageOps
+            return ImageOps.invert(img)
+        
+        await apply_trans_and_reply(rev_color, event, img, trans, "data/imgtool/tmp/rev_color.gif")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(rev_color, event.message_id, "处理图片失败")
+        
