@@ -11,6 +11,7 @@ cd_verbose_interval: 30 # 冷却中时间隔多少秒输出一次cd信息
 font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"  # 中文字体路径
 font_name: "Microsoft YaHei"                                  # Matplotlib库使用的中文字体名称
 
+
 openai:
   api_key: "sk-xxxxxxxxx"
   api_base: "https://xxxxxxxxxx/v1"
@@ -55,6 +56,10 @@ imgexp:
   yandex_max_num: 0
   ascii2d_max_num: 0
   cd: 60     
+
+
+imgtool:
+  cd: 30
 
 
 chat:

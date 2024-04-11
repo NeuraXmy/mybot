@@ -8,7 +8,7 @@ from asteval import Interpreter
 
 config = get_config('eval')
 logger = get_logger("Eval")
-file_db = get_file_db("data/chat/db.json", logger)
+file_db = get_file_db("data/eval/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'eval')
 aeval = Interpreter()

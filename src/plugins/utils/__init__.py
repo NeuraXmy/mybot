@@ -3,7 +3,7 @@ import yaml
 from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command, get_bot
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
 from copy import deepcopy
@@ -13,6 +13,7 @@ import aiohttp
 from nonebot import require
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
+from PIL import Image
 
 
 # 配置文件
@@ -344,6 +345,10 @@ async def get_reply_msg_obj(bot, msg):
     return await get_msg_obj(bot, reply_id)
 
 
+# 发送消息
+async def send_msg(handler, message):
+    return await handler.send(OutMessage(message))
+
 # 发送回复消息
 async def send_reply_msg(handler, reply_id, message):
     return await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
@@ -363,6 +368,30 @@ async def send_group_fold_msg(bot, group_id, contents):
         }
     } for content in contents]
     return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+
+# 是否是动图
+def is_gif(image):
+    if isinstance(image, str):
+        return image.endswith(".gif")
+    if isinstance(image, Image.Image):
+        return hasattr(image, 'is_animated') and image.is_animated
+    return False
+
+# 获取图片的cq码用于发送
+def get_image_cq(image):
+    if isinstance(image, str):
+        if image.startswith("http"):
+            return f'[CQ:image,file={image}]'
+        else:
+            with open(image, 'rb') as f:
+                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+    if isinstance(image, Image.Image):
+        format = 'GIF' if is_gif(image) else 'PNG'
+        from io import BytesIO
+        with BytesIO() as output:
+            image.save(output, format)
+            return f'[CQ:image,file=base64://{base64.b64encode(output.getvalue()).decode()}]'
+    raise Exception(f'未知的图片类型 {type(image)}')
 
 
 # 缩短名字

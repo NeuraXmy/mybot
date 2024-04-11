@@ -785,7 +785,7 @@ async def vlive_notify():
                 if not (t.total_seconds() < 0 or t.total_seconds() > start_notify_before_minute * 60):
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
-                    msg = f"【{vlive['name']}\n"
+                    msg = f"【{vlive['name']}】\n"
                     msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
                     msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
                     

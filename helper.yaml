@@ -64,6 +64,19 @@ imgexp:
   help: |
     使用/search回复图片
     搜图来源：GoogleLens SauceNAO
+
+imgtool:
+  name: "图片处理服务"
+  help: |
+    使用命令回复某张图片进行处理
+    /img check 检查图片属性
+    /img gif png转gif
+    /img mirror 水平翻转 
+    /img mirror vertical 垂直翻转
+    /img rotate <angle> 逆时针旋转图片
+    /img back 反转动图
+    /img speed <speed> 调整动图速度
+    <speed>为数字时直接调整动图duration 为类似 2x 时加倍动图速度
     
 mc:
   name: "MC服务器服务"
