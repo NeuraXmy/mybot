@@ -21,6 +21,10 @@ bobing:
     随机选择一个item
     /bing 
     博饼
+    /shuffle [item1] [item2] ...
+    随机排序items
+    /randuser [n]
+    随机选择一个群成员 n为选择的数量（不加默认为1）
                          
 chat:
   name: "GPT聊天服务"

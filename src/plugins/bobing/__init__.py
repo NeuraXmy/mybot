@@ -25,7 +25,7 @@ async def handle_function(bot: Bot, event: MessageEvent):
     await bing.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 
 
-rand = on_command("/rand", priority=100, block=False)
+rand = on_command("/rand", priority=100, block=False, aliases={'/roll'})
 @rand.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if not gbl.check(event, allow_private=True): return
@@ -41,7 +41,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     await rand.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 
 
-choice = on_command("/choice", priority=100, block=False)
+choice = on_command("/choice", priority=100, block=False, aliases={'/choose'})
 @choice.handle()
 async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     if not gbl.check(event, allow_private=True): return
@@ -54,3 +54,49 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     logger.info(f"send: {msg}")
     await choice.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
 
+
+shuffle = on_command("/shuffle", priority=100, block=False)
+@shuffle.handle()
+async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if not gbl.check(event, allow_private=True): return
+    if not (await cd.check(event)): return
+    choices = args.extract_plain_text().split()
+    if len(choices) <= 1:
+        msg = '至少需要两个选项'
+    else:
+        random.shuffle(choices)
+        msg = f'{", ".join(choices)}'
+    logger.info(f"send: {msg}")
+    await shuffle.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+
+
+randuser = on_command("/randuser", priority=100, block=False, aliases={'/rolluser'})
+@randuser.handle()
+async def handle_function(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if not gbl.check(event, allow_private=False): return
+    if not (await cd.check(event)): return
+
+    num = 1
+    try:
+        num = int(args.extract_plain_text())
+        if num <= 0 or num > 5:
+            raise Exception()
+    except:
+        pass
+    
+    group_members = await get_group_users(bot, event.group_id)
+
+    if num > len(group_members):
+        return await send_reply_msg(randuser, event.message_id, '群成员数不足')
+
+    random.shuffle(group_members)
+    
+    msg = ""
+
+    for user in group_members[:num]:
+        user_id = int(user['user_id'])
+        icon_url = get_avatar_url(user_id)
+        nickname = await get_user_name(bot, event.group_id, user_id)
+        msg += f"[CQ:image,url={icon_url}]\n{nickname}({user_id})\n"
+
+    await send_reply_msg(randuser, event.message_id, msg.strip())
