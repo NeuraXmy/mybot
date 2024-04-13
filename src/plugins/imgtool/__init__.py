@@ -28,9 +28,7 @@ async def get_reply_image(handler, bot: Bot, event: MessageEvent, need_gif=False
         await send_reply_msg(handler, event.message_id, "请回复一张图片")
     img_url = imgs[0]   
     try:
-        async with ClientSession() as session:
-            async with session.get(img_url) as resp:
-                img = Image.open(BytesIO(await resp.read()))
+        img = await download_image(img_url)
     except Exception as e:
         logger.print_exc(f"获取图片 {img_url} 失败: {e}")
         await send_reply_msg(handler, event.message_id, "获取图片失败")
@@ -341,4 +339,151 @@ async def handle(bot: Bot, event: MessageEvent):
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
         await send_reply_msg(rev_color, event.message_id, "处理图片失败")
+
+
+flow = on_command("/img flow", priority=5, block=False)
+@flow.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(flow, bot, event)
+    if not img: return
+
+    mode = "horizontal"
+    speed = 1.0
+
+    args = event.get_plaintext().replace("/img flow", "").strip()
+    try:
+        args = args.split()
+        if 'v' in args or 'vertical' in args:
+            mode = "vertical"
+        if 'r' in args or 'right' in args:
+            mode += "_right"
+        for arg in args:
+            if arg.endswith("x"):
+                speed = float(arg[:-1])
+    except:
+        return await send_reply_msg(flow, event.message_id, "请输入流动参数(格式: /img flow v r 2x)")
+
+    try:
+        frame_count = max(5, int(8 / speed))
         
+        if is_gif(img):
+            img = img.convert("RGBA")
+            img = img.crop((0, 0, img.width, img.height))
+
+        width, height = img.size
+        frames = []
+        for i in range(frame_count):
+            new_img = Image.new("RGBA", (width, height))
+            if mode == "horizontal":
+                new_img.paste(img, (int(i / frame_count * width), 0))
+                new_img.paste(img, (int(i / frame_count * width) - width, 0))
+            elif mode == "vertical":
+                new_img.paste(img, (0, int(i / frame_count * height)))
+                new_img.paste(img, (0, int(i / frame_count * height) - height))
+            elif mode == "horizontal_right":
+                new_img.paste(img, (int(width - i / frame_count * width), 0))
+                new_img.paste(img, (int(width - i / frame_count * width) - width, 0))
+            else:
+                new_img.paste(img, (0, int(height - i / frame_count * height)))
+                new_img.paste(img, (0, int(height - i / frame_count * height) - height))
+            frames.append(new_img)
+        
+        tmp_image_path = "data/imgtool/tmp/flow.gif"
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
+        await send_reply_msg(flow, event.message_id, get_image_cq(tmp_image_path))
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(flow, event.message_id, "处理图片失败")
+
+
+repeat = on_command("/img repeat", priority=5, block=False)
+@repeat.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(repeat, bot, event)
+    if not img: return
+
+    args = event.get_plaintext().replace("/img repeat", "").strip()
+    try:
+        w_times, h_times = map(int, args.split())
+        if w_times <= 0 or h_times <= 0 or w_times > 10 or h_times > 10:
+            raise Exception()
+    except:
+        return await send_reply_msg(repeat, event.message_id, "请输入重复次数 (格式: /img repeat 2 2)")
+
+    width, height = img.size
+    if width * w_times > 1048 or height * h_times > 1048:
+        return await send_reply_msg(repeat, event.message_id, "图片尺寸过大")
+
+    try:
+        def trans(img):
+            width, height = img.size
+            new_img = Image.new("RGBA", (width * w_times, height * h_times))
+            for i in range(w_times):
+                for j in range(h_times):
+                    new_img.paste(img, (i * width, j * height))
+            return new_img
+
+        await apply_trans_and_reply(repeat, event, img, trans, "data/imgtool/tmp/repeat.gif")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(repeat, event.message_id, "处理图片失败")
+
+
+fan = on_command("/img fan", priority=5, block=False)
+@fan.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(fan, bot, event)
+    if not img: return
+
+    mode = "ccw"
+    speed = 1.0
+
+    args = event.get_plaintext().replace("/img fan", "").strip()
+    try:
+        args = args.split()
+        if 'reverse' in args or 'r' in args:
+            mode = "cw"
+        for arg in args:
+            if arg.endswith("x"):
+                speed = float(arg[:-1])
+    except:
+        return await send_reply_msg(fan, event.message_id, "请输入旋转参数(格式: /img fan r 2x)")
+
+    try:
+        frame_count = max(5, int(8 / speed))
+
+        if is_gif(img):
+            img = img.convert("RGBA")
+            img = img.crop((0, 0, img.width, img.height))
+
+        width, height = img.size
+        frames = []
+        for i in range(frame_count):
+            new_img = Image.new("RGBA", (width, height))
+            angle = 360 / frame_count * i
+            if mode == "cw":
+                angle = -angle
+            new_img.paste(img.rotate(angle, expand=False), (0, 0))
+            frames.append(new_img)
+
+        tmp_image_path = "data/imgtool/tmp/fan.gif"
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
+
+        await send_reply_msg(fan, event.message_id, get_image_cq(tmp_image_path))
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(fan, event.message_id, "处理图片失败")
+
+

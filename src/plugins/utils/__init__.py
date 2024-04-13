@@ -14,7 +14,7 @@ from nonebot import require
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
-
+import io
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'
@@ -41,15 +41,22 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
 
+# 下载图片 返回PIL.Image对象
+async def download_image(image_url):
+    if image_url.startswith("https"):
+        image_url = image_url.replace("https", "http")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(image_url) as resp:
+            if resp.status != 200:
+                raise Exception(resp.status)
+            image = await resp.read()
+            return Image.open(io.BytesIO(image))
+
 # 异步下载图片并且转化为CQ码
 async def download_image_to_cq(image_url):
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as resp:
-                if resp.status != 200:
-                    return "[图片加载失败]"
-                image = await resp.read()
-                return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
+        image = await download_image(image_url)
+        return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
     except Exception as e:
         return "[图片加载失败]"
         

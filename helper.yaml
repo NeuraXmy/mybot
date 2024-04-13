@@ -58,6 +58,7 @@ eval:
   name: "科学计算器服务"
   help: |
     /eval 计算式
+    例子: /eval sqrt(2)*2
 
 imgexp:
   name: "搜图服务"
@@ -84,6 +85,12 @@ imgtool:
     示例: /img resize 0.5x 缩小到50% /img resize 100x100 调整到100x100 /img resize 100 保持宽高比缩放到长边为100
     /img gray 灰度化
     /img revcolor 反色
+    /img flow 流动效果
+    示例：/img flow v 垂直流动 /img flow v r 垂直逆流动 /img flow v 2x 垂直2倍速流动
+    /img fan 旋转效果
+    示例：/img fan 逆时针旋转 /img fan r 顺时针旋转 /img fan 2x 2倍速旋转
+    /img repeat 重复效果
+    示例：/img repeat 2 3 重复2列3行
     
 mc:
   name: "MC服务器服务"
