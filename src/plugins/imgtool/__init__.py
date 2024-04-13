@@ -417,17 +417,13 @@ async def handle(bot: Bot, event: MessageEvent):
     except:
         return await send_reply_msg(repeat, event.message_id, "请输入重复次数 (格式: /img repeat 2 2)")
 
-    width, height = img.size
-    if width * w_times > 1048 or height * h_times > 1048:
-        return await send_reply_msg(repeat, event.message_id, "图片尺寸过大")
-
     try:
         def trans(img):
             width, height = img.size
-            new_img = Image.new("RGBA", (width * w_times, height * h_times))
+            new_img = Image.new("RGBA", (width, height))
             for i in range(w_times):
                 for j in range(h_times):
-                    new_img.paste(img, (i * width, j * height))
+                    new_img.paste(img, (int(i / w_times * width), int(j / h_times * height)))
             return new_img
 
         await apply_trans_and_reply(repeat, event, img, trans, "data/imgtool/tmp/repeat.gif")
