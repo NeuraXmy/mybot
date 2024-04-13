@@ -420,13 +420,17 @@ async def handle(bot: Bot, event: MessageEvent):
     try:
         def trans(img):
             width, height = img.size
-            if width > height:
-                new_width = min(512, width * w_times)
-                new_height = height * new_width // width
+            size_limit = 512
+            if max(width * w_times, height * h_times) <= size_limit:
+                width = width * w_times
+                height = height * h_times
             else:
-
-
-
+                if width * w_times > height * h_times:
+                    height = size_limit * height * h_times // (width * w_times)
+                    width = size_limit
+                else:
+                    width = size_limit * width * w_times // (height * h_times)
+                    height = size_limit
             small_width, small_height = width // w_times, height // h_times
             img = img.resize((small_width, small_height))
             new_img = Image.new("RGBA", (width, height))
