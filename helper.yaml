@@ -111,7 +111,7 @@ mc:
     /rcon cmd 向服务器发送rcon命令（超级用户/op权限）
     /playtime 查询玩家游玩时间
     /playtime_clear 清空玩家游玩时间（超级用户/op权限）
-    /start_game 切换到新周目（超级用户/op权限）
+    /start_game gamename 切换到新周目（超级用户/op权限）
 
 
 pjsk:
@@ -171,7 +171,7 @@ water:
   name: "水果查询服务"
   help: |
     以/water回复消息即可查询回复的那条消息有没有水果
-    文本消息为精确匹配，图片和表情为tx内部图片id匹配（不一定准） 
+    文本消息为精确匹配，图片和表情为tx内部图片id以及phash算法匹配
                   
 welcome:
   name: "加退群通知服务"
