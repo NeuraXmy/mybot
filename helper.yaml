@@ -127,6 +127,8 @@ pjsk:
     /pjsk unsub 取消订阅
     /pjsk sub_list 查看订阅成员列表
     /活动剧情对话角色搜索 角色名1 角色名2 ... 搜索包含所有指定角色的活动剧情对话
+    /pjsk bind ID 绑定游戏ID
+    /pjsk id 查询绑定的游戏ID
     /矿产资源 查询剩余矿产统计
 
     每天更新一次live数据

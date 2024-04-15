@@ -543,6 +543,29 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定成功: {game_name}"))
 
 
+# 查询自己的用户id和名称
+get_user_info = on_command("/pjsk id", priority=1, block=False)
+@get_user_info.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gwl.check(event, allow_private=True): return
+
+    user_binds = file_db.get("user_binds", {})
+    game_id = user_binds.get(str(event.user_id), None)
+    if game_id is None:
+        return await get_user_info.send(OutMessage(f"[CQ:reply,id={event.message_id}]未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定"))
+    
+    game_name = ""
+    try:
+        profile = await get_user_profile(game_id)
+        game_name = profile["user"]["userGamedata"]["name"]
+    except Exception as e:
+        logger.print_exc(f"获取用户 {game_id} profile失败: {e}")
+        pass
+
+    await send_reply_msg(get_user_info, event.message_id, f"当前绑定ID: {game_id} {game_name}")
+
+
 # 获取最近的vlive信息
 get_vlive = on_command("/live", priority=1, block=False)
 @get_vlive.handle()
