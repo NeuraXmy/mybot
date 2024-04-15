@@ -15,6 +15,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
 import io
+from retrying import retry
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'
@@ -42,6 +43,7 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 
 # 下载图片 返回PIL.Image对象
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
 async def download_image(image_url):
     if image_url.startswith("https"):
         image_url = image_url.replace("https", "http")
@@ -53,20 +55,22 @@ async def download_image(image_url):
             return Image.open(io.BytesIO(image))
 
 # 异步下载图片并且转化为CQ码
-async def download_image_to_cq(image_url):
+async def download_image_to_cq(image_url, logger):
     try:
         image = await download_image(image_url)
         return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
     except Exception as e:
+        logger.print_exc(f'下载图片 {image_url} 失败: {e}')
         return "[图片加载失败]"
         
 # 读取本地图片并且转化为CQ码
-def read_image_to_cq(image_path):
+def read_image_to_cq(image_path, logger):
     try:
         with open(image_path, 'rb') as f:
             image = f.read()
             return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'    
     except Exception as e:
+        logger.print_exc(f'读取图片 {image_path} 失败: {e}')
         return "[图片加载失败]"    
 
 # 编辑距离
@@ -426,6 +430,8 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
                 if next_time > now_time:
                     try:
                         await asyncio.sleep((next_time - now_time).total_seconds())
+                    except asyncio.exceptions.CancelledError:
+                        return
                     except Exception as e:
                         logger.print_exc(f'循环执行 {name} sleep失败')
                 next_time = next_time + timedelta(seconds=interval)
@@ -526,6 +532,73 @@ class ColdDown:
             return None
         return datetime.fromtimestamp(last_use[key])
 
+
+# 频率限制
+class RateLimit:
+    def __init__(self, db, logger, limit, period_type, superuser=SUPERUSER, rate_limit_name=None, group_seperate=False):
+        """
+        period_type: "minute", "hour", "day" or "m", "h", "d"
+        """
+        self.limit = limit
+        self.period_type = period_type[:1]
+        if self.period_type not in ['m', 'h', 'd']:
+            raise Exception(f'未知的时间段类型 {self.period_type}')
+        self.superuser = superuser
+        self.db = db
+        self.logger = logger
+        self.group_seperate = group_seperate
+        self.rate_limit_name = f'default' if rate_limit_name is None else f'{rate_limit_name}'
+
+    def get_period_time(self, t):
+        if self.period_type == "m":
+            return t.replace(second=0, microsecond=0)
+        if self.period_type == "h":
+            return t.replace(minute=0, second=0, microsecond=0)
+        if self.period_type == "d":
+            return t.replace(hour=0, minute=0, second=0, microsecond=0)
+        raise Exception(f'未知的时间段类型 {self.period_type}')
+
+    async def check(self, event, allow_super=True, verbose=True):
+        if allow_super and check_superuser(event, self.superuser):
+            self.logger.debug(f'{self.rate_limit_name}检查: 超级用户{event.user_id}')
+            return True
+        key = str(event.user_id)
+        if isinstance(event, GroupMessageEvent) and self.group_seperate:
+            key = f'{event.group_id}-{key}'
+        last_check_time_key = f'last_check_time_{self.rate_limit_name}'
+        count_key = f"rate_limit_count_{self.rate_limit_name}"
+        last_check_time = datetime.fromtimestamp(self.db.get(last_check_time_key, 0))
+        count = self.db.get(count_key, {})
+        if self.get_period_time(datetime.now()) > self.get_period_time(last_check_time):
+            count = {}
+            self.logger.debug(f'{self.rate_limit_name}检查: 额度已重置')
+        if count.get(key, 0) >= self.limit:
+            self.logger.debug(f'{self.rate_limit_name}检查: {key} 频率超限')
+            if verbose:
+                reply_msg = "达到{period}使用次数限制({limit})"
+                if self.period_type == "minute":
+                    reply_msg = reply_msg.format(period="分钟", limit=self.limit)
+                elif self.period_type == "hour":
+                    reply_msg = reply_msg.format(period="小时", limit=self.limit)
+                elif self.period_type == "day":
+                    reply_msg = reply_msg.format(period="天", limit=self.limit)
+                try:
+                    if hasattr(event, 'message_id'):
+                        if hasattr(event, 'group_id'):
+                            await get_bot().send_group_msg(group_id=event.group_id, message=f'[CQ:reply,id={event.message_id}] {reply_msg}')
+                        else:
+                            await get_bot().send_private_msg(user_id=event.user_id, message=f'[CQ:reply,id={event.message_id}] {reply_msg}')
+                except Exception as e:
+                    self.logger.print_exc(f'{self.rate_limit_name}检查: {key} 频率超限, 发送频率超限消息失败')
+            ok = False
+        else:
+            count[key] = count.get(key, 0) + 1
+            self.logger.debug(f'{self.rate_limit_name}检查: {key} 通过 当前次数 {count[key]}/{self.limit}')
+            ok = True
+        self.db.set(count_key, count)
+        self.db.set(last_check_time_key, datetime.now().timestamp())
+        return ok
+        
 
 # 群白名单：默认关闭
 class GroupWhiteList:

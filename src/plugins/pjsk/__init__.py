@@ -558,7 +558,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         if vlive is None: continue
         if datetime.now() > vlive["end"]: continue
         msg += f"【{vlive['name']}】\n"
-        msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
+        msg += f"{await download_image_to_cq(vlive['img_url'], logger)}\n"
         msg += f"开始时间: {vlive['start'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         msg += f"结束时间: {vlive['end'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         if vlive["living"]: 
@@ -786,7 +786,7 @@ async def vlive_notify():
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
                     msg = f"【{vlive['name']}】\n"
-                    msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
+                    msg += f"{await download_image_to_cq(vlive['img_url'], logger)}\n"
                     msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
                     
                     for group_id in gwl.get():
@@ -811,7 +811,7 @@ async def vlive_notify():
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
                     msg = f"【{vlive['name']}】\n"
-                    msg += f"{await download_image_to_cq(vlive['img_url'])}\n"
+                    msg += f"{await download_image_to_cq(vlive['img_url'], logger)}\n"
                     msg += f"将于 {get_readable_datetime(vlive['end'])} 结束\n"
 
                     if vlive["living"]: 

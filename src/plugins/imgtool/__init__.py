@@ -14,6 +14,7 @@ config = get_config('imgtool')
 logger = get_logger("ImgTool")
 file_db = get_file_db("data/imgtool/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
+ratelimit = RateLimit(file_db, logger, 10, "day")
 gbl = get_group_black_list(file_db, logger, 'imgtool')
 aeval = Interpreter()
 
@@ -229,6 +230,7 @@ mirror_mid = on_command("/img mid", priority=5, block=False)
 async def handle(bot: Bot, event: MessageEvent):
     if not (await cd.check(event)): return
     if not gbl.check(event, allow_private=True): return
+    if not (await ratelimit.check(event)): return
 
     img = await get_reply_image(mirror_mid, bot, event)
     if not img: return
