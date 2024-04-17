@@ -110,3 +110,22 @@ async def _(bot: Bot, event: Event):
         await record_message(bot, event, is_self=True)
     except Exception as e:
         logger.print_exc("记录自身消息时错误")
+
+
+# 检查消息
+check = on_command("/check", block=False)
+@check.handle()
+async def _(bot: Bot, event: MessageEvent):
+    if not check_superuser(event): return
+
+    msg = await get_msg(bot, event.message_id)
+    reply_msg_obj = await get_reply_msg_obj(bot, msg)
+
+    if not reply_msg_obj:
+        return await send_reply_msg(check, event.message_id, f"请回复一条消息")
+    
+    await send_reply_msg(check, event.message_id, str(reply_msg_obj))
+
+
+
+    
