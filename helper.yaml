@@ -147,7 +147,7 @@ run_code:
     运行代码，lang为语言，code为代码
     支持语言：py/php/java/cpp/js/c#/c/go/asm/ats/bash/clisp/clojure/cobol/coffeescript/crystal/d/elixir/elm/erlang/fsharp/groovy/guide/hare/haskell/idris/julia/kotlin/lua/mercury/nim/nix/ocaml/pascal/perl/raku/ruby/rust/sac/scala/swift/typescript/zig/plaintext
                    
-statistics:
+sta:
   name: "群消息统计服务"
   help: |
     每天特定时间点会自动发送群消息统计图
@@ -158,7 +158,7 @@ statistics:
     /sta [date]
     发送指定日期的群消息统计图（需要超级用户权限）
     date格式为Year-Month-Day，不填默认为当天
-    /sta2 [days]
+    /sta_time [days]
     发送最近days天的群消息关于时间的统计图（需要超级用户权限）
     /sta_add [word1] [word2] ...
     添加词汇到用户词典（需要超级用户权限）

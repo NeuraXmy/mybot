@@ -53,15 +53,6 @@ async def download_image(image_url):
                 raise Exception(resp.status)
             image = await resp.read()
             return Image.open(io.BytesIO(image))
-
-# 异步下载图片并且转化为CQ码
-async def download_image_to_cq(image_url, logger):
-    try:
-        image = await download_image(image_url)
-        return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
-    except Exception as e:
-        logger.print_exc(f'下载图片 {image_url} 失败: {e}')
-        return "[图片加载失败]"
         
 # 读取本地图片并且转化为CQ码
 def read_image_to_cq(image_path, logger):
@@ -389,18 +380,25 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-def get_image_cq(image):
-    if isinstance(image, Image.Image):
-        tmp_file_path = 'data/imgtool/tmp/tmp'
-        tmp_file_path += '.gif' if is_gif(image) else '.png'
-        os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
-        image.save(tmp_file_path)
-        image = tmp_file_path
-    if image.startswith("http"):
-        return f'[CQ:image,file={image}]'
-    else:
-        with open(image, 'rb') as f:
-            return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+def get_image_cq(image, allow_error=False, logger=None):
+    try:
+        if isinstance(image, Image.Image):
+            tmp_file_path = 'data/imgtool/tmp/tmp'
+            tmp_file_path += '.gif' if is_gif(image) else '.png'
+            os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
+            image.save(tmp_file_path)
+            image = tmp_file_path
+        if image.startswith("http"):
+            return f'[CQ:image,file={image}]'
+        else:
+            with open(image, 'rb') as f:
+                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+    except Exception as e:
+        if allow_error:
+            if logger: 
+                logger.print_exc(f'图片加载失败: {e}')
+            return "[图片加载失败]"
+        raise e
 
 
 
@@ -575,7 +573,7 @@ class RateLimit:
         if count.get(key, 0) >= self.limit:
             self.logger.debug(f'{self.rate_limit_name}检查: {key} 频率超限')
             if verbose:
-                reply_msg = "达到{period}使用次数限制({limit})"
+                reply_msg = f"达到{period}使用次数限制({limit})"
                 if self.period_type == "minute":
                     reply_msg = reply_msg.format(period="分钟", limit=self.limit)
                 elif self.period_type == "hour":

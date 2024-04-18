@@ -146,7 +146,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 # 发送总消息量关于时间的统计图
-sta2 = on_command("/sta2", priority=100, block=False)
+sta2 = on_command("/sta_time", priority=100, block=False)
 @sta2.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
