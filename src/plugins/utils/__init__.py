@@ -11,6 +11,7 @@ import asyncio
 import base64
 import aiohttp
 from nonebot import require
+import random
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -41,6 +42,44 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+# 创建透明GIF
+def create_transparent_gif(img, save_path):
+    def color_distance(c1, c2):
+        return sum((a - b) ** 2 for a, b in zip(c1, c2))
+    original_img = img
+    retry_num = 0
+    while True:    
+        if retry_num > 20:
+            raise Exception("生成透明GIF失败")
+        img = original_img.copy()
+        transparent_color = (
+            random.randint(0, 255), 
+            random.randint(0, 255), 
+            random.randint(0, 255)
+        )
+        def check_color_exists(pixel):
+            return color_distance(pixel[:3], transparent_color) < 300
+        if any(map(check_color_exists, img.getdata())):
+            retry_num += 1
+            continue
+        def replace_alpha(pixel):
+            return (*transparent_color, 255) if pixel[3] < 128 else pixel
+        trans_data = list(map(replace_alpha, img.getdata()))
+        img.putdata(trans_data)
+        img = img.convert("RGB").quantize(256)
+        palette = img.getpalette()[:768]
+        transparent_color_index, min_dist = None, float("inf")
+        for i in range(256):
+            color = palette[i*3:i*3+3]
+            dist = color_distance(color, transparent_color)
+            if dist < min_dist:
+                transparent_color_index, min_dist = i, dist
+        if transparent_color_index is None:
+            raise Exception("The specific color was not found in the palette.")
+        save_path = os.path.abspath(save_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index)
+        break
 
 # 下载图片 返回PIL.Image对象
 @retry(stop_max_attempt_number=3, wait_fixed=1000)

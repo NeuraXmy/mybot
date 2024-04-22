@@ -73,6 +73,7 @@ class ServerData:
         self.messages = {}
 
         self.next_query_ts = 0
+        self.has_sucess_query = False
 
         self.time       = 0
         self.storming   = False
@@ -251,12 +252,16 @@ async def query_server():
                     logger.info(f'发送重连通知到 {server.group_id}')
                     server.queue.append('重新建立到卫星地图的连接')
                 server.failed_count = 0
+                server.has_sucess_query = True
             except Exception as e:
                 if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
                     logger.warning(f'{server.url} 定时查询失败: {e}')
                 if server.failed_count == DISCONNECT_NOTIFY_COUNT:
-                    logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
-                    server.queue.append(f'与卫星地图的连接断开: {e}')
+                    if server.has_sucess_query:
+                        server.queue.append(f'与卫星地图的连接断开: {e}')
+                        logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
+                    else:
+                        logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}')
                 server.failed_count += 1
                 server.next_query_ts = 0
 

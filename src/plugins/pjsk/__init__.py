@@ -9,12 +9,21 @@ from dataclasses import dataclass
 import aiohttp
 import json
 from ..utils import *
+import numpy as np
+import openai
 
 config = get_config('pjsk')
+openai_config = get_config('openai')
 logger = get_logger("Pjsk")
 file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gwl = get_group_white_list(file_db, logger, 'pjsk')
+
+API_KEY = openai_config['api_key']
+API_BASE = openai_config['api_base']
+PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
+MODEL_ID = config['model_id']
+STAMP_SEARCH_TOPK = config['stamp_search_topk']
 
 MUSIC_URL               = "https://sekai-world.github.io/sekai-master-db-diff/musics.json"
 MUSIC_DIFFICULTY_URL    = "https://sekai-world.github.io/sekai-master-db-diff/musicDifficulties.json"
@@ -23,6 +32,9 @@ EVENT_URL               = "https://sekai-world.github.io/sekai-master-db-diff/ev
 EVENT_STORY_URL         = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
 CHARACTER_URL           = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
 CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
+STAMP_URL               = "https://sekai-world.github.io/sekai-master-db-diff/stamps.json"
+
+STAMP_IMG_URL = "https://storage.sekai.best/sekai-assets/stamp/{assetbundleName}_rip/{assetbundleName}/{assetbundleName}.png"
 
 BASIC_USER_PROFILE_URL  = "http://api.unipjsk.com/api/user/{uid}/profile"
 USER_PROFILE_URL        = "http://suite.unipjsk.com/api/user/{uid}/profile"
@@ -36,6 +48,9 @@ EVENT_SAVE_PATH             = "data/pjsk/event.json"
 EVENT_STORY_SAVE_PATH       = "data/pjsk/event_story.json"
 CHARACTER_SAVE_PATH         = "data/pjsk/character.json"
 CHARACTER_2DS_SAVE_PATH     = "data/pjsk/character_2ds.json"
+STAMP_SAVE_PATH             = "data/pjsk/stamp.json"
+
+STAMP_IMG_SAVE_DIR = "data/pjsk/stamps/{sid}.gif"
 
 EVENT_STORY_DETAIL_URL = "https://storage.sekai.best/sekai-assets/event_story/{asset_bundle_name}/scenario_rip/{event_scene_id}.asset"
 EVENT_STORY_DETAIL_SAVE_PATH = "data/pjsk/story/event_story_details.json"
@@ -50,6 +65,20 @@ EVENT_START_NOTIFY_BEFORE_MINUTE    = config['event_start_notify_before_minute']
 EVENT_END_NOTIFY_BEFORE_MINUTE      = config['event_end_notify_before_minute']
 
 DATA_UPDATE_TIME                   = config['data_update_time']
+
+
+CHARACTER_NICKNAME_PATH = "data/pjsk/character_nicknames.json"
+with open(CHARACTER_NICKNAME_PATH, 'r') as f:
+    character_nicknames = json.load(f)
+
+
+STAMP_EMBEDDINGS_SAVE_PATH = "data/pjsk/stamp_embeddings.npy"
+STAMP_EMBEDDINGS_ID_SAVE_PATH = "data/pjsk/stamp_embeddings_id.npy"
+STAMP_EMBEDDINGS_CID_SAVE_PATH = "data/pjsk/stamp_embeddings_cid.npy"
+
+stamp_embeddings = None         # stamp描述的文本embeddings
+stamp_embeddings_id = None      # embedding位置对应的stamp id
+stamp_embeddings_cid = None     # embedding位置对应的角色id
 
 
 @dataclass
@@ -135,7 +164,7 @@ async def download_music_data():
                 logger.info(f"下载音乐数据成功: 共获取{len(musics)}条")
                 return
             else:
-                raise Exception("下载音乐数据失败")
+                raise Exception(f"下载音乐数据失败: {resp.status}")
 
 # 下载音乐难度数据到本地
 async def download_music_difficulty_data():
@@ -149,7 +178,7 @@ async def download_music_difficulty_data():
                 logger.info(f"下载音乐难度数据成功: 共获取{len(difficulties)}条")
                 return
             else:
-                raise Exception("下载音乐难度数据失败")
+                raise Exception(f"下载音乐难度数据失败: {resp.status}")
 
 # 下载vlive数据到本地
 async def download_vlive_data():
@@ -168,7 +197,7 @@ async def download_vlive_data():
                 logger.info(f"下载vlive数据成功: 共获取{len(valid_lives)}条")
                 return
             else:
-                raise Exception("下载vlive数据失败")
+                raise Exception(f"下载vlive数据失败: {resp.status}")
 
 # 下载event数据到本地
 async def download_event_data():
@@ -182,7 +211,7 @@ async def download_event_data():
                 logger.info(f"下载event数据成功: 共获取{len(events)}条")
                 return
             else:
-                raise Exception("下载event数据失败")
+                raise Exception(f"下载event数据失败: {resp.status}")
 
 # 下载eventstory数据到本地
 async def download_event_story_data():
@@ -196,7 +225,7 @@ async def download_event_story_data():
                 logger.info(f"下载eventstory数据成功: 共获取{len(event_stories)}条")
                 return
             else:
-                raise Exception("下载eventstory数据失败")           
+                raise Exception(f"下载eventstory数据失败: {resp.status}")        
 
 # 下载character数据到本地
 async def download_character_data():
@@ -210,7 +239,7 @@ async def download_character_data():
                 logger.info(f"下载character数据成功: 共获取{len(characters)}条")
                 return
             else:
-                raise Exception("下载character数据失败")
+                raise Exception(f"下载character数据失败: {resp.status}")
 
 # 下载character2ds数据到本地
 async def download_character_2ds_data():
@@ -224,7 +253,22 @@ async def download_character_2ds_data():
                 logger.info(f"下载character2ds数据成功: 共获取{len(character_2ds)}条")
                 return
             else:
-                raise Exception("下载character2ds数据失败")
+                raise Exception(f"下载character2ds数据失败: {resp.status}")
+
+# 下载stamp数据到本地
+async def download_stamp_data():
+    logger.info(f"开始下载stamp数据")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(STAMP_URL) as resp:
+            if resp.status == 200:
+                stamps = await resp.json()
+                with open(STAMP_SAVE_PATH, 'wb') as f:
+                    f.write(json.dumps(stamps, indent=4, ensure_ascii=False).encode('utf8'))
+                logger.info(f"下载stamp数据成功: 共获取{len(stamps)}条")
+                return
+            else:
+                raise Exception(f"下载stamp数据失败: {resp.status}")
+
 
 # 更新eventstory详情数据
 async def update_event_story_detail(force_update=False):
@@ -361,6 +405,16 @@ async def get_event_story_detail():
             return json.load(f)
     except:
         return None
+
+# 读取stamp数据，如果不存在则下载
+async def get_stamp_data():
+    try:
+        with open(STAMP_SAVE_PATH, 'r') as f:
+            return json.load(f)
+    except:
+        await download_stamp_data()
+        with open(STAMP_SAVE_PATH, 'r') as f:
+            return json.load(f)
 
 
 # 从vlive数据中解析出需要的信息
@@ -508,7 +562,150 @@ async def count_mineral(user_profile):
     
     return res
 
+# 从角色id获取角色昵称列表
+def get_character_nickname(character_id):
+    for item in character_nicknames:
+        if item["id"] == int(character_id):
+            return item["nickname"]
 
+# 从角色昵称获取角色id
+def get_character_id(nickname):
+    for item in character_nicknames:
+        if nickname in item["nickname"]:
+            return item["id"]
+    return None
+
+# 获取embedding
+async def get_text_embedding(text, max_retries=10):
+    openai.api_key = API_KEY
+    openai.api_base = API_BASE
+    openai.proxy = PROXY
+    for i in range(max_retries):
+        try:
+            response = await openai.Embedding.acreate(
+                input=text,
+                model=MODEL_ID,
+                encoding_format="float"
+            )
+            embedding = np.array(response['data'][0]['embedding'])
+            logger.info(f'获取embedding成功')
+            return embedding
+        except Exception as e:
+            if i == max_retries - 1:
+                raise e
+            logger.warning(f'获取embedding失败: {e}, 重试({i+1}/{max_retries})')
+            continue
+
+# 更新stamp文本embeddings
+async def update_stamp_embeddings():
+    global stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid
+    try:
+        logger.info(f"开始更新stamp文本embeddings")
+        stamp_data = await get_stamp_data()
+
+        try:
+            stamp_embeddings = np.load(STAMP_EMBEDDINGS_SAVE_PATH)
+            stamp_embeddings_id = np.load(STAMP_EMBEDDINGS_ID_SAVE_PATH)
+            stamp_embeddings_cid = np.load(STAMP_EMBEDDINGS_CID_SAVE_PATH)
+            assert len(stamp_embeddings) > 0
+            assert len(stamp_embeddings) == len(stamp_embeddings_id)
+            assert len(stamp_embeddings) == len(stamp_embeddings_cid)
+            logger.info(f"读取历史stamp文本embeddings: 共获取{len(stamp_embeddings)}条")
+        except:
+            stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid = None, None, None
+            logger.warning(f"读取历史stamp文本embeddings失败")
+
+        new_stamp_embeddings, new_stamp_embeddings_id, new_stamp_embeddings_cid = [], [], []
+
+        for stamp in stamp_data:
+            if stamp["id"] > 10000: continue
+            if "characterId1" not in stamp: continue
+            if stamp_embeddings_id is None or stamp["id"] not in stamp_embeddings_id:
+                text = stamp["name"].split("：")[-1]
+                logger.info(f"处理stamp {stamp['id']}: {text}")
+                emb = await get_text_embedding(text) # (emb_size, )
+                new_stamp_embeddings.append(emb)
+                new_stamp_embeddings_id.append(stamp["id"])
+                new_stamp_embeddings_cid.append(stamp["characterId1"])
+
+        if len(new_stamp_embeddings) == 0:
+            logger.info(f"没有新的stamp文本embeddings需要更新")
+            return
+
+        logger.info(f"更新stamp文本embeddings成功: 共获取{len(new_stamp_embeddings)}条")
+
+        if stamp_embeddings is not None:
+            stamp_embeddings = np.concatenate([stamp_embeddings, np.array(new_stamp_embeddings)])
+            stamp_embeddings_id = np.concatenate([stamp_embeddings_id, np.array(new_stamp_embeddings_id)])
+            stamp_embeddings_cid = np.concatenate([stamp_embeddings_cid, np.array(new_stamp_embeddings_cid)])
+        else:
+            stamp_embeddings = np.array(new_stamp_embeddings)
+            stamp_embeddings_id = np.array(new_stamp_embeddings_id)
+            stamp_embeddings_cid = np.array(new_stamp_embeddings_cid)
+
+        np.save(STAMP_EMBEDDINGS_SAVE_PATH, stamp_embeddings)
+        np.save(STAMP_EMBEDDINGS_ID_SAVE_PATH, stamp_embeddings_id)
+        np.save(STAMP_EMBEDDINGS_CID_SAVE_PATH, stamp_embeddings_cid)
+
+        logger.info(f"保存stamp文本embeddings成功: 共{len(stamp_embeddings)}条")
+        
+    except Exception as e:
+        logger.print_exc(f"更新stamp文本embeddings失败: {e}")
+
+# 根据stampid获取stamp数据
+def find_stamp_by_id(stamps, id):
+    for stamp in stamps:
+        if stamp["id"] == int(id):
+            return stamp
+    return None
+
+# 根据stampid获取stamp图片地址
+def get_stamp_url_by_id(stamps, id):
+    stamp = find_stamp_by_id(stamps, id)
+    if stamp is None:
+        return None
+    name = stamp['assetbundleName']
+    return STAMP_IMG_URL.format(assetbundleName=name)
+
+# 根据文本搜索cid角色最相似的topk个stamp
+async def search_stamp(text, topk, cid):
+    global stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid
+    if stamp_embeddings is None:
+        stamp_embeddings = np.load(STAMP_EMBEDDINGS_SAVE_PATH)
+        stamp_embeddings_id = np.load(STAMP_EMBEDDINGS_ID_SAVE_PATH)
+        stamp_embeddings_cid = np.load(STAMP_EMBEDDINGS_CID_SAVE_PATH)
+        assert len(stamp_embeddings) == len(stamp_embeddings_id)
+        assert len(stamp_embeddings) == len(stamp_embeddings_cid)
+        logger.info(f"读取历史stamp文本embeddings: 共获取{len(stamp_embeddings)}条")
+
+    emb = await get_text_embedding(text)
+
+    c_stamp_embeddings = stamp_embeddings
+    c_stamp_embeddings_id = stamp_embeddings_id
+    if cid is not None:
+        c_stamp_embeddings = stamp_embeddings[stamp_embeddings_cid == cid]
+        c_stamp_embeddings_id = stamp_embeddings_id[stamp_embeddings_cid == cid]
+
+    sim = np.dot(c_stamp_embeddings, emb)
+    topk_idx = np.argsort(sim)[::-1][:topk]
+    res = []
+    for idx in topk_idx:
+        res.append(c_stamp_embeddings_id[idx])
+    return res
+
+# 获取表情图片cq
+async def get_stamp_image_cq(stamps, sid):
+    save_path = STAMP_IMG_SAVE_DIR.format(sid=sid)
+    try:
+        return get_image_cq(save_path)
+    except:
+        pass
+    logger.info(f"下载 stamp {sid}")
+    url = get_stamp_url_by_id(stamps, sid)
+    img = await download_image(url)
+    create_transparent_gif(img, save_path)
+    return get_image_cq(save_path)
+    
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
 
 # 绑定用户id
@@ -567,7 +764,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
 
 # 获取最近的vlive信息
-get_vlive = on_command("/live", priority=1, block=False)
+get_vlive = on_command("/pjsk live", priority=1, block=False)
 @get_vlive.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
@@ -595,15 +792,6 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     if msg == "当前的虚拟Lives:": 
         return await get_vlive.finish("当前没有虚拟Live")
     await get_vlive.finish(OutMessage(msg))
-
-
-# 获取最近的event信息（未完成）
-get_event = on_command("/event", priority=1, block=False)
-@get_event.handle()
-async def handle(bot: Bot, event: GroupMessageEvent):
-    if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
-    data = await get_event_data()
 
 
 # 订阅提醒的at通知
@@ -727,7 +915,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
 
 # 矿产资源查询
-mineral_search = on_command("/矿产资源", priority=1, block=False)
+mineral_search = on_command("/pjsk mine", priority=1, block=False, aliases={"/pjsk mineral", '/pjsk 矿产', '/pjsk矿产'})
 @mineral_search.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
@@ -772,6 +960,53 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]{res.strip()}"))
 
 
+
+# 表情获取
+stamp = on_command("/pjsk stamp", priority=1, block=False, aliases={"/pjsk 表情", '/pjsk_stamp', '/pjsk_表情', '/pjsk表情'})
+@stamp.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gwl.check(event, allow_private=True): return
+
+    sid, cid, text = None, None, None
+    args = event.get_plaintext().replace("/pjsk stamp", "").strip()
+
+    try:
+        sid = int(args)
+        assert sid >= 0 and sid <= 9999
+    except:
+        try:
+            nickname, text = args.split(" ", 1)
+            text = text.strip()
+            cid = get_character_id(nickname)
+            assert cid is not None and len(text) > 0
+        except:
+            return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/stamp 123\n/stamp miku 你好")
+
+    try:
+        stamp_data = await get_stamp_data()
+
+        if sid:
+            logger.info(f"获取表情 id={sid}")
+            return await send_reply_msg(stamp, event.message_id, await get_stamp_image_cq(stamp_data, sid))
+
+        logger.info(f"搜索表情: cid={cid} text={text}")
+        sids = await search_stamp(text, STAMP_SEARCH_TOPK, cid)
+        logger.info(f"搜索表情结果: {sids}")
+    
+        msg = f"{await get_stamp_image_cq(stamp_data, sids[0])}候选表情:"
+        for sid in sids[1:]:
+            item = find_stamp_by_id(stamp_data, sid)
+            if item is not None:
+                msg += f"\n【{sid}】{item['name'].split('：')[-1]}"
+
+        return await send_reply_msg(stamp, event.message_id, msg)
+
+    except Exception as e:
+        logger.print_exc(f"获取表情失败: {e}")
+        return await send_reply_msg(stamp, event.message_id, "获取表情失败")
+
+
 # ----------------------------------------- 定时任务 ------------------------------------------ #
 
 # 定时更新所有数据
@@ -785,6 +1020,8 @@ async def update_data():
     await download_character_data()
     await download_character_2ds_data()
     await update_event_story_detail(force_update=False)
+    await download_stamp_data()
+    await update_stamp_embeddings()
     
 
 # vlive自动提醒

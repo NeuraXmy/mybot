@@ -125,6 +125,8 @@ pjsk:
   event_end_notify_before_minute:         # 提前多少分钟提醒event结束（列表）
     - 140
   data_update_time: [5, 0, 0]             # 数据更新时间 [hour, minute, second]
+  model_id: "text-embedding-ada-002"  
+  stamp_search_topk: 5
 
 record:
 

@@ -121,7 +121,7 @@ mc:
 pjsk:
   name: "世界计划服务"
   help: |
-    /live 获取当前虚拟live信息
+    /pjsk live 获取当前虚拟live信息
     虚拟live开始前和结束前会触发自动提醒
     /pjsk sub 订阅提醒（提醒时会自动at订阅者）
     /pjsk unsub 取消订阅
@@ -129,10 +129,12 @@ pjsk:
     /活动剧情对话角色搜索 角色名1 角色名2 ... 搜索包含所有指定角色的活动剧情对话
     /pjsk bind ID 绑定游戏ID
     /pjsk id 查询绑定的游戏ID
-    /矿产资源 查询剩余矿产统计
+    /pjsk mine 查询剩余矿产统计
+    /pjsk stamp id 获取指定id表情
+    /pjsk stamp 角色简称 文本 获取指定角色的表情 例如/pjsk stamp ena 再见
 
     每天更新一次live数据
-    数据来源：sekai-world.github.io/sekai-master-db-diff
+    数据来源：sekai.best
 
 record:
   name: "群消息记录服务"
