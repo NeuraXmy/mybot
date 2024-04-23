@@ -111,6 +111,11 @@ mc:
   cd: 5
 
 
+oeis:
+  search_num: 5
+  cd: 10
+
+
 pjsk:
   cd: 60                                 
   max_vlive_endtime_diff: 7               # 最多只获取多久之前的vlive（天）

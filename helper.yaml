@@ -118,6 +118,14 @@ mc:
     /start_game gamename 切换到新周目（超级用户/op权限）
 
 
+oeis:
+  name: "OEIS查询服务"
+  help: |
+    /oeis 序列
+    查询OEIS序列信息
+    数据来源：https://oeis.org/
+
+
 pjsk:
   name: "世界计划服务"
   help: |

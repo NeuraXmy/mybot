@@ -12,6 +12,7 @@ import base64
 import aiohttp
 from nonebot import require
 import random
+from retrying import retry
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -409,6 +410,13 @@ async def send_group_fold_msg(bot, group_id, contents):
         }
     } for content in contents]
     return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+
+# 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
+async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100):
+    if is_group(event) and len(message) > threshold:
+        return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
+    return await send_msg(handler, message)
+
 
 # 是否是动图
 def is_gif(image):
