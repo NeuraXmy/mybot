@@ -62,10 +62,8 @@ async def handle(bot: Bot, event: MessageEvent):
         return await send_reply_msg(gif, event.message_id, "图片已经是动图")
 
     try:
-        img = img.convert("RGBA")
         tmp_img_path = "data/imgtool/tmp/img2gif.gif"
-        os.makedirs(os.path.dirname(tmp_img_path), exist_ok=True)
-        img.save(tmp_img_path, save_all=True, append_images=[], duration=100, loop=0)
+        create_transparent_gif(img, tmp_img_path)
         await send_reply_msg(gif, event.message_id, get_image_cq(tmp_img_path))
 
     except Exception as e:
