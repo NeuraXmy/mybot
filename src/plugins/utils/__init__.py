@@ -309,14 +309,11 @@ def get_avatar_url(user_id):
 
 # 获取用户名 如果有群名片则返回群名片 否则返回昵称
 async def get_user_name(bot, group_id, user_id):
-    user_info = await bot.call_api('get_group_member_list', **{'group_id': int(group_id)})
-    for info in user_info:
-        if str(info['user_id']) == str(user_id):
-            if info['card'] != "":
-                return info['card']
-            else:
-                return info['nickname']
-    return "Unknown User"
+    info = await bot.call_api('get_group_member_info', **{'group_id': int(group_id), 'user_id': int(user_id)})
+    if 'card' in info and info['card']:
+        return info['card']
+    else:
+        return info['user_name']
 
 
 # 获取群聊中所有用户

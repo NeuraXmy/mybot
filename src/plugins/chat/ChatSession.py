@@ -57,7 +57,7 @@ class ChatSession:
             "content": content
         })
         if verbose:
-            logger.info(f"会话{self.id}添加消息: role:{role} text:{text} imgs:{imgs}, 目前会话长度:{len(self)}")
+            logger.info(f"会话{self.id}添加消息: role:{role} text:{text} + {len(imgs)} img(s), 目前会话长度:{len(self)}")
 
     # 会话长度
     def __len__(self):
