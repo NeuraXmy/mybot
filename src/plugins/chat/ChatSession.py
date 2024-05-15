@@ -15,6 +15,16 @@ MAX_TOKENS = config['max_tokens']
 RETRY_INTERVAL = config['retry_interval']
 session_id = 0
 
+
+async def get_image_b64(image_path):
+    img = (await download_image(image_path)).convert('RGB')
+    tmp_save_dir = "data/chat/tmp/chatimg.jpg"
+    os.makedirs(os.path.dirname(tmp_save_dir), exist_ok=True)
+    img.save(tmp_save_dir, "JPEG")
+    with open(tmp_save_dir, "rb") as f:
+        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+
+
 class ChatSession:
     def __init__(self, api_key, api_base, text_model, mm_model, proxy, system_prompt=None):
         global session_id

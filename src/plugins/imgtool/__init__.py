@@ -188,7 +188,7 @@ async def handle(bot: Bot, event: MessageEvent):
             duration *= 1.0 / float(args[:-1])
         else:
             duration = float(args)
-        duration = max(1, int(duration))
+        duration = max(20, int(duration))
     except:
         return await send_reply_msg(speed, event.message_id, "请输入速度参数(直接输入数字调整duration，输入2x格式加倍速度")
 

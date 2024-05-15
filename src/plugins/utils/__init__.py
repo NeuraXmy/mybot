@@ -90,7 +90,7 @@ async def download_image(image_url):
     async with aiohttp.ClientSession() as session:
         async with session.get(image_url) as resp:
             if resp.status != 200:
-                raise Exception(resp.status)
+                raise Exception(f"Failed to download image {image_url}: {resp.status} {resp.reason}")
             image = await resp.read()
             return Image.open(io.BytesIO(image))
         

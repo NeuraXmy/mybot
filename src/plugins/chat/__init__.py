@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE, SYSTEM_ROLE
+from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE, SYSTEM_ROLE, get_image_b64
 from ..utils import *
 from datetime import datetime, timedelta
 import random
@@ -94,90 +94,92 @@ chat_request = on_command("", block=False, priority=0)
 @chat_request.handle()
 async def _(bot: Bot, event: MessageEvent):
     global sessions, query_msg_ids
-    
-    # 获取内容
-    query_msg_obj = await get_msg_obj(bot, event.message_id)
-    query_msg = query_msg_obj["message"]
-    query_text = extract_text(query_msg)
-    query_imgs = extract_image_url(query_msg)
-    query_cqs = extract_cq_code(query_msg)
-
-    # 空消息不回复
-    if query_text == "" or query_text is None:
-        return
-    
-    # /开头的消息不回复
-    if query_text.strip().startswith("/"):
-        return
-
-    # 群组名单检测
-    if not gwl.check(event, allow_private=True, allow_super=True): return
-
-    # 群组内只有at机器人的消息才会被回复
-    if is_group(event):
-        has_at = False
-        if "at" in query_cqs:
-            for cq in query_cqs["at"]:
-                if cq["qq"] == bot.self_id:
-                    has_at = True
-                    break
-        if "text" in query_cqs:
-            for cq in query_cqs["text"]:
-                if f"@{BOT_NAME}" in cq['text']:
-                    has_at = True
-                    break
-        if not has_at: return
-    
-    # cd检测
-    if not (await cd.check(event)): return
-    
-    logger.log(f"收到询问: {query_msg}")
-    query_msg_ids.add(event.message_id)
-
-    # 用于备份的session_id
-    session_id_backup = None
-
-    with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
-        system_prompt = f.read().format(
-            bot_name=BOT_NAME,
-            current_date=datetime.now().strftime("%Y-%m-%d")
-        )
-
-    reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
-    if reply_msg_obj is not None:
-        # 回复模式，检测是否在历史会话中
-        reply_id = reply_msg_obj["message_id"]
-        reply_msg = reply_msg_obj["message"]
-        logger.info(f"回复模式：{reply_id}")
-
-        if str(reply_id) in sessions:
-            # 在历史会话中，直接沿用会话
-            session = sessions[str(reply_id)]
-            sessions.pop(str(reply_id))
-            session_id_backup = reply_id
-            logger.info(f"沿用会话{session.id}, 长度:{len(session)}")
-        else:
-            # 不在历史会话中，使用新会话，并加入回复的内容
-            reply_text = extract_text(reply_msg)
-            reply_cqs = extract_cq_code(reply_msg)
-            reply_imgs = extract_image_url(reply_msg)
-            reply_uid = reply_msg_obj["sender"]["user_id"]
-            # 不在历史会话中则不回复折叠内容
-            if "json" in reply_cqs:
-                return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
-            logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
-
-            session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
-            if len(reply_imgs) > 0 or reply_text.strip() != "":
-                role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
-                session.append_content(role, reply_text, reply_imgs)
-    else:
-        session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
-
-    session.append_content(USER_ROLE, query_text, query_imgs)
-
-    # 进行询问
     try:
+    
+        # 获取内容
+        query_msg_obj = await get_msg_obj(bot, event.message_id)
+        query_msg = query_msg_obj["message"]
+        query_text = extract_text(query_msg)
+        query_imgs = extract_image_url(query_msg)
+        query_cqs = extract_cq_code(query_msg)
+
+        # 空消息不回复
+        if query_text.strip() == "" or query_text is None:
+            return
+        
+        # /开头的消息不回复
+        if query_text.strip().startswith("/"):
+            return
+
+        # 群组名单检测
+        if not gwl.check(event, allow_private=True, allow_super=True): return
+
+        # 群组内只有at机器人的消息才会被回复
+        if is_group(event):
+            has_at = False
+            if "at" in query_cqs:
+                for cq in query_cqs["at"]:
+                    if cq["qq"] == bot.self_id:
+                        has_at = True
+                        break
+            if "text" in query_cqs:
+                for cq in query_cqs["text"]:
+                    if f"@{BOT_NAME}" in cq['text']:
+                        has_at = True
+                        break
+            if not has_at: return
+        
+        # cd检测
+        if not (await cd.check(event)): return
+        
+        logger.log(f"收到询问: {query_msg}")
+        query_msg_ids.add(event.message_id)
+
+        # 用于备份的session_id
+        session_id_backup = None
+
+        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
+            system_prompt = f.read().format(
+                bot_name=BOT_NAME,
+                current_date=datetime.now().strftime("%Y-%m-%d")
+            )
+
+        reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
+        if reply_msg_obj is not None:
+            # 回复模式，检测是否在历史会话中
+            reply_id = reply_msg_obj["message_id"]
+            reply_msg = reply_msg_obj["message"]
+            logger.info(f"回复模式：{reply_id}")
+
+            if str(reply_id) in sessions:
+                # 在历史会话中，直接沿用会话
+                session = sessions[str(reply_id)]
+                sessions.pop(str(reply_id))
+                session_id_backup = reply_id
+                logger.info(f"沿用会话{session.id}, 长度:{len(session)}")
+            else:
+                # 不在历史会话中，使用新会话，并加入回复的内容
+                reply_text = extract_text(reply_msg)
+                reply_cqs = extract_cq_code(reply_msg)
+                reply_imgs = extract_image_url(reply_msg)
+                reply_uid = reply_msg_obj["sender"]["user_id"]
+                # 不在历史会话中则不回复折叠内容
+                if "json" in reply_cqs:
+                    return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
+                logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
+
+                session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
+                if len(reply_imgs) > 0 or reply_text.strip() != "":
+                    role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
+                    reply_imgs = [await get_image_b64(img) for img in reply_imgs]
+                    session.append_content(role, reply_text, reply_imgs)
+        else:
+            session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
+
+        query_imgs = [await get_image_b64(img) for img in query_imgs]
+        session.append_content(USER_ROLE, query_text, query_imgs)
+
+        # 进行询问
         while True:
             res, retry_count, ptokens, ctokens = await session.get_response(
                 max_retries=MAX_RETIRES, 
@@ -197,12 +199,15 @@ async def _(bot: Bot, event: MessageEvent):
             except Exception as exc:
                 logger.info(f"工具调用失败: {exc}")
                 break
+
     except Exception as error:
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
     
+
+
     # 进行回复
     if len(res) < FOLD_LENGTH_THRESHOLD or not is_group(event):
         logger.info(f"非折叠回复")
