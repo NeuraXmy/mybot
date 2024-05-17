@@ -43,7 +43,9 @@ class ChatSession:
 
     # 添加一条消息
     def append_content(self, role, text, imgs=None, verbose=True):
-        if imgs and len(imgs) > 0:
+        if imgs is None: 
+            imgs = []
+        if len(imgs) > 0:
             content = [{"type": "text", "text": text}]
             for img in imgs:
                 content.append({
