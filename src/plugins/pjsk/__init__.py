@@ -11,6 +11,7 @@ import json
 from ..utils import *
 import numpy as np
 import openai
+from PIL import Image, ImageDraw, ImageFont
 
 config = get_config('pjsk')
 openai_config = get_config('openai')
@@ -705,6 +706,52 @@ async def get_stamp_image_cq(stamps, sid):
     img = await download_image(url)
     create_transparent_gif(img, save_path)
     return get_image_cq(save_path)
+
+# 获取表情图片
+async def get_stamp_image(stamps, sid):
+    save_path = STAMP_IMG_SAVE_DIR.format(sid=sid)
+    try:
+        return Image.open(save_path)
+    except:
+        pass
+    logger.info(f"下载 stamp {sid}")
+    url = get_stamp_url_by_id(stamps, sid)
+    img = await download_image(url)
+    create_transparent_gif(img, save_path)
+    return Image.open(save_path)
+
+# 合成某个角色的所有表情 返回PIL Image
+async def compose_character_stamp(stamps, cid):
+    global stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid
+    if stamp_embeddings is None:
+        stamp_embeddings = np.load(STAMP_EMBEDDINGS_SAVE_PATH)
+        stamp_embeddings_id = np.load(STAMP_EMBEDDINGS_ID_SAVE_PATH)
+        stamp_embeddings_cid = np.load(STAMP_EMBEDDINGS_CID_SAVE_PATH)
+        assert len(stamp_embeddings) == len(stamp_embeddings_id)
+        assert len(stamp_embeddings) == len(stamp_embeddings_cid)
+        logger.info(f"读取历史stamp文本embeddings: 共获取{len(stamp_embeddings)}条")
+    
+    stamp_ids = sorted(list(stamp_embeddings_id[stamp_embeddings_cid == cid]))
+    num_per_row = 5
+    scale = 4
+    stamp_w, stamp_h = 296 // scale, 256 // scale + 10
+    font_size = 10
+    row_num = (len(stamp_ids) + num_per_row - 1) // num_per_row
+    img = Image.new('RGBA', (stamp_w * num_per_row, stamp_h * row_num))
+    for i, sid in enumerate(stamp_ids):
+        x = (i % num_per_row) * stamp_w
+        y = (i // num_per_row) * stamp_h
+        stamp_img = await get_stamp_image(stamps, sid)
+        stamp_img = stamp_img.resize((stamp_w, stamp_h - 10)).convert('RGBA')
+        img.paste(stamp_img, (x, y + 10))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=font_size)
+    for i, sid in enumerate(stamp_ids):
+        x = (i % num_per_row) * stamp_w
+        y = (i // num_per_row) * stamp_h
+        draw.text((x, y), str(sid), font=font, fill=(200, 0, 0, 255))
+    return img
+
     
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
 
@@ -976,10 +1023,15 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         assert sid >= 0 and sid <= 9999
     except:
         try:
-            nickname, text = args.split(" ", 1)
-            text = text.strip()
-            cid = get_character_id(nickname)
-            assert cid is not None and len(text) > 0
+            if " " not in args:
+                nickname = args
+                cid = get_character_id(nickname)
+                assert cid is not None
+            else:
+                nickname, text = args.split(" ", 1)
+                text = text.strip()
+                cid = get_character_id(nickname)
+                assert cid is not None and len(text) > 0
         except:
             return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/stamp 123\n/stamp miku 你好")
 
@@ -989,6 +1041,10 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         if sid:
             logger.info(f"获取表情 id={sid}")
             return await send_reply_msg(stamp, event.message_id, await get_stamp_image_cq(stamp_data, sid))
+
+        if nickname and text is None:
+            logger.info(f"合成角色表情: cid={cid}")
+            return await send_reply_msg(stamp, event.message_id, get_image_cq(await compose_character_stamp(stamp_data, cid)))
 
         logger.info(f"搜索表情: cid={cid} text={text}")
         sids = await search_stamp(text, STAMP_SEARCH_TOPK, cid)
