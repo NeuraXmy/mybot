@@ -18,7 +18,9 @@ openai_config = get_config('openai')
 logger = get_logger("Pjsk")
 file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
-gwl = get_group_white_list(file_db, logger, 'pjsk')
+gbl = get_group_black_list(file_db, logger, 'pjsk')
+notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify', is_service=False)
+
 
 API_KEY = openai_config['api_key']
 API_BASE = openai_config['api_base']
@@ -760,7 +762,7 @@ bind_user_id = on_command("/pjsk bind", priority=1, block=False)
 @bind_user_id.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     user_id = event.get_plaintext().replace("/pjsk bind", "").strip()
 
@@ -792,7 +794,7 @@ get_user_info = on_command("/pjsk id", priority=1, block=False)
 @get_user_info.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     user_binds = file_db.get("user_binds", {})
     game_id = user_binds.get(str(event.user_id), None)
@@ -815,7 +817,7 @@ get_vlive = on_command("/pjsk live", priority=1, block=False)
 @get_vlive.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     msg = "当前的 Virtual Lives:\n"
 
@@ -846,7 +848,7 @@ subscribe = on_command("/pjsk sub", priority=1, block=False)
 @subscribe.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event): return
+    if not gbl.check(event): return
 
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
@@ -863,7 +865,7 @@ unsubscribe = on_command("/pjsk unsub", priority=1, block=False)
 @unsubscribe.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event): return
+    if not gbl.check(event): return
 
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
@@ -880,7 +882,7 @@ get_sub_list = on_command("/pjsk sub_list", priority=1, block=False)
 @get_sub_list.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event): return
+    if not gbl.check(event): return
 
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
@@ -899,7 +901,7 @@ event_story_character_search = on_command("/活动剧情对话角色搜索", pri
 @event_story_character_search.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     search_name = event.get_plaintext().strip().split(" ")[1:]
     if len(search_name) == 0:
@@ -966,7 +968,7 @@ mineral_search = on_command("/pjsk mine", priority=1, block=False, aliases={"/pj
 @mineral_search.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     game_id = get_user_game_id(event.user_id)
     if game_id is None:
@@ -1013,7 +1015,7 @@ stamp = on_command("/pjsk stamp", priority=1, block=False, aliases={"/pjsk 表�
 @stamp.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
-    if not gwl.check(event, allow_private=True): return
+    if not gbl.check(event, allow_private=True): return
 
     sid, cid, text = None, None, None
     args = event.get_plaintext().replace("/pjsk stamp", "").strip()
@@ -1105,7 +1107,7 @@ async def vlive_notify():
                     msg += f"{get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
                     msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
                     
-                    for group_id in gwl.get():
+                    for group_id in notify_gwl.get():
                         try:
                             sub_list = file_db.get(f"{group_id}_sub_list", [])
                             group_msg = msg + "\n"
@@ -1135,7 +1137,7 @@ async def vlive_notify():
                     elif vlive["current"] is not None:
                         msg += f"下一场: {get_readable_datetime(vlive['current'][0])}"
 
-                    for group_id in gwl.get():
+                    for group_id in notify_gwl.get():
                         try:
                             sub_list = file_db.get(f"{group_id}_sub_list", [])
                             group_msg = msg + "\n"
