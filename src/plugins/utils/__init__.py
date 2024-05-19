@@ -18,6 +18,7 @@ from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
 import io
 from retrying import retry
+from dataclasses import dataclass
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'
@@ -287,14 +288,14 @@ async def get_group_list(bot):
     return await bot.call_api('get_group_list')
 
 
-# 获取消息段
-async def get_msg(bot, message_id):
-    return (await bot.get_msg(message_id=int(message_id)))['message']
-
-
 # 获取完整消息对象
 async def get_msg_obj(bot, message_id):
-    return await bot.get_msg(message_id=int(message_id))
+    return await bot.call_api('get_msg', **{'message_id': int(message_id)})
+
+
+# 获取消息段
+async def get_msg(bot, message_id):
+    return (await get_msg_obj(bot, message_id))['message']
 
 
 # 获取陌生人信息
@@ -313,7 +314,7 @@ async def get_user_name(bot, group_id, user_id):
     if 'card' in info and info['card']:
         return info['card']
     else:
-        return info['user_name']
+        return info['nickname']
 
 
 # 获取群聊中所有用户

@@ -165,7 +165,7 @@ async def _(bot: Bot, event: MessageEvent):
                 reply_uid = reply_msg_obj["sender"]["user_id"]
                 # 不在历史会话中则不回复折叠内容
                 if "json" in reply_cqs:
-                    return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
+                    return await chat_request.send(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
                 session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
@@ -238,6 +238,8 @@ async def _(bot: Bot, event: MessageEvent):
             }
         })
         ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
+        print(ret)
+        ret["message_id"] = int(ret["message_id"]) - 1
 
     # 加入会话历史
     if len(session) < SESSION_LEN_LIMIT:
