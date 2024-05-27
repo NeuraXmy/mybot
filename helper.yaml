@@ -95,6 +95,8 @@ imgtool:
     示例：/img fan 逆时针旋转 /img fan r 顺时针旋转 /img fan 2x 2倍速旋转
     /img repeat 重复效果
     示例：/img repeat 2 3 重复2列3行
+    /scan 二维码识别
+    /qrcode {text} 生成二维码
     
 mc:
   name: "MC服务器服务"

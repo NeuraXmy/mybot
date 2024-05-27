@@ -496,3 +496,53 @@ async def handle(bot: Bot, event: MessageEvent):
         await send_reply_msg(fan, event.message_id, "处理图片失败")
 
 
+# 用pyzbar扫描图像中所有二维码，返回结果
+scan = on_command("/scan", priority=5, block=False)
+@scan.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not gbl.check(event, allow_private=True): return
+
+    img = await get_reply_image(scan, bot, event)
+    if not img: return
+
+    try:
+        from pyzbar.pyzbar import decode
+        res = decode(img)
+        if not res:
+            return await send_reply_msg(scan, event.message_id, "未检测到条形码/二维码")
+        msg = "\n".join([r.data.decode("utf-8") for r in res])
+        await send_reply_msg(scan, event.message_id, f"共识别{len(res)}个条形码/二维码:\n{msg}")
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(scan, event.message_id, "处理图片失败")
+
+
+# 用qrcode生成二维码
+gen_qrcode = on_command("/qrcode", priority=5, block=False)
+@gen_qrcode.handle()
+async def handle(bot: Bot, event: MessageEvent):
+    if not gbl.check(event, allow_private=True): return
+
+    args = event.get_plaintext().replace("/qrcode", "").strip()
+    if not args:
+        return await send_reply_msg(gen_qrcode, event.message_id, "请输入二维码内容")
+
+    try:
+        import qrcode
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(args)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        tmp_img_path = "data/imgtool/tmp/qrcode.png"
+        img.save(tmp_img_path)
+        await send_reply_msg(gen_qrcode, event.message_id, get_image_cq(tmp_img_path))
+
+    except Exception as e:
+        logger.print_exc(f"处理图片失败: {e}")
+        await send_reply_msg(gen_qrcode, event.message_id, "处理图片失败")
