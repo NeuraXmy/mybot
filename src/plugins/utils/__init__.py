@@ -410,9 +410,13 @@ async def send_group_fold_msg(bot, group_id, contents):
     return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
-async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100):
+async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
     if is_group(event) and len(message) > threshold:
-        return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
+        ret = await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
+        ret["message_id"] = int(ret["message_id"]) - 1
+        return ret
+    if need_reply:
+        return await send_reply_msg(handler, event.message_id, message)
     return await send_msg(handler, message)
 
 

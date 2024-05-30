@@ -41,6 +41,9 @@ AUTO_CHAT_SELF_LIMIT = config['auto_chat_self_limit']
 AUTO_CHAT_MIMIC_LIMIT = config['auto_chat_mimic_limit']
 
 SYSTEM_PROMPT_PATH = "data/chat/system_prompt.txt"
+SYSTEM_PROMPT_TOOLS_PATH = "data/chat/system_prompt_tools.txt"
+TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
+
 AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
 AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
 
@@ -138,7 +141,16 @@ async def _(bot: Bot, event: MessageEvent):
         # 用于备份的session_id
         session_id_backup = None
 
-        with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
+        # 是否需要使用工具
+        tools_trigger_words = []
+        with open(TOOLS_TRIGGER_WORDS_PATH, "r", encoding="utf-8") as f:
+            tools_trigger_words = f.read().split("\n")
+        need_tools = any([word and word in query_text for word in tools_trigger_words])
+        logger.info(f"使用工具: {need_tools}")
+
+        # 系统prompt
+        system_prompt_path = SYSTEM_PROMPT_TOOLS_PATH if need_tools else SYSTEM_PROMPT_PATH
+        with open(system_prompt_path, "r", encoding="utf-8") as f:
             system_prompt = f.read().format(
                 bot_name=BOT_NAME,
                 current_date=datetime.now().strftime("%Y-%m-%d")
@@ -179,8 +191,11 @@ async def _(bot: Bot, event: MessageEvent):
         query_imgs = [await get_image_b64(img) for img in query_imgs]
         session.append_content(USER_ROLE, query_text, query_imgs)
 
+        total_seconds, total_retry_count, total_ptokens, total_ctokens = 0, 0, 0, 0
+
         # 进行询问
         while True:
+            t = datetime.now()
             res, retry_count, ptokens, ctokens = await session.get_response(
                 max_retries=MAX_RETIRES, 
                 group_id=(event.group_id if is_group(event) else None),
@@ -188,9 +203,15 @@ async def _(bot: Bot, event: MessageEvent):
                 is_autochat=False
             )
             res = str(MessageSegment.text(res))
+            total_retry_count += retry_count
+            total_ptokens += ptokens
+            total_ctokens += ctokens
+            total_seconds += (datetime.now() - t).total_seconds()
 
             # 如果回复时关闭则取消回复
             if not gwl.check(event, allow_private=True, allow_super=True): return
+
+            if not need_tools: break
 
             try:
                 # 调用工具
@@ -206,40 +227,13 @@ async def _(bot: Bot, event: MessageEvent):
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
     
-
+    additional_info = f"{total_seconds:.1f}s, cost: {total_ptokens}+{total_ctokens}"
+    if total_retry_count > 0:
+        additional_info += f"|重试{total_retry_count}"
+    additional_info = f"\n({additional_info})"
 
     # 进行回复
-    if len(res) < FOLD_LENGTH_THRESHOLD or not is_group(event):
-        logger.info(f"非折叠回复")
-        out_msg = OutMessage(f"[CQ:reply,id={event.message_id}] " + res)
-        if not is_group(event):
-            ret = await bot.send_private_msg(user_id=event.user_id, message=out_msg)
-        else:
-            ret = await bot.send_group_msg(group_id=event.group_id, message=out_msg)
-        
-    else:
-        logger.info(f"折叠回复")
-        name = await get_user_name(bot, event.group_id, event.user_id)
-        msg_list = []
-        msg_list.append({
-            "type": "node",
-            "data": {
-                "user_id": event.user_id,
-                "nickname": name,
-                "content": query_text
-            }
-        })
-        msg_list.append({
-            "type": "node",
-            "data": {
-                "user_id": bot.self_id,
-                "nickname": BOT_NAME,
-                "content": res
-            }
-        })
-        ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
-        print(ret)
-        ret["message_id"] = int(ret["message_id"]) - 1
+    ret = await send_fold_msg_adaptive(bot, chat_request, event, res + additional_info, FOLD_LENGTH_THRESHOLD)
 
     # 加入会话历史
     if len(session) < SESSION_LEN_LIMIT:
