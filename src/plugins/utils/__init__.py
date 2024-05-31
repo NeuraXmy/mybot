@@ -698,7 +698,7 @@ class GroupWhiteList:
             await switch_off.finish(f'{name}已关闭')
             
         # 查询命令
-        switch_query = on_command(f'/{name}_state', block=False, priority=100)
+        switch_query = on_command(f'/{name}_status', block=False, priority=100)
         @switch_query.handle()
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     white_list_name=self.white_list_name):
@@ -796,7 +796,7 @@ class GroupBlackList:
             await on.finish(f'{name}已开启')
             
         # 查询命令
-        query = on_command(f'/{name}_state', block=False, priority=100)
+        query = on_command(f'/{name}_status', block=False, priority=100)
         @query.handle()
         async def _(event: GroupMessageEvent, superuser=self.superuser, name=self.name, 
                     black_list_name=self.black_list_name):

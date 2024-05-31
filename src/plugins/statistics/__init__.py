@@ -13,8 +13,10 @@ from ..record.sql import msg_range, msg_count, text_range
 config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
-gwl = get_group_white_list(file_db, logger, "sta")
+gbl = get_group_black_list(file_db, logger, "sta")
 cd = ColdDown(file_db, logger, config['cd'])
+
+notify_gwl = get_group_white_list(file_db, logger, "sta_notify", is_service=False)
 
 
 STATICSTIC_TIME = config['statistic_time']
@@ -129,7 +131,7 @@ async def get_word_statistic(bot, group_id, days, word):
 sta = on_command("/sta", priority=100, block=False)
 @sta.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event): return
+    if not gbl.check(event): return
     if not (await cd.check(event)): return
     try:
         try:
@@ -149,7 +151,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 sta2 = on_command("/sta_time", priority=100, block=False)
 @sta2.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event): return
+    if not gbl.check(event): return
     if not (await cd.check(event)): return
     msg = await get_msg(bot, event.message_id)
     cqs = extract_cq_code(msg)
@@ -157,7 +159,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if 'at' in cqs and len(cqs['at']) > 0:
         user_id = cqs['at'][0]['qq']
     try:
-        if event.get_plaintext().removeprefix('/sta2').strip() == '': return
+        if event.get_plaintext().removeprefix('/sta_time').strip() == '': return
         try:
             days = int(event.get_plaintext().split()[1])
         except:
@@ -175,7 +177,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 sta_word = on_command("/sta_word", priority=100, block=False)
 @sta_word.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    if not gwl.check(event): return
+    if not gbl.check(event): return
     if not (await cd.check(event)): return
     args = event.get_plaintext().removeprefix('/sta_word').strip().split()
     if len(args) == 0: return
@@ -248,7 +250,7 @@ async def _(bot: Bot, event: MessageEvent):
 @scheduler.scheduled_job("cron", hour=STATICSTIC_TIME[0], minute=STATICSTIC_TIME[1], second=STATICSTIC_TIME[2])
 async def cron_statistic():
     bot = get_bot()
-    for group_id in gwl.get():
+    for group_id in notify_gwl.get() and group_id not in gbl.get():
         logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)
