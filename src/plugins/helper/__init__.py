@@ -14,18 +14,20 @@ cds = []
 HELPER_PATH = 'helper.yaml'
 def init_helper():
     logger.info(f'初始化帮助')
-    with open(HELPER_PATH, 'r') as f:
-        helps = yaml.load(f, Loader=yaml.FullLoader)
-    help_keys = helps.keys()
-    logger.info(f'可用的帮助: {",".join(help_keys)}')
+    # with open(HELPER_PATH, 'r') as f:
+    #     helps = yaml.load(f, Loader=yaml.FullLoader)
+    # help_keys = helps.keys()
+    # logger.info(f'可用的帮助: {",".join(help_keys)}')
+    helps = {}
     
     # 如果没有全局帮助, 则自动添加
     if '_global' not in helps:
-        global_help = "使用以下指令查看各服务的详细帮助\n"
-        for key, val in helps.items():
-            global_help += f"/help {key} - {val['name']}\n"
-        if global_help.endswith('\n'):
-            global_help = global_help[:-1]
+        # global_help = "使用以下指令查看各服务的详细帮助\n"
+        # for key, val in helps.items():
+        #     global_help += f"/help {key} - {val['name']}\n"
+        # if global_help.endswith('\n'):
+        #     global_help = global_help[:-1]
+        global_help = """帮助文档: https://github.com/NeuraXmy/mybot/blob/master/helps/main.md"""
         helps['_global'] = {
             'name': '',
             'help': global_help
