@@ -13,7 +13,7 @@
 - [科学计算服务 (eval)](./eval.md)
 - [搜图服务 (imgexp)](./imgexp.md)
 - [图片处理服务 (imgtool)](./imgtool.md)
-- [Minecraft服务 (mc)](./translate.md)
+- [Minecraft服务 (mc)](./mc.md)
 - [OEIS服务 (oeis)](./oeis.md)
 - [世界计划服务 (pjsk)](./pjsk.md)
 - [群消息记录服务 (record)](./record.md)
