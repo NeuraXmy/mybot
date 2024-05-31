@@ -38,6 +38,7 @@ CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/ch
 STAMP_URL               = "https://sekai-world.github.io/sekai-master-db-diff/stamps.json"
 
 STAMP_IMG_URL = "https://storage.sekai.best/sekai-assets/stamp/{assetbundleName}_rip/{assetbundleName}/{assetbundleName}.png"
+MUSIC_COVER_IMG_URL = "https://storage.sekai.best/sekai-assets/music/jacket/{assetbundleName}_rip/{assetbundleName}.webp"
 
 BASIC_USER_PROFILE_URL  = "http://api.unipjsk.com/api/user/{uid}/profile"
 USER_PROFILE_URL        = "http://suite.unipjsk.com/api/user/{uid}/profile"
@@ -63,9 +64,7 @@ VLIVE_NOTIFY_INTERVAL_MINUTE        = config['vlive_notify_interval_minute']
 VLIVE_START_NOTIFY_BEFORE_MINUTE    = config['vlive_start_notify_before_minute']
 VLIVE_END_NOTIFY_BEFORE_MINUTE      = config['vlive_end_notify_before_minute']
 
-EVENT_NOTIFY_INTERVAL_MINUTE        = config['event_notify_interval_minute']
-EVENT_START_NOTIFY_BEFORE_MINUTE    = config['event_start_notify_before_minute']
-EVENT_END_NOTIFY_BEFORE_MINUTE      = config['event_end_notify_before_minute']
+NEW_MUSIC_NOTIFY_INTERVAL_MINUTE    = config['new_music_notify_interval_minute']
 
 DATA_UPDATE_TIME                   = config['data_update_time']
 
@@ -134,6 +133,18 @@ MUSIC_ACHIEVEMENT_MINE = [
 
 
 # ------------------------------------------ 数据管理 ------------------------------------------ #
+
+async def update_all():
+    await download_music_data()
+    await download_music_difficulty_data()
+    await download_vlive_data()
+    await download_event_data()
+    await download_event_story_data()
+    await download_character_data()
+    await download_character_2ds_data()
+    await update_event_story_detail(force_update=False)
+    await download_stamp_data()
+    await update_stamp_embeddings()
 
 # 下载用户基本信息 返回json
 async def get_basic_user_profile(user_id):
@@ -477,6 +488,22 @@ def parse_music_data(music_data, music_difficulty_data):
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+# 用某个key查找某个列表中的元素 mode=first/last/all
+def find_by(lst, key, value, mode="first", convert_to_str=True):
+    if mode not in ["first", "last", "all"]:
+        raise Exception("find_by mode must be first/last/all")
+    if convert_to_str:
+        ret = [item for item in lst if key in item and str(item[key]) == str(value)]
+    else:
+        ret = [item for item in lst if key in item and item[key] == value]
+    if not ret: 
+        return None if mode != "all" else []
+    if mode == "first":
+        return ret[0]
+    if mode == "last":
+        return ret[-1]
+    return ret
+
 # 获取用户游戏id
 def get_user_game_id(user_id):
     user_binds = file_db.get("user_binds", {})
@@ -655,16 +682,9 @@ async def update_stamp_embeddings():
     except Exception as e:
         logger.print_exc(f"更新stamp文本embeddings失败: {e}")
 
-# 根据stampid获取stamp数据
-def find_stamp_by_id(stamps, id):
-    for stamp in stamps:
-        if stamp["id"] == int(id):
-            return stamp
-    return None
-
 # 根据stampid获取stamp图片地址
 def get_stamp_url_by_id(stamps, id):
-    stamp = find_stamp_by_id(stamps, id)
+    stamp = find_by(stamps, "id", id)
     if stamp is None:
         return None
     name = stamp['assetbundleName']
@@ -743,7 +763,10 @@ async def compose_character_stamp(stamps, cid):
     for i, sid in enumerate(stamp_ids):
         x = (i % num_per_row) * stamp_w
         y = (i // num_per_row) * stamp_h
-        stamp_img = await get_stamp_image(stamps, sid)
+        try:
+            stamp_img = await get_stamp_image(stamps, sid)
+        except:
+            continue
         stamp_img = stamp_img.resize((stamp_w, stamp_h - 10)).convert('RGBA')
         img.paste(stamp_img, (x, y + 10))
     draw = ImageDraw.Draw(img)
@@ -754,6 +777,12 @@ async def compose_character_stamp(stamps, cid):
         draw.text((x, y), str(sid), font=font, fill=(200, 0, 0, 255))
     return img
 
+# 获取歌曲封面url
+def get_music_cover_url(musics, mid):
+    music = find_by(musics, "id", mid)
+    if music is None: return None
+    url = MUSIC_COVER_IMG_URL.format(assetbundleName=music["assetbundleName"])
+    return url
     
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
 
@@ -1054,7 +1083,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     
         msg = f"{await get_stamp_image_cq(stamp_data, sids[0])}候选表情:"
         for sid in sids[1:]:
-            item = find_stamp_by_id(stamp_data, sid)
+            item = find_by(stamp_data, "id", sid)
             if item is not None:
                 msg += f"\n【{sid}】{item['name'].split('：')[-1]}"
 
@@ -1063,6 +1092,18 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f"获取表情失败: {e}")
         return await send_reply_msg(stamp, event.message_id, "获取表情失败")
+    
+
+update = on_command("/pjsk update", priority=1, block=False)
+@update.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not check_superuser(event): return
+    try:
+        await update_all()
+        return await send_msg(update, "pjsk数据更新成功")
+    except Exception as e:
+        logger.print_exc(f"pjsk数据更新失败: {e}")
+        return await send_msg(update, f"pjsk数据更新失败: {e}")
 
 
 # ----------------------------------------- 定时任务 ------------------------------------------ #
@@ -1070,16 +1111,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 # 定时更新所有数据
 @scheduler.scheduled_job("cron", hour=DATA_UPDATE_TIME[0], minute=DATA_UPDATE_TIME[1], second=DATA_UPDATE_TIME[2])
 async def update_data():
-    await download_music_data()
-    await download_music_difficulty_data()
-    await download_vlive_data()
-    await download_event_data()
-    await download_event_story_data()
-    await download_character_data()
-    await download_character_2ds_data()
-    await update_event_story_detail(force_update=False)
-    await download_stamp_data()
-    await update_stamp_embeddings()
+    await update_all()
     
 
 # vlive自动提醒
@@ -1154,8 +1186,60 @@ async def vlive_notify():
         file_db.set("start_notified_vlives", start_notified_vlives)
         file_db.set("end_notified_vlives", end_notified_vlives)
 
+
+# 新曲上线提醒
+async def new_music_notify():
+    bot = get_bot()
+    notified_musics = file_db.get("notified_musics", [])
+    music_data = await get_music_data()
+    music_diff_data = await get_music_difficulty_data()
+    parsed_data = parse_music_data(music_data, music_diff_data)
+    now = datetime.now()
+
+    for music in music_data:
+        mid = music["id"]
+        publish_time = datetime.fromtimestamp(music["publishedAt"] / 1000)
+        if mid in notified_musics: continue
+        if now - publish_time > timedelta(days=1): continue
+        if publish_time > now: continue
+        logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
+
+        msg = f"【PJSK新曲上线】\n"
+        msg += f"{music['composer']} - {music['title']}\n"
+        cover_image_url = get_music_cover_url(music_data, mid)
+        msg += f"{get_image_cq(cover_image_url, allow_error=True, logger=logger)}\n"
+        
+        if pdata := parsed_data.get(mid):
+            easy_diff   = pdata['diff']['easy']['playLevel']
+            normal_diff = pdata['diff']['normal']['playLevel']
+            hard_diff   = pdata['diff']['hard']['playLevel']
+            expert_diff = pdata['diff']['expert']['playLevel']
+            master_diff = pdata['diff']['master']['playLevel']
+            msg += f"{easy_diff}/{normal_diff}/{hard_diff}/{expert_diff}/{master_diff}"
+            if pdata['has_append']:
+                append_diff = pdata['diff']['append']['playLevel']
+                msg += f"/APD{append_diff}"
+            msg += "\n"
+        
+        msg += f"发布时间: {publish_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+        for group_id in notify_gwl.get():
+            try:
+                await bot.send_group_msg(group_id=group_id, message=OutMessage(msg.strip()))
+            except:
+                logger.print_exc(f'发送新曲上线提醒到群{group_id}失败')
+                continue
+
+        notified_musics.append(mid)
+                
+    file_db.set("notified_musics", notified_musics)
+
+
 # 定时任务
 start_repeat_with_interval(VLIVE_NOTIFY_INTERVAL_MINUTE * 60, vlive_notify, logger, 'vlive自动提醒')
+
+# 定时任务
+start_repeat_with_interval(NEW_MUSIC_NOTIFY_INTERVAL_MINUTE * 60, new_music_notify, logger, '新曲上线提醒')
 
 
 

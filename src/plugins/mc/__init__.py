@@ -94,7 +94,7 @@ class ServerData:
             'game_name': self.game_name
         }
         file_db.set(f'{self.group_id}.server_info', data)
-        logger.info(f'在 {self.group_id} 中保存服务器 {data}')
+        # logger.info(f'在 {self.group_id} 中保存服务器 {data}')
 
     # 加载配置
     def load(self):

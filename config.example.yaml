@@ -124,11 +124,7 @@ pjsk:
     - 10
   vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
     - 140
-  event_notify_interval_minute: 1         # 每隔多少分钟检查event的提醒
-  event_start_notify_before_minute:       # 提前多少分钟提醒event开始 （列表）
-    - 10
-  event_end_notify_before_minute:         # 提前多少分钟提醒event结束（列表）
-    - 140
+  new_music_notify_interval_minute: 5     # 每隔多少分钟检查新歌的提醒
   data_update_time: [5, 0, 0]             # 数据更新时间 [hour, minute, second]
   model_id: "text-embedding-ada-002"  
   stamp_search_topk: 5

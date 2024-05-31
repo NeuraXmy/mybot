@@ -227,7 +227,7 @@ async def _(bot: Bot, event: MessageEvent):
             sessions[session_id_backup] = session
         return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
     
-    additional_info = f"{total_seconds:.1f}s, cost: {total_ptokens}+{total_ctokens}"
+    additional_info = f"{total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if total_retry_count > 0:
         additional_info += f"|重试{total_retry_count}"
     additional_info = f"\n({additional_info})"

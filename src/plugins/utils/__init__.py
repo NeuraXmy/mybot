@@ -369,6 +369,11 @@ def extract_text(msg):
     return ' '.join([cq['text'] for cq in cqs["text"]])
 
 
+# 获取折叠消息
+async def get_forward_msg(bot, forward_id):
+    return await bot.call_api('get_forward_msg', **{'id': int(forward_id)})
+
+
 # 从消息段获取回复的消息，如果没有回复则返回None
 async def get_reply_msg(bot, msg):
     cqs = extract_cq_code(msg)

@@ -142,6 +142,8 @@ pjsk:
     /pjsk mine 查询剩余矿产统计
     /pjsk stamp id 获取指定id表情
     /pjsk stamp 角色简称 文本 获取指定角色的表情 例如/pjsk stamp ena 再见
+    /pjsk update 更新数据（超级用户权限）
+    /pjsk_notify_on/off 开关vlive提醒（超级用户权限）
 
     每天更新一次live数据
     数据来源：sekai.best

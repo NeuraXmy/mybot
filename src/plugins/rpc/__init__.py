@@ -146,5 +146,17 @@ async def handle_get_client_data(cid, name):
 @rpc('set_client_data')
 async def handle_set_client_data(cid, name, data):
     with open(f'data/rpc/client_data/{name}.json', 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2, ensure_ascii=False)
     return True
+
+# 获取消息
+@rpc('get_msg')
+async def handle_get_msg(cid, msg_id):
+    bot = get_bot()
+    return await get_msg_obj(bot, msg_id)
+
+# 获取折叠消息
+@rpc('get_forward_msg')
+async def handle_get_forward_msg(cid, forward_id):
+    bot = get_bot()
+    return await get_forward_msg(bot, forward_id)
