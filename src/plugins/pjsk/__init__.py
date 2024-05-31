@@ -1201,7 +1201,7 @@ async def new_music_notify():
         publish_time = datetime.fromtimestamp(music["publishedAt"] / 1000)
         if mid in notified_musics: continue
         if now - publish_time > timedelta(days=1): continue
-        if publish_time > now: continue
+        if publish_time - now > timedelta(minutes=10): continue
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
         msg = f"【PJSK新曲上线】\n"

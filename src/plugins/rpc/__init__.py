@@ -153,10 +153,11 @@ async def handle_set_client_data(cid, name, data):
 @rpc('get_msg')
 async def handle_get_msg(cid, msg_id):
     bot = get_bot()
-    return await get_msg_obj(bot, msg_id)
-
-# 获取折叠消息
-@rpc('get_forward_msg')
-async def handle_get_forward_msg(cid, forward_id):
-    bot = get_bot()
-    return await get_forward_msg(bot, forward_id)
+    msg_obj = await get_msg_obj(bot, msg_id)
+    return {
+        'msg_id': msg_obj['message_id'],
+        'time': msg_obj['time'],
+        'user_id': msg_obj['sender']['user_id'],
+        'nickname': msg_obj['sender']['nickname'],
+        'msg': msg_obj['message'],
+    }
