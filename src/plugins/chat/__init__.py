@@ -144,7 +144,7 @@ async def _(bot: Bot, event: MessageEvent):
         # 是否需要使用工具
         tools_trigger_words = []
         with open(TOOLS_TRIGGER_WORDS_PATH, "r", encoding="utf-8") as f:
-            tools_trigger_words = f.read().split("\n")
+            tools_trigger_words = f.read().split()
         need_tools = any([word and word in query_text for word in tools_trigger_words])
         logger.info(f"使用工具: {need_tools}")
 

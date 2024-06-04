@@ -112,7 +112,9 @@ async def handle_get_group(cid, group_id):
 @rpc('send_group_msg')
 async def handle_send_group_msg(cid, group_id, message):
     bot = get_bot()
-    return await bot.send_group_msg(group_id=int(group_id), message=OutMessage(message))
+    if isinstance(message, str):
+        message=OutMessage(message)
+    return await bot.send_group_msg(group_id=int(group_id), message=message)
 
 # 从数据库获取群聊天记录
 @rpc('get_group_history_msg')
