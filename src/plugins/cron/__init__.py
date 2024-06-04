@@ -96,6 +96,9 @@ async def parse_instruction(group_id, user_id, user_instruction):
                 is_autochat=False
             )   
             task = json.loads(task)
+            params = task['parameters']
+            for key in params:
+                params[key] = str(params[key])
             task['group_id'] = group_id
             task['user_id'] = user_id
             task['sub_users'] = [ str(user_id) ]
