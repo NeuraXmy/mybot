@@ -79,10 +79,18 @@ async def run(strcode):
     }
     headers = {"Authorization": "Token 0123456-789a-bcde-f012-3456789abcde",
                "content-type": "application/"}
-    async with httpx.AsyncClient() as client:
-        res = await client.post(url=f'https://glot.io/run/{codeType[lang][0]}?version=latest', headers=headers, json=dataJson)
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(url=f'https://glot.io/run/{codeType[lang][0]}?version=latest', headers=headers, json=dataJson)
+    except httpx.ReadTimeout:
+        raise Exception("请求超时")
+    except Exception as e:
+        raise Exception(f"请求失败: {type(e).__name__} {e}")
+    
     if res.status_code == 200:
         res = res.json()
+        # print(res)
         return res['stdout']+('\n---\n'+res['stderr'] if res['stderr'] else '')
     else:
-        return '响应异常'
+        raise Exception(f"请求失败({res.status_code}):{res.text}")

@@ -57,3 +57,4 @@ async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg(
             return await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=msg_list)
     except Exception as e:
         logger.print_exc(f"运行代码失败")
+        return await send_reply_msg(runcode, event, f"运行代码失败: {e}")

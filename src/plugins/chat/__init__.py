@@ -44,10 +44,14 @@ SYSTEM_PROMPT_PATH = "data/chat/system_prompt.txt"
 SYSTEM_PROMPT_TOOLS_PATH = "data/chat/system_prompt_tools.txt"
 TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
 
+SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
+
 AUTO_CHAT_PROMPT_PATH = "data/chat/autochat_prompt.txt"
 AUTO_CHAT_MIMIC_PROMPT_PATH = "data/chat/autochat_prompt_mimic.txt"
 
-# 使用工具
+CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
+
+# 使用工具 返回需要添加到回复的额外信息
 async def use_tool(handle, session, type, data, event):
     if type == "python":
         logger.info(f"使用python工具, data: {data}")
@@ -60,9 +64,19 @@ async def use_tool(handle, session, type, data, event):
 
         from ..run_code.run import run as run_code
         str_code = "py\n" + data
-        res = await run_code(str_code)
+
+        try:
+            res = await run_code(str_code)
+        except Exception as e:
+            logger.print_exc(f"请求运行代码失败: {e}")
+            res = f"运行代码失败: {e}"
         logger.info(f"python执行结果: {res}")
-        session.append_content(SYSTEM_ROLE, res)
+
+        with open(SYSTEM_PROMPT_PYTHON_RET, "r", encoding="utf-8") as f:
+            system_prompt_ret = f.read()
+        session.append_content(SYSTEM_ROLE, system_prompt_ret.format(res=res))
+
+        return res
     else:
         raise Exception(f"unknown tool type")
 
@@ -141,20 +155,27 @@ async def _(bot: Bot, event: MessageEvent):
         # 用于备份的session_id
         session_id_backup = None
 
-        # 是否需要使用工具
-        tools_trigger_words = []
-        with open(TOOLS_TRIGGER_WORDS_PATH, "r", encoding="utf-8") as f:
-            tools_trigger_words = f.read().split()
-        need_tools = any([word and word in query_text for word in tools_trigger_words])
-        logger.info(f"使用工具: {need_tools}")
+        # 是否是cleanchat
+        if any([word in query_text for word in CLEANCHAT_TRIGGER_WORDS]):
+            for word in CLEANCHAT_TRIGGER_WORDS:
+                query_text = query_text.replace(word, "")
+            need_tools = False
+            system_prompt = None
+        else:
+            # 是否需要使用工具
+            tools_trigger_words = []
+            with open(TOOLS_TRIGGER_WORDS_PATH, "r", encoding="utf-8") as f:
+                tools_trigger_words = f.read().split()
+            need_tools = any([word and word in query_text for word in tools_trigger_words])
+            logger.info(f"使用工具: {need_tools}")
 
-        # 系统prompt
-        system_prompt_path = SYSTEM_PROMPT_TOOLS_PATH if need_tools else SYSTEM_PROMPT_PATH
-        with open(system_prompt_path, "r", encoding="utf-8") as f:
-            system_prompt = f.read().format(
-                bot_name=BOT_NAME,
-                current_date=datetime.now().strftime("%Y-%m-%d")
-            )
+            # 系统prompt
+            system_prompt_path = SYSTEM_PROMPT_TOOLS_PATH if need_tools else SYSTEM_PROMPT_PATH
+            with open(system_prompt_path, "r", encoding="utf-8") as f:
+                system_prompt = f.read().format(
+                    bot_name=BOT_NAME,
+                    current_date=datetime.now().strftime("%Y-%m-%d")
+                )
 
         reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
         if reply_msg_obj is not None:
@@ -193,8 +214,10 @@ async def _(bot: Bot, event: MessageEvent):
 
         total_seconds, total_retry_count, total_ptokens, total_ctokens = 0, 0, 0, 0
 
+        tools_additional_info = ""
+
         # 进行询问
-        while True:
+        while range(5):
             t = datetime.now()
             res, retry_count, ptokens, ctokens = await session.get_response(
                 max_retries=MAX_RETIRES, 
@@ -216,7 +239,8 @@ async def _(bot: Bot, event: MessageEvent):
             try:
                 # 调用工具
                 ret = json.loads(res)
-                await use_tool(chat_request, session, ret["tool"], ret["data"], event)
+                tool_ret = await use_tool(chat_request, session, ret["tool"], ret["data"], event)
+                tools_additional_info += f"[工具{ret['tool']}返回结果: {tool_ret.strip()}]\n" 
             except Exception as exc:
                 logger.info(f"工具调用失败: {exc}")
                 break
@@ -232,8 +256,10 @@ async def _(bot: Bot, event: MessageEvent):
         additional_info += f"|重试{total_retry_count}"
     additional_info = f"\n({additional_info})"
 
+    final_res = tools_additional_info + res + additional_info
+
     # 进行回复
-    ret = await send_fold_msg_adaptive(bot, chat_request, event, res + additional_info, FOLD_LENGTH_THRESHOLD)
+    ret = await send_fold_msg_adaptive(bot, chat_request, event, final_res, FOLD_LENGTH_THRESHOLD)
 
     # 加入会话历史
     if len(session) < SESSION_LEN_LIMIT:
