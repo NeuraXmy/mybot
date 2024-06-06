@@ -44,7 +44,7 @@ async def handle_bird(bot: Bot, event: MessageEvent):
     bird_name = event.get_message().extract_plain_text().replace('/bird', '').strip()
     logger.info(f"鸟类查询：{bird_name}")
     if not bird_name or bird_name == "":
-        await bird.finish(Message(f"[CQ:reply,id={event.message_id}]鸟类名称不能为空"))
+        return await send_reply_msg(bird, event.message_id, "鸟类名称不能为空")
 
     # 查找精确匹配
     if bird_name in birds.keys():
@@ -57,27 +57,7 @@ async def handle_bird(bot: Bot, event: MessageEvent):
         res += f"{bird_info['俗名']}\n"
         logger.info(f"鸟类查询：{bird_name}，精确匹配")
 
-        if is_group(event):
-            msg_list = []
-            msg_list.append({
-                "type": "node",
-                "data": {
-                    "user_id": event.user_id,
-                    "nickname": await get_user_name(bot, event.group_id, event.user_id),
-                    "content": event.get_message().extract_plain_text()
-                }
-            })
-            msg_list.append({
-                "type": "node",
-                "data": {
-                    "user_id": bot.self_id,
-                    "nickname": BOT_NAME,
-                    "content": res.strip()
-                }
-            })
-            return await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
-        else:
-            await bird.finish(Message(res))
+        return await send_fold_msg_adaptive(bot, bird, event, res.strip())
         
 
     # 查找模糊匹配
@@ -107,7 +87,8 @@ async def handle_bird(bot: Bot, event: MessageEvent):
         res += f"\"{bird_name}\"可能是这些鸟的俗名：{', '.join(folk_names)}\n"
     if len(blur_names) > 0:
         res += f"模糊匹配：{', '.join(blur_names)}\n"
-    await bird.finish(Message(res.strip()))
+
+    return await send_reply_msg(bird, event.message_id, res.strip())
 
 
 

@@ -273,7 +273,7 @@ async def consume_queue():
             while len(server.queue) > 0:
                 msg = server.queue.pop(0)
                 msg = f'[Server] {msg}'
-                await bot.send_group_msg(group_id=server.group_id, message=msg)
+                await send_group_msg_by_bot(bot, server.group_id, msg)
                 consume_queue_failed_count = 0
         except Exception as e:
             if consume_queue_failed_count < 5:
@@ -317,7 +317,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
             msg += f'<{player["name"]}>\n'
             msg += f'{player["world"]}({player["x"]:.1f},{player["y"]:.1f},{player["z"]:.1f})\n'
             msg += f'HP:{player["health"]:.1f} Armor:{player["armor"]:.1f}\n'
-    await info.finish(msg.strip())
+    return await send_msg(info, msg.strip())
 
 # 开关监听
 bot_on = on_command("/listen", priority=100, block=False)
@@ -329,11 +329,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if server.bot_on:
         server.bot_on = False
         server.save()
-        await bot_on.finish('监听已关闭')
+        return await send_msg(bot_on, '监听已关闭')
     else:
         server.bot_on = True
         server.save()
-        await bot_on.finish('监听已开启')
+        return await send_msg(bot_on, '监听已开启')
 
 # 设置url
 set_url = on_command("/seturl", priority=100, block=False)
@@ -343,7 +343,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
     if not server.bot_on: 
-        await set_url.finish("监听已关闭，无法设置url")
+        return await send_msg(set_url, "监听已关闭，无法设置url")
     url = str(event.get_message()).replace('/seturl', '').strip()
     if url == '':
         await set_url.finish('url不能为空')
@@ -351,7 +351,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         url = 'http://' + url
     server.url = url
     server.save()
-    await set_url.finish(f'设置本群卫星地图地址为: {url}')
+    return await send_msg(set_url, f'设置卫星地图地址为: {url}')
 
 # 获取url
 get_url = on_command("/geturl", priority=100, block=False)
@@ -360,7 +360,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     if not (await cd.check(event)): return
     server = get_server(event.group_id)
-    await get_url.finish(f'本群设置的卫星地图地址为: {server.url}')
+    return await send_msg(get_url, f'本群设置的卫星地图地址为: {server.url}')
 
 # 设置info
 set_info = on_command("/setinfo", priority=100, block=False)
@@ -372,7 +372,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     info = str(event.get_message()).replace('/setinfo', '').strip()
     server.info = info
     server.save()
-    await set_info.finish(f'服务器信息已设置')
+    return await send_msg(set_info, f'设置服务器信息为: {info}')
 
 # 发送消息
 sendmsg = on_command("/send", priority=100, block=False)
@@ -382,7 +382,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
     server = get_server(event.group_id)
     if not server.bot_on: 
-        await sendmsg.finish("监听已关闭，无法发送消息")
+        return await send_msg(sendmsg, "监听已关闭，无法发送消息")
 
     msg = await get_msg(bot, event.message_id)
     cqs = extract_cq_code(msg)
@@ -425,7 +425,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         logger.info(f'{user_name} 发送消息到 {server.url} 成功: {msg}')
     except Exception as e:
         logger.print_exc(f'{user_name} 发送消息到 {server.url} 失败')
-        await sendmsg.finish(f'发送失败: {e}')
+        return await send_reply_msg(sendmsg, event.message_id, f'发送失败: {e}')
 
 
 # 添加管理员
@@ -437,13 +437,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     msg = extract_cq_code(await get_msg(bot, event.message_id))
     if 'at' not in msg:
-        await add_admin.finish('请@一个人')
+        return await send_reply_msg(add_admin, event.message_id, '请@一个人')
     user_id = str(msg['at'][0]['qq'])
     if user_id in server.admin:
-        await add_admin.finish('该用户已经是管理员')
+        return await send_reply_msg(add_admin, event.message_id, '该用户已经是管理员')
     server.admin.append(user_id)
     server.save()
-    await add_admin.finish('添加管理员成功')
+    return await send_reply_msg(add_admin, event.message_id, '添加管理员成功')
 
 # 移除管理员
 remove_admin = on_command("/opdel", priority=100, block=False)
@@ -454,13 +454,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     msg = extract_cq_code(await get_msg(bot, event.message_id))
     if 'at' not in msg:
-        await remove_admin.finish('请@一个人')
+        return await send_reply_msg(remove_admin, event.message_id, '请@一个人')
     user_id = str(msg['at'][0]['qq'])
     if user_id not in server.admin:
-        await remove_admin.finish('该用户不是管理员')
+        return await send_reply_msg(remove_admin, event.message_id, '该用户不是管理员')
     server.admin.remove(user_id)
     server.save()
-    await remove_admin.finish('移除管理员成功')
+    return await send_reply_msg(remove_admin, event.message_id, '移除管理员成功')
 
 # 获取管理员列表
 get_admin = on_command("/oplist", priority=100, block=False)
@@ -472,7 +472,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     for user_id in server.admin:
         user_name = await get_user_name(bot, event.group_id, int(user_id))
         msg += f'{user_name}({user_id})\n'
-    await get_admin.finish(msg.strip())
+    return await send_msg(get_admin, msg.strip())
 
 # 设置rconurl
 set_rcon = on_command("/setrconurl", priority=100, block=False)
@@ -483,10 +483,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not server.check_admin_or_superuser(event): return
     url = str(event.get_message()).replace('/setrconurl', '').strip()
     if url == '':
-        await set_rcon.finish('url不能为空')
+        return await send_reply_msg(set_rcon, event.message_id, 'url不能为空')
     server.rcon_url = url
     server.save()
-    await set_rcon.finish(f'设置服务器rcon地址为: {url}')
+    return await send_reply_msg(set_rcon, event.message_id, f'设置服务器rcon地址为: {url}')
 
 # 获取rconurl
 get_rcon = on_command("/getrconurl", priority=100, block=False)
@@ -495,7 +495,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     if not (await cd.check(event)): return
     server = get_server(event.group_id)
-    await get_rcon.finish(f'服务器rcon地址为: {server.rcon_url}')
+    return await send_msg(get_rcon, f'服务器rcon地址为: {server.rcon_url}')
 
 # 发送rcon命令
 rcon = on_command("/rcon", priority=100, block=False)
@@ -506,13 +506,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     if not server.check_admin_or_superuser(event): return
     if server.rcon_url == '':
-        await rcon.finish('rcon地址未设置')
+        return await send_msg(rcon, 'rcon地址未设置')
     if server.rcon_password == '':
-        await rcon.finish('rcon密码未设置')
+        return await send_msg(rcon, 'rcon密码未设置')
 
     command = str(event.get_message()).replace('/rcon', '').strip()
     if command == '':
-        await rcon.finish('命令不能为空')
+        return await send_reply_msg(rcon, event.message_id, '命令不能为空')
     try:
         logger.info(f'发送rcon命令到{server.rcon_url}: {command}')
         host = server.rcon_url.split(':')[0]
@@ -521,13 +521,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
             resp = mcr.command(command)
     except Exception as e:
         logger.print_exc(f'发送rcon命令 {command} 到{server.rcon_url}失败')
-        await rcon.finish(f'发送失败: {e}')
+        return await send_reply_msg(rcon, event.message_id, f'发送失败: {e}')
 
     logger.info(f'获取到rcon响应: {resp}')
     if resp == '':
-        await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，无响应'))
+        return await send_reply_msg(rcon, event.message_id, '发送成功，无响应')
     else:
-        await rcon.finish(OutMessage(f'[CQ:reply,id={event.message_id}]发送成功，响应:\n{resp}'))
+        return await send_reply_msg(rcon, event.message_id, f'发送成功，响应:\n{resp}')
 
 # 查询游玩时间统计
 sta = on_command("/playtime", priority=100, block=False)
@@ -543,7 +543,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     else:
         for account, play_time in server.player_time[server.game_name].items():
             msg += f'{account}: {play_time:.2f}h\n'
-    await sta.finish(msg.strip())
+    return await send_msg(sta, msg.strip())
 
 # 清空游玩时间统计
 clear_sta = on_command("/playtime_clear", priority=100, block=False)
@@ -554,7 +554,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not server.check_admin_or_superuser(event): return
     server.clear_player_time()
     server.save()
-    await clear_sta.finish('游玩时间统计已清空')
+    return await send_msg(clear_sta, '游玩时间统计已清空')
 
 # 开始新周目
 start = on_command("/start_game", priority=100, block=False)
@@ -565,7 +565,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not server.check_admin_or_superuser(event): return
     server.game_name = str(event.get_message()).replace('/start_game', '').strip()
     server.save()
-    await start.finish(f'切换到周目: {server.game_name}')
+    return await send_msg(start, f'开始新周目: {server.game_name}')
     
     
 

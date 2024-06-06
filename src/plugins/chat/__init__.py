@@ -91,8 +91,11 @@ async def _(bot: Bot, event: MessageEvent):
         query_imgs = extract_image_url(query_msg)
         query_cqs = extract_cq_code(query_msg)
 
+        # 自己回复指令的消息不回复
+        if check_self_reply(event): return
+
         # 空消息不回复
-        if query_text.strip() == "" or query_text is None:
+        if query_text.replace(f"@{BOT_NAME}", "").strip() == "" or query_text is None:
             return
         
         # /开头的消息不回复
@@ -221,7 +224,7 @@ async def _(bot: Bot, event: MessageEvent):
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
-        return await chat_request.finish(OutMessage(f"[CQ:reply,id={event.message_id}] " + str(error)))
+        return send_reply_msg(chat_request, event.message_id, str(error))
     
     additional_info = f"{total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if (rest_quota := file_db.get("rest_quota", -1)) > 0:
@@ -275,7 +278,7 @@ async def _(bot: Bot, event: MessageEvent):
         desc = f"{date}\n{desc}"
 
     if path is None:
-        return await token_usage.finish(desc)
+        return await send_msg(token_usage, desc)
 
     img = Image.open(path)
     imgByteArr = io.BytesIO()
@@ -286,4 +289,4 @@ async def _(bot: Bot, event: MessageEvent):
         desc,
         MessageSegment.image(imgByteArr)
     )
-    return await token_usage.finish(ret)
+    return await send_msg(token_usage, ret)

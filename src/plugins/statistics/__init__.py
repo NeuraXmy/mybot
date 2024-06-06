@@ -55,14 +55,8 @@ async def get_statistic(bot, group_id, date=None):
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.jpg"
     draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path)
-    # 保存为二进制流
-    img = Image.open(path)
-    imgByteArr = io.BytesIO()
-    img.save(imgByteArr, format='PNG')
-    imgByteArr = imgByteArr.getvalue()
     # 发送图片
-    ret = (MessageSegment.image(imgByteArr))
-    return ret
+    return get_image_cq(path)
 
 # 获取总消息量关于时间的统计图数据
 def get_date_count_statistic(bot, group_id, days, user_id=None):
@@ -86,12 +80,7 @@ def get_date_count_statistic(bot, group_id, days, user_id=None):
         counts.append(cnt)
     save_path = PLOT_PATH + f"plot_{group_id}_date_count.jpg"
     draw_date_count_plot(dates, counts, save_path, user_counts)
-    img = Image.open(save_path)
-    imgByteArr = io.BytesIO()
-    img.save(imgByteArr, format='PNG')
-    imgByteArr = imgByteArr.getvalue()
-    ret = [MessageSegment.image(imgByteArr)]
-    return ret
+    return get_image_cq(save_path)
 
 # 获取某个词的统计图
 async def get_word_statistic(bot, group_id, days, word):
@@ -117,12 +106,7 @@ async def get_word_statistic(bot, group_id, days, word):
     topk_name = [await get_user_name(bot, group_id, user) for user in topk_user]
     save_path = PLOT_PATH + f"plot_{group_id}_word_count.jpg"
     draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_counts, word, save_path)
-    img = Image.open(save_path)
-    imgByteArr = io.BytesIO()
-    img.save(imgByteArr, format='PNG')
-    imgByteArr = imgByteArr.getvalue()
-    ret = [MessageSegment.image(imgByteArr)]
-    return ret
+    return get_image_cq(save_path)
 
 # ------------------------------------------------ 聊天逻辑 ------------------------------------------------
 
@@ -141,10 +125,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
             logger.info(f'日期格式错误, 使用当前日期')
             date = None
         res = await get_statistic(bot, event.group_id, date)
+        return await send_reply_msg(sta, event.message_id, res)
+    
     except Exception as e:
         logger.print_exc(f'发送统计图失败')
-        return await sta.finish(f'发送统计图失败：{e}')
-    await sta.finish(res)
+        return await send_reply_msg(sta, event.message_id, f'发送统计图失败：{e}')
 
 
 # 发送总消息量关于时间的统计图
@@ -166,11 +151,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
             logger.info(f'日期格式错误, 使用默认30天')
             days = 30
         res = get_date_count_statistic(bot, event.group_id, days, user_id)
+        return await send_reply_msg(sta2, event.message_id, res)
+
     except Exception as e:
         logger.print_exc(f'发送总消息量关于时间的统计图失败')
-        return await sta2.finish(f'发送总消息量关于时间的统计图失败：{e}')
-    res.insert(0, MessageSegment.reply(event.message_id))
-    await sta2.finish(res)
+        return await send_reply_msg(sta2, event.message_id, f'发送总消息量关于时间的统计图失败：{e}')
 
 
 # 发送某个词的统计图
@@ -189,11 +174,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
             logger.info(f'日期格式错误, 使用默认30天')
             days = 30
         res = await get_word_statistic(bot, event.group_id, days, word)
+        return await send_reply_msg(sta_word, event.message_id, res)
     except Exception as e:
         logger.print_exc(f'发送某个词的统计图失败')
-        return await sta_word.finish(f'发送某个词的统计图失败：{e}')
-    res.insert(0, MessageSegment.reply(event.message_id))
-    await sta_word.finish(res)
+        return await send_reply_msg(sta_word, event.message_id, f'发送某个词的统计图失败：{e}')
 
 
 # 添加用户词汇
@@ -213,10 +197,11 @@ async def _(bot: Bot, event: MessageEvent):
         file_db.set("userwords", userwords)
         file_db.set("stopwords", stopwords)
         reset_jieba()
+        return await send_reply_msg(msgadd, event.message_id, f"成功添加{len(words)}条用户词汇")
+    
     except Exception as e:
         logger.print_exc(f'添加用户词汇失败')
-        return await msgadd.finish(f'添加用户词汇失败：{e}')
-    await msgadd.finish(f"成功添加{len(words)}条用户词汇")
+        return await send_reply_msg(msgadd, event.message_id, f'添加用户词汇失败：{e}')
 
 
 # 添加停用词汇
@@ -236,10 +221,10 @@ async def _(bot: Bot, event: MessageEvent):
         file_db.set("userwords", userwords)
         file_db.set("stopwords", stopwords)
         reset_jieba()
+        return await send_reply_msg(msgban, event.message_id, f"成功添加{len(words)}条停用词汇")
     except Exception as e:
         logger.print_exc(f'添加停用词汇失败')
-        return await msgban.finish(f'添加停用词汇失败：{e}')
-    await msgban.finish(f"成功添加{len(words)}条停用词汇")
+        return await send_reply_msg(msgban, event.message_id, f'添加停用词汇失败：{e}')
 
 
 
@@ -254,6 +239,7 @@ async def cron_statistic():
         logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)
+            await send_group_msg_by_bot(bot, group_id, res)
         except Exception as e:
             logger.print_exc(f'发送 {group_id} 统计图失败')
-        await bot.send_group_msg(group_id=group_id, message=res)
+

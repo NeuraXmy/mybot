@@ -796,7 +796,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     user_id = event.get_plaintext().replace("/pjsk bind", "").strip()
 
     if not user_id.isdigit():
-        return await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]请输入正确的游戏ID"))
+        return await send_reply_msg(bind_user_id, event.message_id, "请输入正确的游戏ID")
 
     try:
         profile = await get_basic_user_profile(user_id)
@@ -805,7 +805,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         print(json.dumps(profile, indent=2, ensure_ascii=False))
     except Exception as e:
         logger.print_exc(f"获取用户 {user_id} 基本profile失败: {e}")
-        return await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定失败，请确认游戏ID是否正确"))
+        return await send_reply_msg(bind_user_id, event.message_id, f"绑定失败，请确认游戏ID是否正确")
 
     game_name = profile["user"]["name"]
 
@@ -815,7 +815,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
     logger.info(f"用户 {event.user_id} 绑定游戏ID {user_id}")
 
-    await bind_user_id.send(OutMessage(f"[CQ:reply,id={event.message_id}]绑定成功: {game_name}"))
+    return await send_reply_msg(bind_user_id, event.message_id, f"绑定成功: {game_name}")
 
 
 # 查询自己的用户id和名称
@@ -828,7 +828,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     user_binds = file_db.get("user_binds", {})
     game_id = user_binds.get(str(event.user_id), None)
     if game_id is None:
-        return await get_user_info.send(OutMessage(f"[CQ:reply,id={event.message_id}]未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定"))
+        return await send_reply_msg(get_user_info, event.message_id, "未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定")
     
     game_name = ""
     try:
@@ -837,8 +837,8 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f"获取用户 {game_id} profile失败: {e}")
         pass
-
-    await send_reply_msg(get_user_info, event.message_id, f"当前绑定ID: {game_id} {game_name}")
+    
+    return await send_reply_msg(get_user_info, event.message_id, f"当前绑定ID: {game_id} {game_name}")
 
 
 # 获取最近的vlive信息
@@ -868,8 +868,8 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     if msg.endswith("\n"): msg = msg[:-1]
 
     if msg == "当前的虚拟Lives:": 
-        return await get_vlive.finish("当前没有虚拟Live")
-    await get_vlive.finish(OutMessage(msg))
+        return await send_msg(get_vlive, "当前没有虚拟Live")
+    return await send_msg(get_vlive, msg)
 
 
 # 订阅提醒的at通知
@@ -882,11 +882,11 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
     if event.user_id in sub_list:
-        return await subscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]已经订阅过了'))
+        return await send_reply_msg(subscribe, event.message_id, "已经订阅过了")
     
     sub_list.append(event.user_id)
     file_db.set(sub_list_key, sub_list)
-    await subscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]订阅PJSK@通知成功'))
+    return await send_reply_msg(subscribe, event.message_id, "订阅成功")
 
 
 # 取消订阅提醒的at通知
@@ -899,11 +899,11 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
     if event.user_id not in sub_list:
-        return await unsubscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]未订阅过'))
+        return await send_reply_msg(unsubscribe, event.message_id, "未订阅过")
     
     sub_list.remove(event.user_id)
     file_db.set(sub_list_key, sub_list)
-    await unsubscribe.finish(OutMessage(f'[CQ:reply,id={event.message_id}]取消订阅PJSK@通知成功'))
+    return await send_reply_msg(unsubscribe, event.message_id, "取消订阅成功")
 
 
 # 查看订阅成员列表
@@ -916,25 +916,25 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     sub_list_key = f"{event.group_id}_sub_list"
     sub_list = file_db.get(sub_list_key, [])
     if len(sub_list) == 0:
-        return await get_sub_list.finish(OutMessage(f'[CQ:reply,id={event.message_id}]当前没有订阅成员'))
+        return await send_reply_msg(get_sub_list, event.message_id, "当前没有订阅成员")
 
     msg = "当前订阅成员:\n"
     for user_id in sub_list:
         user_name = await get_user_name(bot, event.group_id, user_id)
         msg += f"{user_name} ({user_id})\n"
-    await get_sub_list.finish(OutMessage(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
+    return await send_reply_msg(get_sub_list, event.message_id, msg.strip())
 
 
 # 活动剧情对话角色搜索
-event_story_character_search = on_command("/活动剧情对话角色搜索", priority=1, block=False)
+event_story_character_search = on_command("/pjsk charastory", priority=1, block=False)
 @event_story_character_search.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
     if not gbl.check(event, allow_private=True): return
 
-    search_name = event.get_plaintext().strip().split(" ")[1:]
+    search_name = event.get_plaintext().strip().replace("/pjsk charastory", "").split(" ")[1:]
     if len(search_name) == 0:
-        return await event_story_character_search.send("请输入要搜索的角色名")
+        return await send_reply_msg(event_story_character_search, event.message_id, "请输入要搜索的角色名")
     
     logger.info(f"活动剧情对话角色搜索: {search_name}")
 
@@ -958,7 +958,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     logger.info(f"活动剧情对话角色搜索结果: 共获取{len(res)}条")
     
     if len(res) == 0: 
-        return await event_story_character_search.send("没有找到相关的剧情对话")
+        return await send_reply_msg(event_story_character_search, event.message_id, "没有找到相关的剧情对话")
     
     msg = ""
     for event_id, scene_ids in res.items():
@@ -970,26 +970,8 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         for scene_id in scene_ids:
             msg += f"{int(scene_id)}, "
         msg = msg[:-2] + "\n"
-    
-    name = await get_user_name(bot, event.group_id, event.user_id)
-    msg_list = []
-    msg_list.append({
-        "type": "node",
-        "data": {
-            "user_id": event.user_id,
-            "nickname": name,
-            "content": event.get_plaintext()
-        }
-    })
-    msg_list.append({
-        "type": "node",
-        "data": {
-            "user_id": bot.self_id,
-            "nickname": BOT_NAME,
-            "content": msg.strip()
-        }
-    })
-    ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
+
+    return await send_fold_msg_adaptive(bot, event, event_story_character_search, event, msg.strip())
 
 
 # 矿产资源查询
@@ -1001,18 +983,18 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
     game_id = get_user_game_id(event.user_id)
     if game_id is None:
-        return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定"))
+        return await send_reply_msg(mineral_search, event.message_id, "未绑定游戏ID，使用 /pjsk bind <游戏ID> 绑定")
     
     try:
         profile = await get_user_profile(game_id)
     except Exception as e:
         logger.print_exc(f"获取用户 {game_id} profile失败: {e}")
         if int(e.args[0]) == 403:
-            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，抓包数据未选择公开可读"))
+            return await send_reply_msg(mineral_search, event.message_id, "获取profile失败，抓包数据未选择公开可读")
         elif int(e.args[0]) == 404:
-            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，未查询到抓包数据"))
+            return await send_reply_msg(mineral_search, event.message_id, "获取profile失败，未查询到抓包数据")
         else:
-            return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取profile失败，未知错误"))
+            return await send_reply_msg(mineral_search, event.message_id, "获取profile失败，未知错误")
     
     mine = await count_mineral(profile)
     game_name = profile["user"]["userGamedata"]["name"]
@@ -1035,7 +1017,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     res += f"【Master奖励】{upm_mine['master'].crystal}\n"
     res += f"【Append奖励】{upm_mine['append'].shard}(碎片)\n"
 
-    return await mineral_search.send(OutMessage(f"[CQ:reply,id={event.message_id}]{res.strip()}"))
+    return await send_reply_msg(mineral_search, event.message_id, res.strip())
 
 
 
@@ -1145,7 +1127,7 @@ async def vlive_notify():
                             group_msg = msg + "\n"
                             for user_id in sub_list:
                                 group_msg += f"[CQ:at,qq={user_id}]"
-                            await bot.send_group_msg(group_id=group_id, message=OutMessage(group_msg.strip()))
+                            await send_group_msg_by_bot(bot, group_id, group_msg.strip())
                         except:
                             logger.print_exc(f'发送vlive开始提醒到群{group_id}失败')
                             continue
@@ -1175,7 +1157,7 @@ async def vlive_notify():
                             group_msg = msg + "\n"
                             for user_id in sub_list:
                                 group_msg += f"[CQ:at,qq={user_id}]"
-                            await bot.send_group_msg(group_id=group_id, message=OutMessage(group_msg.strip()))
+                            await send_group_msg_by_bot(bot, group_id, group_msg.strip())
                         except:
                             logger.print_exc(f'发送vlive结束提醒到群{group_id}失败')
                             continue
@@ -1200,7 +1182,7 @@ async def new_music_notify():
         mid = music["id"]
         publish_time = datetime.fromtimestamp(music["publishedAt"] / 1000)
         if mid in notified_musics: continue
-        if now - publish_time > timedelta(days=1): continue
+        if now - publish_time > timedelta(hours=6): continue
         if publish_time - now > timedelta(minutes=10): continue
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
@@ -1225,7 +1207,7 @@ async def new_music_notify():
 
         for group_id in notify_gwl.get():
             try:
-                await bot.send_group_msg(group_id=group_id, message=OutMessage(msg.strip()))
+                await send_group_msg_by_bot(bot, group_id, msg.strip())
             except:
                 logger.print_exc(f'发送新曲上线提醒到群{group_id}失败')
                 continue

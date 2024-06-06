@@ -22,7 +22,7 @@ async def handle_function(bot: Bot, event: MessageEvent):
     dices = [chr(0x267F + dice) for dice in dices]
     msg = " ".join(dices)
     logger.info(f"send: {msg}")
-    await bing.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+    return await send_reply_msg(bing, event.message_id, msg)
 
 
 rand = on_command("/rand", priority=100, block=False, aliases={'/roll'})
@@ -38,7 +38,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
         pass
     msg = f'{random.randint(l, r)}'
     logger.info(f"send: {msg}")
-    await rand.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+    return await send_reply_msg(rand, event.message_id, msg)
 
 
 choice = on_command("/choice", priority=100, block=False, aliases={'/choose'})
@@ -52,7 +52,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     else:
         msg = f'选择: {random.choice(choices)}'
     logger.info(f"send: {msg}")
-    await choice.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+    return await send_reply_msg(choice, event.message_id, msg)
 
 
 shuffle = on_command("/shuffle", priority=100, block=False)
@@ -67,7 +67,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
         random.shuffle(choices)
         msg = f'{", ".join(choices)}'
     logger.info(f"send: {msg}")
-    await shuffle.finish(Message(f'[CQ:reply,id={event.message_id}] {msg}'))
+    return await send_reply_msg(shuffle, event.message_id, msg)
 
 
 randuser = on_command("/randuser", priority=100, block=False, aliases={'/rolluser'})
@@ -99,4 +99,4 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
         nickname = await get_user_name(bot, event.group_id, user_id)
         msg += f"{get_image_cq(icon_url)}\n{nickname}({user_id})\n"
 
-    await send_reply_msg(randuser, event.message_id, msg.strip())
+    return await send_reply_msg(randuser, event.message_id, msg.strip())

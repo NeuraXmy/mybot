@@ -390,17 +390,28 @@ async def get_reply_msg_obj(bot, msg):
     return await get_msg_obj(bot, reply_id)
 
 
+
+# 记录自身对指令的回复消息id集合
+self_reply_msg_ids = set()
+
+
 # 发送消息
 async def send_msg(handler, message):
-    return await handler.send(OutMessage(message))
+    ret = await handler.send(OutMessage(message))
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
 
 # 发送回复消息
 async def send_reply_msg(handler, reply_id, message):
-    return await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
+    ret = await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
 
 # 发送at消息
 async def send_at_msg(handler, user_id, message):
-    return await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}'))
+    ret = await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}'))
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
 
 # 发送群聊折叠消息 其中contents是text的列表
 async def send_group_fold_msg(bot, group_id, contents):
@@ -412,17 +423,30 @@ async def send_group_fold_msg(bot, group_id, contents):
             "content": content
         }
     } for content in contents]
-    return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+    ret = await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+    ret['message_id'] = int(ret['message_id']) - 1
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
 async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
     if is_group(event) and len(message) > threshold:
-        ret = await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
-        ret["message_id"] = int(ret["message_id"]) - 1
-        return ret
+        return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
     if need_reply:
         return await send_reply_msg(handler, event.message_id, message)
     return await send_msg(handler, message)
+
+# 在event外发送群聊消息
+async def send_group_msg_by_bot(bot, group_id, message):
+    ret = await bot.send_group_msg(group_id=int(group_id), message=message)
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
+
+# 在event外发送私聊消息
+async def send_private_msg_by_bot(bot, user_id, message):
+    ret = await bot.send_private_msg(user_id=int(user_id), message=message)
+    self_reply_msg_ids.add(int(ret["message_id"]))
+    return ret
 
 
 # 是否是动图
@@ -529,7 +553,11 @@ def check_self(event):
 def check_superuser(event, superuser=SUPERUSER):
     if superuser is None: return False
     return event.user_id in superuser
-    
+
+
+# 自身对指令的回复
+def check_self_reply(event):
+    return int(event.message_id) in self_reply_msg_ids
 
 # 冷却时间
 class ColdDown:
@@ -570,9 +598,9 @@ class ColdDown:
                         verbose_msg = f'冷却中, 剩余时间: {get_readable_timedelta(rest_time)}'
                         if hasattr(event, 'message_id'):
                             if hasattr(event, 'group_id'):
-                                await get_bot().send_group_msg(group_id=event.group_id, message=f'[CQ:reply,id={event.message_id}] {verbose_msg}')
+                                await send_group_msg_by_bot(get_bot(), event.group_id, f'[CQ:reply,id={event.message_id}] {verbose_msg}')
                             else:
-                                await get_bot().send_private_msg(user_id=event.user_id, message=f'[CQ:reply,id={event.message_id}] {verbose_msg}')
+                                await send_private_msg_by_bot(get_bot(), event.user_id, f'[CQ:reply,id={event.message_id}] {verbose_msg}')
                 except Exception as e:
                     self.logger.print_exc(f'{self.cold_down_name}检查: {key} CD中, 发送冷却中消息失败')
             return False
@@ -631,7 +659,7 @@ class RateLimit:
         if count.get(key, 0) >= self.limit:
             self.logger.debug(f'{self.rate_limit_name}检查: {key} 频率超限')
             if verbose:
-                reply_msg = f"达到{period}使用次数限制({limit})"
+                reply_msg = "达到{period}使用次数限制({limit})"
                 if self.period_type == "minute":
                     reply_msg = reply_msg.format(period="分钟", limit=self.limit)
                 elif self.period_type == "hour":
@@ -641,9 +669,9 @@ class RateLimit:
                 try:
                     if hasattr(event, 'message_id'):
                         if hasattr(event, 'group_id'):
-                            await get_bot().send_group_msg(group_id=event.group_id, message=f'[CQ:reply,id={event.message_id}] {reply_msg}')
+                            await send_group_msg_by_bot(get_bot(), event.group_id, f'[CQ:reply,id={event.message_id}] {reply_msg}')
                         else:
-                            await get_bot().send_private_msg(user_id=event.user_id, message=f'[CQ:reply,id={event.message_id}] {reply_msg}')
+                            await send_private_msg_by_bot(get_bot(), event.user_id, f'[CQ:reply,id={event.message_id}] {reply_msg}')
                 except Exception as e:
                     self.logger.print_exc(f'{self.rate_limit_name}检查: {key} 频率超限, 发送频率超限消息失败')
             ok = False
@@ -678,11 +706,11 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id in white_list:
-                return await switch_on.finish(f'{name}已经是开启状态')
+                return await send_reply_msg(switch_on, event.message_id, f'{name}已经是开启状态')
             white_list.append(group_id)
             db.set(white_list_name, white_list)
             if self.on_func is not None: await self.on_func(event.group_id)
-            await switch_on.finish(f'{name}已开启')
+            return await send_reply_msg(switch_on, event.message_id, f'{name}已开启')
         
         # 关闭命令
         switch_off = on_command(f'/{name}_off', block=False, priority=100)
@@ -695,11 +723,11 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id not in white_list:
-                return await switch_off.finish(f'{name}已经是关闭状态')
+                return await send_reply_msg(switch_off, event.message_id, f'{name}已经是关闭状态')
             white_list.remove(group_id)
             db.set(white_list_name, white_list)
             if self.off_func is not None:  await self.off_func(event.group_id)
-            await switch_off.finish(f'{name}已关闭')
+            return await send_reply_msg(switch_off, event.message_id, f'{name}已关闭')
             
         # 查询命令
         switch_query = on_command(f'/{name}_status', block=False, priority=100)
@@ -712,9 +740,9 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id in white_list:
-                return await switch_query.finish(f'{name}开启中')
+                return await send_reply_msg(switch_query, event.message_id, f'{name}开启中')
             else:
-                return await switch_query.finish(f'{name}关闭中')
+                return await send_reply_msg(switch_query, event.message_id, f'{name}关闭中')
             
     def get(self):
         return self.db.get(self.white_list_name, [])
@@ -776,11 +804,11 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id in black_list:
-                return await off.finish(f'{name}已经是关闭状态')
+                return await send_reply_msg(off, event.message_id, f'{name}已经是关闭状态')
             black_list.append(group_id)
             db.set(black_list_name, black_list)
             if self.off_func is not None: await self.off_func(event.group_id)
-            await off.finish(f'{name}已关闭')
+            return await send_reply_msg(off, event.message_id, f'{name}已关闭')
         
         # 开启命令
         on = on_command(f'/{name}_on', block=False, priority=100)
@@ -793,11 +821,11 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id not in black_list:
-                return await on.finish(f'{name}已经是开启状态')
+                return await send_reply_msg(on, event.message_id, f'{name}已经是开启状态')
             black_list.remove(group_id)
             db.set(black_list_name, black_list)
             if self.on_func is not None: await self.on_func(event.group_id)
-            await on.finish(f'{name}已开启')
+            return await send_reply_msg(on, event.message_id, f'{name}已开启')
             
         # 查询命令
         query = on_command(f'/{name}_status', block=False, priority=100)
@@ -810,9 +838,9 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id in black_list:
-                return await query.finish(f'{name}关闭中')
+                return await send_reply_msg(query, event.message_id, f'{name}关闭中')
             else:
-                return await query.finish(f'{name}开启中')
+                return await send_reply_msg(query, event.message_id, f'{name}开启中')
         
     def get(self):
         return self.db.get(self.black_list_name, [])
@@ -883,7 +911,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if msg != "/service":
         name = msg.split(' ')[1]
         if name not in _gwls and name not in _gbls:
-            return await service.finish(f'未知服务 {name}')
+            return await send_reply_msg(service, event.message_id, f'未知服务 {name}')
         msg = ""
         if name in _gwls:
             msg += f"{name}使用的规则是白名单\n开启服务的群聊有:\n"
@@ -895,7 +923,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 msg += f'{await get_group_name(bot, group_id)}({group_id})\n'
         else:
             msg += f"未知服务 {name}"
-        return await service.finish(msg.strip())
+        return await send_reply_msg(service, event.message_id, msg.strip())
 
 
     msg_on = "本群开启的服务:\n"
@@ -910,7 +938,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
             msg_on += f'{name} '
         else:
             msg_off += f'{name} '
-    return await service.finish(msg_on + '\n' + msg_off)
+
+    return await send_reply_msg(service, event.message_id, msg_on + '\n' + msg_off)
 
 
 # 发送邮件

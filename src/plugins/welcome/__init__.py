@@ -42,9 +42,9 @@ async def _(bot: Bot, event: NoticeEvent):
         if event.group_id in gbl.get(): return
         if event.user_id == bot.self_id: return
         logger.info(f'{event.user_id} 加入 {event.group_id}')
-        await join.send(OutMessage(f"[CQ:at,qq={event.user_id}] 加入群聊"))
+        await send_msg(join, f"[CQ:at,qq={event.user_id}] 加入群聊")
         await asyncio.sleep(3)
-        await update_member_info(event.group_id)
+        return await update_member_info(event.group_id)
 
     if event.notice_type == 'group_decrease':
         if event.group_id in gbl.get(): return
@@ -52,9 +52,9 @@ async def _(bot: Bot, event: NoticeEvent):
         logger.info(f'{event.user_id} 离开 {event.group_id}')
         members = file_db.get(f'{event.group_id}_members', {})
         name = members.get(str(event.user_id), '')
-        await join.send(OutMessage(f'{name}({event.user_id}) 退出群聊'))
+        await send_msg(join, f"{name}({event.user_id}) 退出群聊")
         await asyncio.sleep(3)
-        await update_member_info(event.group_id)
+        return await update_member_info(event.group_id)
 
 
 # 定时更新

@@ -138,10 +138,10 @@ class Imgexploration:
                     draw.text(xy=(text_x, vernier + text_ver), text=f"{url[:80]}{'......' if len(url)>=80 else ''}", fill=(100, 100, 100), font=font3, anchor="la")
                 vernier += height
 
-            save = BytesIO()
-            img.save(save, format="JPEG", quality=95)
+            # save = BytesIO()
+            # img.save(save, format="JPEG", quality=95)
             logger.info("搜索结果图片绘制完成")
-            return save.getvalue()
+            return img
         except Exception as e:
             raise e
 

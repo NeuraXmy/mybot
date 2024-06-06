@@ -99,4 +99,4 @@ alive = on_command("/alive", priority=100, block=False)
 async def handle_function(bot: Bot, event: MessageEvent):
     if not check_superuser(event): return
     msg = f"存活持续时间：{cur_elapsed}"
-    await alive.finish(Message(f'[CQ:reply,id={event.message_id}]{msg}'))
+    await send_reply_msg(alive, event.message_id, msg)

@@ -154,7 +154,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     try:
         id = int(args.extract_plain_text())
     except:
-        await scid.finish(Message(f'[CQ:reply,id={event.message_id}] 符卡id不正确'))
+        return await send_reply_msg(scid, event.message_id, "符卡id不正确")
 
     logger.info(f"查询符卡id={id}")
     for game_name, sc_list in sc_lists.items():
@@ -182,10 +182,10 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
                     gif = base64.b64encode(f.read()).decode()
                 msg += f"[CQ:image,file=base64://{gif}]"
 
-            await scid.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
+            return await send_reply_msg(scid, event.message_id, msg.strip())
     
     logger.info(f"未找到符卡id={id}")
-    await scid.finish(Message(f'[CQ:reply,id={event.message_id}] 未找到符卡id={id}'))
+    return await send_reply_msg(scid, event.message_id, f"未找到符卡id={id}")
 
 
 # 文本查询符卡
@@ -201,14 +201,15 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
 
     try:
         rows = query_sc(qtext, SC_QUERY_MAX_NUM)
-    except:
+    except Exception as e:
         logger.print_exc(f"查询符卡失败")
-        await sc.finish(Message(f'[CQ:reply,id={event.message_id}] 查询符卡失败'))
+        return await send_reply_msg(sc, event.message_id, f"查询符卡失败: {e}")
 
     msg = "查询到以下符卡 (使用 /scid <编号> 查询符卡详细信息)\n"
     for row in rows:
         msg += get_sc_info_from_row(row) + '\n'
-    await sc.finish(Message(f'[CQ:reply,id={event.message_id}]{msg.strip()}'))
+
+    return await send_reply_msg(sc, event.message_id, msg.strip())
         
         
 

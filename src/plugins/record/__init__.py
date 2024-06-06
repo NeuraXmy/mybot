@@ -47,7 +47,9 @@ async def record_message(bot, event):
     group_id = event.group_id
     user_name = await get_user_name(bot, group_id, user_id)
 
-    if check_self(event):
+    if check_self_reply(event):
+        logger.info(f"记录自身在 {group_id} 中触发的回复 {msg_id}: {str(msg)}")
+    elif check_self(event):
         logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg)}")
     else:
         logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg)}")
@@ -96,7 +98,7 @@ async def record_message(bot, event):
 
 
 # 记录消息
-add = on_message(block=False)
+add = on_message(block=False, priority=-10000)
 @add.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not gbl.check(event): return

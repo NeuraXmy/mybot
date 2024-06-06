@@ -17,7 +17,7 @@ Project Sekai（世界计划）游戏相关服务
 - [`/pjsk mine` 查询剩余矿产统计](#pjsk-mine)
 - [`/pjsk stamp` 获取表情](#pjsk-stamp)
 - [`/pjsk update` 手动更新数据](#pjsk-update)*
-- [`/活动剧情对话角色搜索` 搜索包含指定角色的活动剧情](#活动剧情对话角色搜索)
+- [`/pjsk charastory` 搜索包含指定角色的活动剧情](#pjsk-charastory)
 
 ---
 
@@ -120,16 +120,16 @@ Project Sekai（世界计划）游戏相关服务
     `/pjsk update`
 
 
-## `/活动剧情对话角色搜索`
+## `/pjsk charastory`
 
 搜索包含指定角色的活动剧情对话
 
 - **使用方式**
 
-    `/活动剧情对话角色搜索 [角色名1] [角色名2] ...`
+    `/pjsk charastory [角色名1] [角色名2] ...`
 
 - **示例**
 
-    `/活动剧情对话角色搜索 mnr mzk` 搜索同时包含 mnr 和 mzk 的活动剧情对话
+    `/pjsk charastory mnr mzk` 搜索同时包含 mnr 和 mzk 的活动剧情对话
 
 

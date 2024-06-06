@@ -53,8 +53,8 @@ def init_helper():
             fake_event.user_id = 1
             if not gbl.check(fake_event, allow_private=True): return
             if not (await cds[cd_index].check(event)): return
-            await help.finish(help_text)
-
+            return await send_msg(help, help_text)
+        
     logger.info(f'初始化帮助完成')
     
     

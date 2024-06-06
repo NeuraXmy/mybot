@@ -145,8 +145,8 @@ async def add_cron_job(task, verbose=False):
                 msg += f"[CQ:at,qq={user}]"
 
             msg += f"\n【{task['id']}】{get_task_next_run_time_str(group_id, task_id)}"
-                
-            await bot.send_group_msg(group_id=task['group_id'], message=OutMessage(msg.strip()))
+
+            await send_group_msg_by_bot(bot, task['group_id'], msg.strip())
 
             # 更新count
             task['count'] += 1
@@ -167,13 +167,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_add", "").strip()
     if text == "":
-        return await cron_add.send("请在/cron_add后输入指示")
+        return await send_reply_msg(cron_add, event.message_id, "请在/cron_add后输入指示")
 
     try:
         task = await parse_instruction(event.group_id, event.user_id, text)
         logger.info(f"获取cron参数: {task}")
         if 'error' in task:
-            return await cron_add.send(OutMessage(f"[CQ:reply,id={event.message_id}]添加失败: {task['reason']}"))
+            return await send_reply_msg(cron_add, event.message_id, f"添加失败: {task['reason']}")
         
         group_id_top = file_db.get(f"group_id_top_{event.group_id}", 0)
         task["id"] = group_id_top + 1
@@ -188,11 +188,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
         resp = f"添加成功:\n"
         resp += task_to_str(task)
-        return await cron_add.send(OutMessage(f"[CQ:reply,id={event.message_id}]{resp.strip()}"))
+        return await send_reply_msg(cron_add, event.message_id, resp.strip())
 
     except Exception as e:
         logger.print_exc(f"添加失败: {e}")
-        return await cron_add.send(OutMessage(f"[CQ:reply,id={event.message_id}]添加失败: {e}"))
+        return await send_reply_msg(cron_add, event.message_id, f"添加失败: {e}")
    
 
 # 初始化已有的任务
@@ -239,24 +239,24 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_del", "").strip()
     if text == "":
-        return await cron_del.send("请在/cron_del后输入任务id")
+        return await send_reply_msg(cron_del, event.message_id, "请在/cron_del后输入任务id")
 
     try:
         task = find_task(event.group_id, int(text))
         if task is None:
-            return await cron_del.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+            return await send_reply_msg(cron_del, event.message_id, "任务不存在")
         if str(task['user_id']) != str(event.user_id) and not check_superuser(event):
-            return await cron_del.send(OutMessage(f"[CQ:reply,id={event.message_id}]只有创建者或超级用户可以删除任务"))
+            return await send_reply_msg(cron_del, event.message_id, "只有创建者或超级用户可以删除任务")
 
         group_id = event.group_id
         task_id = int(text)
         await del_cron_job(group_id, task_id)
         del_cron_task_from_file_db(group_id, task_id)
-        return await cron_del.send(OutMessage(f"[CQ:reply,id={event.message_id}]删除成功"))
+        return await send_reply_msg(cron_del, event.message_id, "删除成功")
 
     except Exception as e:
         logger.print_exc(f"删除失败: {e}")
-        return await cron_del.send(OutMessage(f"[CQ:reply,id={event.message_id}]删除失败: {e}"))
+        return await send_reply_msg(cron_del, event.message_id, f"删除失败: {e}")
 
 
 # 清空cron任务（仅超级用户）
@@ -273,11 +273,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for task in group_tasks:
             await del_cron_job(group_id, task['id'])
         file_db.set(f"tasks_{group_id}", [])
-        return await cron_clear.send(OutMessage(f"[CQ:reply,id={event.message_id}]清空成功"))
+        return await send_reply_msg(cron_clear, event.message_id, "清空成功")
 
     except Exception as e:
         logger.print_exc(f"清空失败: {e}")
-        return await cron_clear.send(OutMessage(f"[CQ:reply,id={event.message_id}]清空失败: {e}"))
+        return await send_reply_msg(cron_clear, event.message_id, f"清空失败: {e}")
 
 
 # 定期检查过期任务
@@ -295,7 +295,8 @@ async def check_expired_tasks():
                         logger.info(f"删除过期任务: {group_id}_{task['id']}")
 
                         bot = get_bot()
-                        await bot.send_group_msg(group_id=group_id, message=OutMessage(f"cron任务【{task['id']}】过期，已删除"))
+                        await send_group_msg_by_bot(bot, group_id, f"cron任务【{task['id']}】过期，已删除")
+
                 except Exception as e:
                     logger.print_exc(f"检查过期任务 {group_id}_{task['id']} 失败: {e}")
 
@@ -313,7 +314,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     resp = f"本群共有 {len(group_tasks)} 个任务\n"
     for task in group_tasks:
         resp += task_to_str(task)
-    return await cron_list.send(OutMessage(resp.strip()))
+    return await send_reply_msg(cron_list, event.message_id, resp.strip())
 
 
 # 订阅cron任务
@@ -325,7 +326,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_sub", "").strip()
     if text == "":
-        return await cron_sub.send("请在/cron_sub后输入任务id")
+        return await send_reply_msg(cron_sub, event.message_id, "请在/cron_sub后输入任务id")
     
     msg = await get_msg(bot, event.message_id)
     cqs = extract_cq_code(msg)
@@ -342,7 +343,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for task in group_tasks:
             if task['id'] == task_id:
                 if for_other_user and not (check_superuser(event) or str(task['user_id']) != str(event.user_id)):
-                    return await cron_sub.send("只有创建者或超级用户可以为他人订阅任务")
+                    return await send_reply_msg(cron_sub, event.message_id, "只有创建者或超级用户可以为他人订阅任务")
 
                 ok_users, already_users = [], []
                 for user in users:
@@ -367,14 +368,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
                     resp += "\n"
 
                 logger.info(f"为 {users} 订阅任务 {group_id}_{task_id} 成功: 添加订阅成功 {ok_users} 已订阅 {already_users}")
-                return await cron_sub.send(OutMessage(f"[CQ:reply,id={event.message_id}]{resp.strip()}"))
+                return await send_reply_msg(cron_sub, event.message_id, resp.strip())
                 
         logger.info(f"任务 {group_id}_{task_id} 不存在")
-        return await cron_sub.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+        return await send_reply_msg(cron_sub, event.message_id, "任务不存在")
 
     except Exception as e:
         logger.print_exc(f"为 {users} 订阅任务 {group_id}_{task_id} 失败: {e}")
-        return await cron_sub.send(OutMessage(f"[CQ:reply,id={event.message_id}]订阅失败: {e}"))
+        return await send_reply_msg(cron_sub, event.message_id, f"订阅失败: {e}")
 
 
 # 取消订阅cron任务
@@ -386,7 +387,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_unsub", "").strip()
     if text == "":
-        return await cron_unsub.send("请在/cron_unsub后输入任务id")
+        return await send_reply_msg(cron_unsub, event.message_id, "请在/cron_unsub后输入任务id")
     
     msg = await get_msg(bot, event.message_id)
     cqs = extract_cq_code(msg)
@@ -403,7 +404,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for task in group_tasks:
             if task['id'] == task_id:
                 if for_other_user and not (check_superuser(event) or str(task['user_id']) != str(event.user_id)):
-                    return await cron_sub.send("只有创建者或超级用户可以为他人取消订阅任务")
+                    return await send_reply_msg(cron_unsub, event.message_id, "只有创建者或超级用户可以为他人取消订阅任务")
 
                 ok_users, already_users = [], []
                 for user in users:
@@ -428,14 +429,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
                     resp += "\n"
 
                 logger.info(f"为 {users} 取消订阅任务 {group_id}_{task_id} 成功: 取消订阅成功 {ok_users} 未订阅 {already_users}")
-                return await cron_unsub.send(OutMessage(f"[CQ:reply,id={event.message_id}]{resp.strip()}"))
+                return await send_reply_msg(cron_unsub, event.message_id, resp.strip())
                 
         logger.info(f"任务 {group_id}_{task_id} 不存在")
-        return await cron_unsub.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+        return await send_reply_msg(cron_unsub, event.message_id, "任务不存在")
 
     except Exception as e:
         logger.print_exc(f"为 {users} 取消订阅任务 {group_id}_{task_id} 失败: {e}")
-        return await cron_unsub.send(OutMessage(f"[CQ:reply,id={event.message_id}]取消订阅失败: {e}"))
+        return await send_reply_msg(cron_unsub, event.message_id, f"取消订阅失败: {e}")
     
 
 # 清空任务订阅者（仅创建者或超级用户）
@@ -447,14 +448,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_unsuball", "").strip()
     if text == "":
-        return await cron_unsuball.send("请在/cron_unsuball后输入任务id")
+        return await send_reply_msg(cron_unsuball, event.message_id, "请在/cron_unsuball后输入任务id")
 
     try:
         task = find_task(event.group_id, int(text))
         if task is None:
-            return await cron_unsuball.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+            return await send_reply_msg(cron_unsuball, event.message_id, "任务不存在")
         if str(task['user_id']) != str(event.user_id) and not check_superuser(event):
-            return await cron_unsuball.send(OutMessage(f"[CQ:reply,id={event.message_id}]只有创建者或超级用户可以清空任务订阅者"))
+            return await send_reply_msg(cron_unsuball, event.message_id, "只有创建者或超级用户可以清空任务订阅者")
 
         group_id = event.group_id
         task_id = int(text)
@@ -462,11 +463,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         group_tasks = file_db.get(f"tasks_{group_id}", [])
         get_task(group_tasks, task_id)['sub_users'] = []
         file_db.set(f"tasks_{group_id}", group_tasks)
-        return await cron_unsuball.send(OutMessage(f"[CQ:reply,id={event.message_id}]清空成功"))
+        return await send_reply_msg(cron_unsuball, event.message_id, "清空成功")
 
     except Exception as e:
         logger.print_exc(f"清空失败: {e}")
-        return await cron_unsuball.send(OutMessage(f"[CQ:reply,id={event.message_id}]清空失败: {e}"))
+        return await send_reply_msg(cron_unsuball, event.message_id, f"清空失败: {e}")
 
 
 # 查看任务订阅者
@@ -477,7 +478,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_sublist", "").strip()
     if text == "":
-        return await cron_sublist.send("请在/cron_sublist后输入任务id")
+        return await send_reply_msg(cron_sublist, event.message_id, "请在/cron_sublist后输入任务id")
 
     try:
         group_id = event.group_id
@@ -488,14 +489,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 resp = f"任务 {task_id} 的订阅者:\n"
                 for user in task['sub_users']:
                     resp += f"{await get_user_name(bot, group_id, user)}({user})\n"
-                return await cron_sublist.send(OutMessage(f"[CQ:reply,id={event.message_id}]{resp.strip()}"))
+                return await send_reply_msg(cron_sublist, event.message_id, resp.strip())
                 
         logger.info(f"任务 {group_id}_{task_id} 不存在")
-        return await cron_sublist.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+        return await send_reply_msg(cron_sublist, event.message_id, "任务不存在")
 
     except Exception as e:
         logger.print_exc(f"查看任务 {group_id}_{task_id} 的订阅者失败: {e}")
-        return await cron_sublist.send(OutMessage(f"[CQ:reply,id={event.message_id}]查看订阅者失败: {e}"))
+        return await send_reply_msg(cron_sublist, event.message_id, f"查看订阅者失败: {e}")
     
 
 # 静音任务（仅创建者或超级用户）
@@ -507,14 +508,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_mute", "").strip()
     if text == "":
-        return await cron_mute.send("请在/cron_mute后输入任务id")
+        return await send_reply_msg(cron_mute, event.message_id, "请在/cron_mute后输入任务id")
 
     try:
         task = find_task(event.group_id, int(text))
         if task is None:
-            return await cron_mute.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+            return await send_reply_msg(cron_mute, event.message_id, "任务不存在")
         if str(task['user_id']) != str(event.user_id) and not check_superuser(event):
-            return await cron_mute.send(OutMessage(f"[CQ:reply,id={event.message_id}]只有创建者或超级用户可以静音任务"))
+            return await send_reply_msg(cron_mute, event.message_id, "只有创建者或超级用户可以静音任务")
 
         group_id = event.group_id
         task_id = int(text)
@@ -522,11 +523,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         group_tasks = file_db.get(f"tasks_{group_id}", [])
         get_task(group_tasks, task_id)['mute'] = True
         file_db.set(f"tasks_{group_id}", group_tasks)
-        return await cron_mute.send(OutMessage(f"[CQ:reply,id={event.message_id}]静音成功"))
+        return await send_reply_msg(cron_mute, event.message_id, "静音成功")
 
     except Exception as e:
         logger.print_exc(f"静音失败: {e}")
-        return await cron_mute.send(OutMessage(f"[CQ:reply,id={event.message_id}]静音失败: {e}"))
+        return await send_reply_msg(cron_mute, event.message_id, f"静音失败: {e}")
     
 
 # 静音全部任务（仅超级用户）
@@ -543,11 +544,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for task in group_tasks:
             task['mute'] = True
         file_db.set(f"tasks_{group_id}", group_tasks)
-        return await cron_muteall.send(OutMessage(f"[CQ:reply,id={event.message_id}]全部静音成功"))
+        return await send_reply_msg(cron_muteall, event.message_id, "全部静音成功")
 
     except Exception as e:
         logger.print_exc(f"静音失败: {e}")
-        return await cron_muteall.send(OutMessage(f"[CQ:reply,id={event.message_id}]全部静音失败: {e}"))
+        return await send_reply_msg(cron_muteall, event.message_id, f"全部静音失败: {e}")
 
     
 # 取消静音任务（仅创建者或超级用户）
@@ -559,14 +560,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     text = event.get_plaintext().replace("/cron_unmute", "").strip()
     if text == "":
-        return await cron_unmute.send("请在/cron_unmute后输入任务id")
+        return await send_reply_msg(cron_unmute, event.message_id, "请在/cron_unmute后输入任务id")
 
     try:
         task = find_task(event.group_id, int(text))
         if task is None:
-            return await cron_unmute.send(OutMessage(f"[CQ:reply,id={event.message_id}]任务不存在"))
+            return await send_reply_msg(cron_unmute, event.message_id, "任务不存在")
         if str(task['user_id']) != str(event.user_id) and not check_superuser(event):
-            return await cron_unmute.send(OutMessage(f"[CQ:reply,id={event.message_id}]只有创建者或超级用户可以取消静音任务"))
+            return await send_reply_msg(cron_unmute, event.message_id, "只有创建者或超级用户可以取消静音任务")
 
         group_id = event.group_id
         task_id = int(text)
@@ -574,11 +575,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
         group_tasks = file_db.get(f"tasks_{group_id}", [])
         get_task(group_tasks, task_id)['mute'] = False
         file_db.set(f"tasks_{group_id}", group_tasks)
-        return await cron_unmute.send(OutMessage(f"[CQ:reply,id={event.message_id}]取消静音成功"))
+        return await send_reply_msg(cron_unmute, event.message_id, "取消静音成功")
 
     except Exception as e:
         logger.print_exc(f"取消静音失败: {e}")
-        return await cron_unmute.send(OutMessage(f"[CQ:reply,id={event.message_id}]取消静音失败: {e}"))
+        return await send_reply_msg(cron_unmute, event.message_id, f"取消静音失败: {e}")
     
 
 # 查看自己订阅的任务
@@ -595,8 +596,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for task in group_tasks:
             if str(user_id) in task['sub_users']:
                 resp += task_to_str(task)
-        return await cron_mysub.send(OutMessage(resp.strip()))
+        return await send_reply_msg(cron_mysub, event.message_id, resp.strip())
 
     except Exception as e:
         logger.print_exc(f"查看订阅任务失败: {e}")
-        return await cron_mysub.send(OutMessage(f"[CQ:reply,id={event.message_id}]查看订阅任务失败: {e}"))
+        return await send_reply_msg(cron_mysub, event.message_id, f"查看订阅任务失败: {e}")

@@ -83,7 +83,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
         res = f"水果总数：{len(recs) - 1}\n"
         res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
         res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})"
-    return await add.finish(OutMessage(f"[CQ:reply,id={event.message_id}]" + res))
+
+    return await send_reply_msg(add, event.message_id, res)
 
 
 query_phash = on_command("/phash", priority=5, block=False)
@@ -103,13 +104,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
     try:
         img_records = img_by_msg_id(event.group_id, reply_msg_obj['message_id'])
         if len(img_records) == 0:
-            return await query_phash.send(OutMessage(f"[CQ:reply,id={event.message_id}]消息未记录"))
+            return await send_reply_msg(query_phash, event.message_id, "消息未记录")
+        
         phash_records = phash_record_id(event.group_id, img_records[0]['id'])
         assert phash_records is not None and len(phash_records) == 1
         phash = phash_records[0]['phash']
 
         if phash is None:
-            return await query_phash.send(OutMessage(f"[CQ:reply,id={event.message_id}]图片phash未计算"))
+            return await send_reply_msg(query_phash, event.message_id, "图片phash未计算")
         
         phash = int(phash)
         phash_map = [[0 for _ in range(8)] for _ in range(8)]
@@ -118,9 +120,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 phash_map[i][j] = (phash >> (i * 8 + j)) & 1
         phash_map = "\n".join(["".join([str(x) for x in row]) for row in phash_map])
 
-        return await query_phash.send(OutMessage(f"[CQ:reply,id={event.message_id}]{phash}\n{phash_map}"))
+        return await send_reply_msg(query_phash, event.message_id, f"{phash}\n{phash_map}")
     except Exception as e:
         logger.print_exc(f'获取phash失败')
-        return await query_phash.send(OutMessage(f"[CQ:reply,id={event.message_id}]获取phash失败"))
+        return await send_reply_msg(query_phash, event.message_id, "获取phash失败")
 
     
