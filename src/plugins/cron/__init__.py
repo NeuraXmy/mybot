@@ -89,7 +89,7 @@ async def parse_instruction(group_id, user_id, user_instruction):
 
     for retry_count in range(MAX_RETIRES):
         try:
-            task, _, _, _ = await session.get_response(
+            task, _, _, _, _ = await session.get_response(
                 max_retries=MAX_RETIRES, 
                 group_id=group_id,
                 user_id=user_id,

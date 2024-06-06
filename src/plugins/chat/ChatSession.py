@@ -15,6 +15,8 @@ MAX_TOKENS = config['max_tokens']
 RETRY_INTERVAL = config['retry_interval']
 session_id = 0
 
+QUOTA_UPDATE_INTERVAL = 60 * 60
+
 
 async def get_image_b64(image_path):
     img = (await download_image(image_path)).convert('RGB')
@@ -23,6 +25,35 @@ async def get_image_b64(image_path):
     img.save(tmp_save_dir, "JPEG")
     with open(tmp_save_dir, "rb") as f:
         return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+
+
+# 查询并更新当前剩余额度
+async def update_rest_quota():
+    try:
+        if 'quota_check_url' not in config:
+            raise Exception("未设置额度查询url")
+
+        cookies_path = "data/chat/quota_check_cookies.json"
+        with open(cookies_path, "r") as f:
+            cookies = json.load(f)
+        import aiohttp
+        async with aiohttp.ClientSession(cookies=cookies) as session:
+            async with session.get(config['quota_check_url']) as response:
+                if response.status != 200:
+                    raise Exception(f"请求失败: {response.status}")
+                res = await response.json()
+        quota = res['data']['quota'] / 500000
+        file_db.set("rest_quota", quota)
+        logger.info(f"查询并更新额度成功: {quota}$")
+        return quota
+
+    except Exception as e:
+        logger.print_exc(f"查询并更新额度失败: {e}")
+        file_db.set("rest_quota", -1.0)
+        return None
+
+# 定时查询并更新当前剩余额度
+start_repeat_with_interval(QUOTA_UPDATE_INTERVAL, update_rest_quota, logger, "GPT额度更新")
 
 
 class ChatSession:
@@ -119,6 +150,12 @@ class ChatSession:
             type = "chat_auto" if is_autochat else "chat_query"
         )
         commit()
+
+        # 更新剩余额度
+        cost = model['input_pricing'] * prompt_tokens + model['output_pricing'] * completion_tokens
+        if (rest_quota := file_db.get("rest_quota", -1.0)) > 0:
+            file_db.set("rest_quota", rest_quota - cost)
+            logger.info(f"更新额度: -{cost}$, 剩余额度: {rest_quota - cost}$")
         
         self.append_content(BOT_ROLE, res, verbose=False)
-        return res, i, prompt_tokens, completion_tokens
+        return res, i, prompt_tokens, completion_tokens, cost

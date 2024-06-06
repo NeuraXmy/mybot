@@ -24,12 +24,15 @@ def record_hook(func):
 
 
 # 记录消息
-async def record_message(bot, event, is_self=False):
+async def record_message(bot, event):
     if event.message_id in message_id_set: return
     message_id_set.add(event.message_id)
 
     for hook in record_hook_funcs:
-        await hook(bot, event)
+        try:
+            await hook(bot, event)
+        except Exception as e:
+            logger.print_exc(f"消息记录hook {hook.__name__} error: {e}")
 
     time = datetime.fromtimestamp(event.time)
     msg_obj = await get_msg_obj(bot, event.message_id)
@@ -44,7 +47,7 @@ async def record_message(bot, event, is_self=False):
     group_id = event.group_id
     user_name = await get_user_name(bot, group_id, user_id)
 
-    if is_self:
+    if check_self(event):
         logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg)}")
     else:
         logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg)}")
@@ -99,18 +102,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gbl.check(event): return
     await record_message(bot, event)
     
-
-# 记录自身消息
-add_self = on("message_sent", block=False)
-@add_self.handle()
-async def _(bot: Bot, event: Event):
-    try:
-        if not hasattr(event, 'group_id'): return
-        if not gbl.check_id(event.group_id): return
-        await record_message(bot, event, is_self=True)
-    except Exception as e:
-        logger.print_exc("记录自身消息时错误")
-
 
 # 检查消息
 check = on_command("/check", block=False)

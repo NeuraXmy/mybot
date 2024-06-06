@@ -2,7 +2,7 @@ import json
 import yaml
 from datetime import datetime, timedelta
 import traceback
-from nonebot import on_command, get_bot
+from nonebot import on_command, get_bot, on
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
@@ -244,7 +244,7 @@ def get_file_db(path, logger) -> FileDB:
 
 # 是否是群聊消息
 def is_group(event):
-    return isinstance(event, GroupMessageEvent)
+    return hasattr(event, 'group_id')
 
 
 # 转换时间点为可读字符串
@@ -371,7 +371,7 @@ def extract_text(msg):
 
 # 获取折叠消息
 async def get_forward_msg(bot, forward_id):
-    return await bot.call_api('get_forward_msg', **{'id': int(forward_id)})
+    return await bot.call_api('get_forward_msg', **{'id': str(forward_id)})
 
 
 # 从消息段获取回复的消息，如果没有回复则返回None
@@ -519,6 +519,10 @@ def start_async_task(func, logger, name, start_offset=5):
 
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #
+
+# 自身
+def check_self(event):
+    return event.user_id == event.self_id
 
 
 # 超级用户

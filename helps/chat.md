@@ -7,10 +7,6 @@
 
 - [`聊天`](#聊天)
 - [`/chat_usage 查看GPT额度使用情况`](#chat_usage)*
-- [`/autochat_{on|off} 开启关闭自动聊天`](#autochat_onoff)*
-- [`/chat_mimic 开启关闭模仿聊天`](#chat_mimic)*
-- [`/chat_trigger 立刻触发自动聊天`](#chat_trigger)*
-- [`/chat_emo 设置或查看自动聊天情绪值`](#chat_emo)*
 
 ---
 
@@ -55,56 +51,3 @@
     `/chat_usage 2022-01-01` 查询指定日期的额度使用情况
 
     `/chat_usage all` 查询全部的额度使用情况
-
-
-## `/autochat_{on|off}`
-
-开启关闭自动聊天
-
-- **使用方式**
-
-    `/autochat_on` 开启自动聊天
-
-    `/autochat_off` 关闭自动聊天
-
-
-
-## `/chat_mimic`
-
-开启关闭模仿聊天
-
-- **使用方式**
-
-    `/chat_mimic @群友` 开启模仿指定群友的聊天
-
-    `/chat_mimic` 关闭模仿聊天
-
-
-
-## `/chat_trigger`
-
-立刻触发自动聊天
-
-- **使用方式**
-
-    `/chat_trigger` 立刻触发自动聊天
-
-
-
-## `/chat_emo`
-
-设置或查看自动聊天情绪值，越高越积极，越低越消极
-
-- **使用方式**
-
-    `/chat_emo` 查看当前自动聊天情绪值
-
-    `/chat_emo [value]` 设置自动聊天情绪值，范围为0-100
-
-    `/chat_emo daynight` 设置情绪值随时间变化，晚上消极，白天积极
-
-    `/chat_emo random` 设置每次自动聊天使用随机情绪
-
-
-
-

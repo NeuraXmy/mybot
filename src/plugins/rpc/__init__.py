@@ -21,7 +21,9 @@ SERVER_HOST = config['host']
 SERVER_PORT = config['port']
 
 def process_msg(msg):
-    msg['time'] = msg['time'].isoformat()
+    if isinstance(msg['time'], datetime):
+        msg['time'] = msg['time'].timestamp()
+    pass
 
 # ------------------------------ 新聊天 ------------------------------ #
 
@@ -35,13 +37,12 @@ async def record_new_message(bot, event):
     group_id = event.group_id
     user_name = await get_user_name(bot, group_id, event.user_id)
 
-    for group_msgs in message_pool.values():
+    for cid, group_msgs in message_pool.items():
         if group_id not in group_msgs:
             group_msgs[group_id] = []
         group_msgs[group_id].append({
-            'id': event.message_id,
             'msg_id': event.message_id,
-            'time': datetime.fromtimestamp(event.time),
+            'time': event.time,
             'user_id': event.user_id,
             'nickname': user_name,
             'msg': msg_obj['message'],
@@ -127,6 +128,7 @@ async def handle_get_group_msg(cid, group_id, limit):
 # 获取群新消息，获取后清空
 @rpc('get_group_new_msg')
 async def handle_get_group_new_msg(cid, group_id):
+    group_id = int(group_id)
     if group_id not in message_pool[cid]:
         return []
     new_msg = message_pool[cid][group_id]
@@ -163,3 +165,18 @@ async def handle_get_msg(cid, msg_id):
         'nickname': msg_obj['sender']['nickname'],
         'msg': msg_obj['message'],
     }
+
+# 获取转发消息
+@rpc('get_forward_msg')
+async def handle_get_forward_msg(cid, forward_id):
+    bot = get_bot()
+    msgs = (await get_forward_msg(bot, forward_id))['messages']
+    return [{
+        'msg_id': msg['message_id'],
+        'time': msg['time'],
+        'user_id': msg['sender']['user_id'],
+        'nickname': msg['sender']['nickname'],
+        'msg': msg['content'],
+    } for msg in msgs]
+
+    
