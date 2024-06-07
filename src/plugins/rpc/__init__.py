@@ -38,6 +38,7 @@ async def record_new_message(bot, event):
     user_name = await get_user_name(bot, group_id, event.user_id)
 
     for cid, group_msgs in message_pool.items():
+        # print(f"add msg {event.message_id} of group {group_id} to {cid}")
         if group_id not in group_msgs:
             group_msgs[group_id] = []
         group_msgs[group_id].append({
@@ -179,4 +180,3 @@ async def handle_get_forward_msg(cid, forward_id):
         'msg': msg['content'],
     } for msg in msgs]
 
-    
