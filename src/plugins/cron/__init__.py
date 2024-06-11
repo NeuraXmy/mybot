@@ -206,7 +206,8 @@ async def init_cron_jobs():
                     await add_cron_job(task)
                 except Exception as e:
                     logger.print_exc(f"初始化群 {group_id} 的任务 {task['id']} 失败: {e}")
-            logger.info(f"初始化群 {group_id} 的 {len(group_tasks)} 个任务完成")
+            if len(group_tasks) > 0:
+                logger.info(f"初始化群 {group_id} 的 {len(group_tasks)} 个任务完成")
 
 start_async_task(init_cron_jobs, logger, "初始化cron任务")
 

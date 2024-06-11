@@ -81,6 +81,11 @@ chat:
   per_user_usage_topk: 9          # 统计使用额度时展示前k名
   cd: 60  
 
+  quota_check_url: ""                     # 检查配额的url
+  quota_check_username: ""                # 检查配额的用户名
+  quota_check_password: ""                # 检查配额的密码
+  quota_check_interval: 60                # 检查配额的间隔（分钟）
+
 
 cron:
   query_text_model:               # 询问使用的文本模型

@@ -37,13 +37,13 @@ CHARACTER_URL           = "https://sekai-world.github.io/sekai-master-db-diff/ga
 CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
 STAMP_URL               = "https://sekai-world.github.io/sekai-master-db-diff/stamps.json"
 
-STAMP_IMG_URL = "https://storage.sekai.best/sekai-assets/stamp/{assetbundleName}_rip/{assetbundleName}/{assetbundleName}.png"
-MUSIC_COVER_IMG_URL = "https://storage.sekai.best/sekai-assets/music/jacket/{assetbundleName}_rip/{assetbundleName}.webp"
+STAMP_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/stamp/{assetbundleName}_rip/{assetbundleName}.png"
+MUSIC_COVER_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/music/jacket/{assetbundleName}_rip/{assetbundleName}.webp"
 
 BASIC_USER_PROFILE_URL  = "http://api.unipjsk.com/api/user/{uid}/profile"
 USER_PROFILE_URL        = "http://suite.unipjsk.com/api/user/{uid}/profile"
 
-VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
+VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-jp-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
 
 MUSIC_SAVE_PATH             = "data/pjsk/music.json"
 MUSIC_DIFFICULTY_SAVE_PATH  = "data/pjsk/music_difficulty.json"
@@ -56,7 +56,7 @@ STAMP_SAVE_PATH             = "data/pjsk/stamp.json"
 
 STAMP_IMG_SAVE_DIR = "data/pjsk/stamps/{sid}.gif"
 
-EVENT_STORY_DETAIL_URL = "https://storage.sekai.best/sekai-assets/event_story/{asset_bundle_name}/scenario_rip/{event_scene_id}.asset"
+EVENT_STORY_DETAIL_URL = "https://storage.sekai.best/sekai-jp-assets/event_story/{asset_bundle_name}/scenario_rip/{event_scene_id}.asset"
 EVENT_STORY_DETAIL_SAVE_PATH = "data/pjsk/story/event_story_details.json"
 
 MAX_VLIVE_ENDTIME_DIFF              = config['max_vlive_endtime_diff'] * 24 * 60 * 60

@@ -15,33 +15,82 @@ MAX_TOKENS = config['max_tokens']
 RETRY_INTERVAL = config['retry_interval']
 session_id = 0
 
-QUOTA_UPDATE_INTERVAL = 60 * 60
+
+QUOTA_CHECK_URL         = config.get('quota_check_url',         None)
+QUOTA_CHECK_USERNAME    = config.get('quota_check_username',    None)
+QUOTA_CHECK_PASSWORD    = config.get('quota_check_password',    None)
+QUOTA_UPDATE_INTERVAL   = config.get('quota_check_interval',   60) * 60
 
 
-async def get_image_b64(image_path):
-    img = (await download_image(image_path)).convert('RGB')
-    tmp_save_dir = "data/chat/tmp/chatimg.jpg"
-    os.makedirs(os.path.dirname(tmp_save_dir), exist_ok=True)
-    img.save(tmp_save_dir, "JPEG")
-    with open(tmp_save_dir, "rb") as f:
-        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+# 获取额度网站的cookies
+def get_cookies():
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    import time
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    driver = webdriver.Chrome(options=options)
+    try:
+        login_url = f"{QUOTA_CHECK_URL}/login"
+        driver.get(login_url)
+        time.sleep(1)
+        driver.find_element(by='name', value='username').send_keys(QUOTA_CHECK_USERNAME)
+        driver.find_element(by='name', value='password').send_keys(QUOTA_CHECK_PASSWORD)
+        driver.find_element(by='xpath', value='//button[text()="登录"]').click()
+        time.sleep(1)
+        cookies = driver.get_cookies()
+        for c in cookies:
+            if c['name'] == 'session':
+                return { "session": c['value'] }
+        raise Exception("No cookie found")
+    except Exception as e:
+        logger.print_exc(f"获取cookies失败: {e}")  
+        return None
+    finally:
+        driver.quit()
 
+async def aget_cookies():
+    return await asyncio.get_event_loop().run_in_executor(None, get_cookies)
 
 # 查询并更新当前剩余额度
 async def update_rest_quota():
     try:
-        if 'quota_check_url' not in config:
-            raise Exception("未设置额度查询url")
+        if not QUOTA_CHECK_URL:
+            file_db.set("rest_quota", -1.0)
+            return
 
+        api_url = f"{QUOTA_CHECK_URL}/api/user/self"
         cookies_path = "data/chat/quota_check_cookies.json"
-        with open(cookies_path, "r") as f:
-            cookies = json.load(f)
-        import aiohttp
-        async with aiohttp.ClientSession(cookies=cookies) as session:
-            async with session.get(config['quota_check_url']) as response:
-                if response.status != 200:
-                    raise Exception(f"请求失败: {response.status}")
-                res = await response.json()
+
+        while True:
+            # 读取cookies
+            with open(cookies_path, "r") as f:
+                cookies = json.load(f)
+
+            # 查询额度
+            import aiohttp
+            async with aiohttp.ClientSession(cookies=cookies) as session:
+                async with session.get(api_url) as response:
+
+                    if response.status == 401:
+                        logger.info("登录过期, 重新获取cookie")
+                        cookies = await aget_cookies()
+                        if not cookies:
+                            raise Exception("重新获取cookie失败")
+                        with open(cookies_path, "w") as f:
+                            json.dump(cookies, f)
+                        logger.info("重新获取cookie成功, 重新查询额度")
+                        continue
+
+                    if response.status != 200:
+                        raise Exception(f"请求失败: {response.status}")
+                    
+                    res = await response.json()
+                    break
+
         quota = res['data']['quota'] / 500000
         file_db.set("rest_quota", quota)
         logger.info(f"查询并更新额度成功: {quota}$")
@@ -55,6 +104,16 @@ async def update_rest_quota():
 # 定时查询并更新当前剩余额度
 start_repeat_with_interval(QUOTA_UPDATE_INTERVAL, update_rest_quota, logger, "GPT额度更新")
 
+
+
+async def get_image_b64(image_path):
+    img = (await download_image(image_path)).convert('RGB')
+    tmp_save_dir = "data/chat/tmp/chatimg.jpg"
+    os.makedirs(os.path.dirname(tmp_save_dir), exist_ok=True)
+    img.save(tmp_save_dir, "JPEG")
+    with open(tmp_save_dir, "rb") as f:
+        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+    
 
 class ChatSession:
     def __init__(self, api_key, api_base, text_model, mm_model, proxy, system_prompt=None):

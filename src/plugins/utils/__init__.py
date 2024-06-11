@@ -394,10 +394,13 @@ async def get_reply_msg_obj(bot, msg):
 # 记录自身对指令的回复消息id集合
 self_reply_msg_ids = set()
 def add_reply_msg(msg):
-    global self_reply_msg_ids
-    self_reply_msg_ids.add(int(msg["message_id"]))
-    # print(f'添加自身回复消息 {msg["message_id"]}')
-    return msg
+    try:
+        global self_reply_msg_ids
+        self_reply_msg_ids.add(int(msg["message_id"]))
+        # print(f'添加自身回复消息 {msg["message_id"]}')
+        return msg
+    except Exception as e:
+        return msg
 
 # 发送消息
 async def send_msg(handler, message):
@@ -460,7 +463,8 @@ def get_image_cq(image, allow_error=False, logger=None):
             image.save(tmp_file_path)
             image = tmp_file_path
         if image.startswith("http"):
-            return f'[CQ:image,file={image}]'
+            image = download_image(image)
+            return get_image_cq(image, allow_error, logger)
         else:
             with open(image, 'rb') as f:
                 return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
