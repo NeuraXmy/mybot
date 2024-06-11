@@ -1,21 +1,15 @@
-# 文件名修改为config.yaml后生效
+# 文件名修改为 config.yaml 后生效
 
-bot_name: "机器人名字" 
-log_level: "DEBUG"
-superuser:  
-  - 11111111
-  - 22222222
-  
+bot_name: ""
+log_level: "INFO"
+superuser:
+  - 11111
+  - 22222
+
 cd_verbose_interval: 30 # 冷却中时间隔多少秒输出一次cd信息
 
 font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"  # 中文字体路径
 font_name: "Microsoft YaHei"                                  # Matplotlib库使用的中文字体名称
-
-
-openai:
-  api_key: "sk-xxxxxxxxx"
-  api_base: "https://xxxxxxxxxx/v1"
-  proxy: ""
 
 
 alive:
@@ -27,136 +21,143 @@ alive:
   send_email: True                  # 是否发送邮件
   mail_host: "smtp.qq.com"          # 邮箱服务器地址
   mail_port: 25                     # 邮箱服务器端口
-  mail_user: "xxxxxxxx@qq.com"      # 邮箱发送者用户名
-  mail_pass: "xxxxxxxxxxxxxxxx"     # 邮箱密码
+  mail_user: "11111111@qq.com"      # 邮箱发送者用户名
+  mail_pass: "1312312312313111"     # 邮箱密码
   mail_receivers:                   # 邮箱接收者列表
-    - "xxxxxxxx@qq.com"
+    - "111111111@qq.com"
 
 
 bird:
-  cd: 60
+  cd: 10
   folk_name_max: 10                 # 俗名匹配显示的最大数量
   query_topk: 10                    # 模糊查询显示的前k名
   max_edit_distance: 2              # 模糊查询的最大编辑距离
-
+  
 
 bobing:
-  cd: 60         
+  cd: 10                         
 
 
 helper:
-  cd: 300  # 每种help查询单独的cd         
+  cd: 300  # 每种help查询单独的cd
 
 
 imgexp:
   google_cookies: ""
   saucenao_apikey: ""
-  saucenao_max_num: 5
-  google_max_num: 5
+  saucenao_max_num: 10
+  google_max_num: 10
   yandex_max_num: 0
   ascii2d_max_num: 0
-  cd: 60     
+  cd: 60
 
 
 imgtool:
   cd: 30
 
 
-chat:
-  query_text_model:                    # 询问使用的文本模型
-    id: "gpt-4-1106-preview"
-    input_pricing:  0.00001       # 每个输入token的价格（美元）
-    output_pricing: 0.00003       # 每个输出token的价格（美元）
-  
-  query_mm_model:                     # 询问使用的多模态模型
-    id: "gpt-4-vision-preview"
-    input_pricing:  0.00001       # 每个输入token的价格（美元）
-    output_pricing: 0.00003       # 每个输出token的价格（美元）
-
-  fold_response_threshold: 200    # 群聊中超过多少字折叠回复
-  session_len_limit: 10           # 会话长度限制
-  max_retries: 5                  # 最大重试次数
-  retry_interval: 1               # 重试间隔（秒） 
-  max_tokens: 2048                # 最大生成长度
-  per_user_usage_topk: 9          # 统计使用额度时展示前k名
-  cd: 60  
+llm:
+  api_key: ""
+  api_base: ""
 
   quota_check_url: ""                     # 检查配额的url
   quota_check_username: ""                # 检查配额的用户名
   quota_check_password: ""                # 检查配额的密码
   quota_check_interval: 60                # 检查配额的间隔（分钟）
+  
+  chat_model:                             # 聊天模型
+    id: "gpt-4o"
+    input_pricing:  0.000005              # 每个输入token的价格（美元）
+    output_pricing: 0.000015              # 每个输出token的价格（美元）
+  chat_max_tokens: 2048                   # 聊天最大生成长度
+
+  text_embedding_model:                   # 文本嵌入模型
+    id: "text-embedding-ada-002"           
+    input_pricing:  0.00000002            # 每个输入token的价格（美元）
+
+  tts_model:                              # 文本转语音模型
+    id: "tts-1"
+    input_pricing:  0.000015              # 每个输入字符的价格（美元）
+    voice: "alloy"                         # TTS语音名称
+  
+
+chat:
+  fold_response_threshold: 400    # 群聊中超过多少字折叠回复
+  session_len_limit: 10           # 会话长度限制
+  chat_cd: 10
+  tts_cd: 60
 
 
 cron:
-  query_text_model:               # 询问使用的文本模型
-    id: "gpt-4-1106-preview"
-    input_pricing:  0.00001       # 每个输入token的价格（美元）
-    output_pricing: 0.00003       # 每个输出token的价格（美元）
   max_retries: 5                  # 最大重试次数
-  cd: 60                                  
+  cd: 10  
 
 
 eval:
-  cd: 30
+  cd: 10
 
 
 mc:
-  query_interval: 0.5            # 向卫星地图查询的间隔（秒）
+  query_interval: 1              # 向卫星地图查询的间隔（秒）
   queue_consume_interval: 1      # 队列消费间隔（秒）
-  query_offset: 2000             # 查询时间的偏移量
-  disconnect_notify_count: 3      # 和服务器断联多少次后提醒
-  ascii_art_width: 20            # 字符画的宽度
+  query_offset: -1000            # 查询时间的偏移量
+  disconnect_notify_count: 8     # 和服务器断联多少次后提醒
+  ascii_art_width: 50            # 字符画的宽度
   player_time_update_interval: 60   # 超过多少秒自动更新玩家在线时间
   cd: 5
 
 
 oeis:
-  search_num: 5
+  search_num: 3
   cd: 10
 
 
 pjsk:
-  cd: 60                                 
+  cd: 10                                 
   max_vlive_endtime_diff: 7               # 最多只获取多久之前的vlive（天）
   vlive_notify_interval_minute: 1         # 每隔多少分钟检查vlive的提醒
   vlive_start_notify_before_minute:       # 提前多少分钟提醒vlive开始（列表）
     - 10
   vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
     - 140
-  new_music_notify_interval_minute: 5     # 每隔多少分钟检查新歌的提醒
+  new_music_notify_interval_minute: 1     # 每隔多少分钟检查新歌的提醒
   data_update_time: [5, 0, 0]             # 数据更新时间 [hour, minute, second]
-  model_id: "text-embedding-ada-002"  
-  stamp_search_topk: 5
+  stamp_search_topk: 6
+
 
 record:
+  
 
 rpc:
   host: "0.0.0.0"
-  port: 24444
+  port: 00000
+  
 
 run_code:
-  cd: 60                       
+  cd: 10                       
 
 
 statistics:
-  statistic_time: [23, 45, 00]  # 统计时间 [hour, minute, second]
+  statistic_time: [23, 50, 00]  # 统计时间 [hour, minute, second]
   name_len_limit: 16            # 用户名长度限制
   pie_topk: 9                   # 饼图显示的前k名
   plot_topk: 5                  # 折线图显示的前k名
   plot_interval: 15             # 折线图的时间间隔（分钟）
-  sta_word_topk: 10             # 词汇统计显示前k个用户
+  sta_word_topk: 8              # 词汇统计显示前k个用户
   cd: 60
 
+
 touhou:
-  model_id: "text-embedding-ada-002"  
   sc_query_max_num: 5           # 符卡查询显示的最大数量
   cd: 60
 
+
 water:
-  cd: 60                      
+  cd: 10                      
 
 
 welcome:
   group_info_update_interval: 30  # 群组信息更新间隔（分钟）
+
 
 misc:

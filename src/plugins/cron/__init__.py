@@ -5,7 +5,7 @@ from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
 from datetime import datetime, timedelta
 from ..utils import *
-from ..chat.ChatSession import ChatSession, USER_ROLE
+from ..llm import ChatSession
 import json
 
 
@@ -15,13 +15,7 @@ file_db = get_file_db('data/cron/cron.json', logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'cron')
 
-openai_config = get_config('openai')
-API_KEY = openai_config['api_key']
-API_BASE = openai_config['api_base']
-PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
-QUERY_TEXT_MODEL = config['query_text_model']
 MAX_RETIRES = config['max_retries']
-
 
 # 获取下次提醒时间描述
 def get_task_next_run_time_str(group_id, task_id):
@@ -84,18 +78,17 @@ async def parse_instruction(group_id, user_id, user_instruction):
     system_prompt = system_prompt.format(time=datetime.now().strftime('%Y-%m-%d %H:%M:%S %A'))
     # print(system_prompt)
 
-    session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_TEXT_MODEL, PROXY, system_prompt)
-    session.append_content(USER_ROLE, user_instruction)
+    session = ChatSession(system_prompt)
+    session.append_user_content(user_instruction)
 
     for retry_count in range(MAX_RETIRES):
         try:
-            task, _, _, _, _ = await session.get_response(
-                max_retries=MAX_RETIRES, 
+            res = await session.get_response(
+                usage="cron",
                 group_id=group_id,
                 user_id=user_id,
-                is_autochat=False
             )   
-            task = json.loads(task)
+            task = json.loads(res['result'])
             params = task['parameters']
             for key in params:
                 params[key] = str(params[key])

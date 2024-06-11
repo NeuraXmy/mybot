@@ -3,7 +3,7 @@ import yaml
 from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command, get_bot, on
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment, MessageEvent, PrivateMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
 from copy import deepcopy

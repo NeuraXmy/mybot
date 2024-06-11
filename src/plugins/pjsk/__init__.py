@@ -10,11 +10,10 @@ import aiohttp
 import json
 from ..utils import *
 import numpy as np
-import openai
+from ..llm import get_text_embedding
 from PIL import Image, ImageDraw, ImageFont
 
 config = get_config('pjsk')
-openai_config = get_config('openai')
 logger = get_logger("Pjsk")
 file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
@@ -22,10 +21,6 @@ gbl = get_group_black_list(file_db, logger, 'pjsk')
 notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify', is_service=False)
 
 
-API_KEY = openai_config['api_key']
-API_BASE = openai_config['api_base']
-PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
-MODEL_ID = config['model_id']
 STAMP_SEARCH_TOPK = config['stamp_search_topk']
 
 
@@ -561,27 +556,6 @@ def get_character_id(nickname):
             return item["id"]
     return None
 
-# 获取embedding
-async def get_text_embedding(text, max_retries=10):
-    openai.api_key = API_KEY
-    openai.api_base = API_BASE
-    openai.proxy = PROXY
-    for i in range(max_retries):
-        try:
-            response = await openai.Embedding.acreate(
-                input=text,
-                model=MODEL_ID,
-                encoding_format="float"
-            )
-            embedding = np.array(response['data'][0]['embedding'])
-            logger.info(f'获取embedding成功')
-            return embedding
-        except Exception as e:
-            if i == max_retries - 1:
-                raise e
-            logger.warning(f'获取embedding失败: {e}, 重试({i+1}/{max_retries})')
-            continue
-
 # 更新stamp文本embeddings
 async def update_stamp_embeddings():
     global stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid
@@ -609,7 +583,7 @@ async def update_stamp_embeddings():
             if stamp_embeddings_id is None or stamp["id"] not in stamp_embeddings_id:
                 text = stamp["name"].split("：")[-1]
                 logger.info(f"处理stamp {stamp['id']}: {text}")
-                emb = await get_text_embedding(text) # (emb_size, )
+                emb = np.array(await get_text_embedding(text, "pjsk stamp"))
                 new_stamp_embeddings.append(emb)
                 new_stamp_embeddings_id.append(stamp["id"])
                 new_stamp_embeddings_cid.append(stamp["characterId1"])
@@ -657,7 +631,7 @@ async def search_stamp(text, topk, cid):
         assert len(stamp_embeddings) == len(stamp_embeddings_cid)
         logger.info(f"读取历史stamp文本embeddings: 共获取{len(stamp_embeddings)}条")
 
-    emb = await get_text_embedding(text)
+    emb = np.array(await get_text_embedding(text, "pjsk stamp"))
 
     c_stamp_embeddings = stamp_embeddings
     c_stamp_embeddings_id = stamp_embeddings_id

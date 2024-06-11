@@ -7,26 +7,21 @@ import random
 from ..utils import *
 import pandas as pd
 from glob import glob
-import openai
 import numpy as np
 import pandas as pd
 import os
 from glob import glob
 from tqdm import tqdm
+from ..llm import get_text_embedding
 
 
 config = get_config('touhou')
-openai_config = get_config('openai')
 logger = get_logger("Touhou")
 file_db = get_file_db("data/touhou/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'touhou')
 
 
-API_KEY = openai_config['api_key']
-API_BASE = openai_config['api_base']
-PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
-MODEL_ID = config['model_id']
 SC_QUERY_MAX_NUM = config['sc_query_max_num']
 
 
@@ -69,30 +64,6 @@ init_sc_list()
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
-
-# 获取embedding
-def get_text_embedding(text, max_retries=10):
-    openai.api_key = API_KEY
-    openai.api_base = API_BASE
-    openai.proxy = PROXY
-    logger.info(f'获取embedding: {text}')
-    for i in range(max_retries):
-        try:
-            response = openai.Embedding.create(
-                input=text,
-                model=MODEL_ID,
-                encoding_format="float"
-            )
-            embedding = np.array(response['data'][0]['embedding'])
-            logger.info(f'获取embedding成功')
-            return embedding
-        except Exception as e:
-            if i == max_retries - 1:
-                raise e
-            logger.warning(f'获取embedding失败: {e}, 重试({i+1}/{max_retries})')
-            continue
-
-
 # 处理符卡查询语句
 def process_sc_query_text(text):
     ret = []
@@ -109,9 +80,9 @@ def process_sc_query_text(text):
 
 
 # 查询符卡
-def query_sc(text, num):
+async def query_sc(text, num):
     global sc_embs
-    qemb = get_text_embedding(text)
+    qemb = np.array(await get_text_embedding(text, "touhou sc"))
     scores = []
     for emb, df, idx in sc_embs:
         scores.append((np.linalg.norm(qemb - emb), df, idx))
@@ -200,7 +171,7 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
     logger.info(f"查询符卡: {text} -> {qtext}")
 
     try:
-        rows = query_sc(qtext, SC_QUERY_MAX_NUM)
+        rows = await query_sc(qtext, SC_QUERY_MAX_NUM)
     except Exception as e:
         logger.print_exc(f"查询符卡失败")
         return await send_reply_msg(sc, event.message_id, f"查询符卡失败: {e}")

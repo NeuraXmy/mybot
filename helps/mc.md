@@ -24,7 +24,7 @@
 - [`/rcon` 向服务器发送rcon命令](#rcon-cmd)
 - [`/playtime` 查询玩家游玩时间](#playtime)
 - [`/playtime_clear` 清空玩家游玩时间](#playtime_clear)
-- [`/start_game` 切换到新周目](#start_game-gamename)
+- [`/start_game` 切换到新周目](#start_game)
 
 ---
 

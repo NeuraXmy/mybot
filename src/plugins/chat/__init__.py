@@ -3,40 +3,26 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from .ChatSession import ChatSession, USER_ROLE, BOT_ROLE, SYSTEM_ROLE, get_image_b64
+from ..llm import ChatSession, get_image_b64, tts
 from ..utils import *
 from datetime import datetime, timedelta
-import random
-from ..record.sql import text_recent, text_user
-from argparse import ArgumentParser
-from .draw_usage import draw
-from PIL import Image
-import io
 
 
 config = get_config('chat')
-openai_config = get_config('openai')
 logger = get_logger("Chat")
 file_db = get_file_db("data/chat/db.json", logger)
-cd = ColdDown(file_db, logger, config['cd'])
+chat_cd = ColdDown(file_db, logger, config['chat_cd'], cold_down_name="chat_cd")
+tts_cd = ColdDown(file_db, logger, config['tts_cd'], cold_down_name="tts_cd")
 gwl = get_group_white_list(file_db, logger, 'chat')
 
-API_KEY = openai_config['api_key']
-API_BASE = openai_config['api_base']
-PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
 
-QUERY_TEXT_MODEL = config['query_text_model']
-QUERY_MM_MODEL = config['query_mm_model']
 FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']
-MAX_RETIRES = config['max_retries']
 
-SYSTEM_PROMPT_PATH = "data/chat/system_prompt.txt"
-
+SYSTEM_PROMPT_PATH       = "data/chat/system_prompt.txt"
 SYSTEM_PROMPT_TOOLS_PATH = "data/chat/system_prompt_tools.txt"
 TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
 SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
-
 CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
 
 # 使用工具 返回需要添加到回复的额外信息
@@ -62,7 +48,7 @@ async def use_tool(handle, session, type, data, event):
 
         with open(SYSTEM_PROMPT_PYTHON_RET, "r", encoding="utf-8") as f:
             system_prompt_ret = f.read()
-        session.append_content(SYSTEM_ROLE, system_prompt_ret.format(res=res))
+        session.append_system_content(system_prompt_ret.format(res=res))
 
         return res
     else:
@@ -121,7 +107,7 @@ async def _(bot: Bot, event: MessageEvent):
             if not has_at: return
         
         # cd检测
-        if not (await cd.check(event)): return
+        if not (await chat_cd.check(event)): return
         
         logger.log(f"收到询问: {query_msg}")
         query_msg_ids.add(event.message_id)
@@ -175,47 +161,45 @@ async def _(bot: Bot, event: MessageEvent):
                     return await chat_request.send(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
-                session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
+                session = ChatSession(system_prompt)
                 if len(reply_imgs) > 0 or reply_text.strip() != "":
-                    role = USER_ROLE if str(reply_uid) != str(bot.self_id) else BOT_ROLE
                     reply_imgs = [await get_image_b64(img) for img in reply_imgs]
-                    session.append_content(role, reply_text, reply_imgs)
+                    if str(reply_uid) == str(bot.self_id):
+                        session.append_bot_content(reply_text, reply_imgs)
+                    else:
+                        session.append_user_content(reply_text, reply_imgs)
         else:
-            session = ChatSession(API_KEY, API_BASE, QUERY_TEXT_MODEL, QUERY_MM_MODEL, PROXY, system_prompt)
+            session = ChatSession(system_prompt)
 
         query_imgs = [await get_image_b64(img) for img in query_imgs]
-        session.append_content(USER_ROLE, query_text, query_imgs)
+        session.append_user_content(query_text, query_imgs)
 
-        total_seconds, total_retry_count, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0, 0
-
+        total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
         tools_additional_info = ""
 
         # 进行询问
         while range(5):
             t = datetime.now()
-            res, retry_count, ptokens, ctokens, cost = await session.get_response(
-                max_retries=MAX_RETIRES, 
+            res = await session.get_response(
+                "chat", 
                 group_id=(event.group_id if is_group(event) else None),
                 user_id=event.user_id,
-                is_autochat=False
             )
-            res = str(MessageSegment.text(res))
-            total_retry_count += retry_count
-            total_ptokens += ptokens
-            total_ctokens += ctokens
-            total_cost += cost
+            res_text = res["result"]
+            total_ptokens += res['prompt_tokens']
+            total_ctokens += res['completion_tokens']
+            total_cost += res['cost']
             total_seconds += (datetime.now() - t).total_seconds()
 
             # 如果回复时关闭则取消回复
             if not gwl.check(event, allow_private=True, allow_super=True): return
 
             if not need_tools: break
-
             try:
                 # 调用工具
-                ret = json.loads(res)
-                tool_ret = await use_tool(chat_request, session, ret["tool"], ret["data"], event)
-                tools_additional_info += f"[工具{ret['tool']}返回结果: {tool_ret.strip()}]\n" 
+                tool_args = json.loads(res_text)
+                tool_ret = await use_tool(chat_request, session, tool_args["tool"], tool_args["data"], event)
+                tools_additional_info += f"[工具{tool_args['tool']}返回结果: {tool_ret.strip()}]\n" 
             except Exception as exc:
                 logger.info(f"工具调用失败: {exc}")
                 break
@@ -228,15 +212,13 @@ async def _(bot: Bot, event: MessageEvent):
     
     additional_info = f"{total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if (rest_quota := file_db.get("rest_quota", -1)) > 0:
-        additional_info += f" | {cost:.4f}/{rest_quota:.2f}$"
-    if total_retry_count > 0:
-        additional_info += f" | 重试{total_retry_count}次"
+        additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
 
-    final_res = tools_additional_info + res + additional_info
+    final_text = tools_additional_info + res_text + additional_info
 
     # 进行回复
-    ret = await send_fold_msg_adaptive(bot, chat_request, event, final_res, FOLD_LENGTH_THRESHOLD)
+    ret = await send_fold_msg_adaptive(bot, chat_request, event, final_text, FOLD_LENGTH_THRESHOLD)
 
     # 加入会话历史
     if len(session) < SESSION_LEN_LIMIT:
@@ -245,48 +227,35 @@ async def _(bot: Bot, event: MessageEvent):
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
 
 
-# 查询token使用情况
-token_usage = on_command("/chat_usage", block=False, priority=0)
-@token_usage.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
 
-    try:
-        today = datetime.now().strftime("%Y-%m-%d")
-        date = event.get_plaintext().split()[1].strip().lower()
-        if date == "":
-            date = today
-        elif date == "all" or date == "total":
-            date = None
-        else:
-            datetime.strptime(date, "%Y-%m-%d")
-    except:
-        logger.info(f'日期格式错误, 使用当前日期')
-        date = today
-
-    start_time, end_time = None, None
-    if date:
-        start_time = datetime.strptime(date, "%Y-%m-%d")
-        end_time = start_time + timedelta(days=1)
-    logger.info(f'查询token使用情况 从{start_time}到{end_time}')
-    
-    path, desc = draw(start_time, end_time)
-    
-    if date is None:
-        desc = f"全部时间段\n{desc}"
-    else:
-        desc = f"{date}\n{desc}"
-
-    if path is None:
-        return await send_msg(token_usage, desc)
-
-    img = Image.open(path)
-    imgByteArr = io.BytesIO()
-    img.save(imgByteArr, format='PNG')
-    imgByteArr = imgByteArr.getvalue()
-
-    ret = (
-        desc,
-        MessageSegment.image(imgByteArr)
-    )
-    return await send_msg(token_usage, ret)
+# TTS
+# tts_request = on_command("/tts", block=False, priority=0)
+# @tts_request.handle()
+# async def _(bot: Bot, event: MessageEvent):
+#     if not check_superuser(event): return
+#     if not gwl.check(event, allow_private=True, allow_super=True): return
+#     if not (await tts_cd.check(event)): return
+# 
+#     text = event.get_plaintext().replace("/tts", "").strip()
+#     if not text: return
+# 
+#     audio_file_path = None
+# 
+#     try:
+#         audio_file_path = await tts(
+#             text=text, 
+#             usage="tts", 
+#             group_id=event.group_id if is_group(event) else None, 
+#             user_id=event.user_id
+#         )
+# 
+#         send_msg(tts_request, f"[CQ:record,file=file:///{audio_file_path}]")
+#     
+#     except Exception as e:
+#         logger.print_exc(f'TTS失败')
+#         return send_reply_msg(tts_request, event.message_id, f"TTS失败:{e}")
+# 
+#     finally:
+#         import shutil
+#         if audio_file_path and os.path.exists(audio_file_path):
+#             shutil.rmtree(audio_file_path)
