@@ -28,14 +28,18 @@ PROXY = (None if openai_config['proxy'] == "" else openai_config['proxy'])
 MODEL_ID = config['model_id']
 STAMP_SEARCH_TOPK = config['stamp_search_topk']
 
-MUSIC_URL               = "https://sekai-world.github.io/sekai-master-db-diff/musics.json"
-MUSIC_DIFFICULTY_URL    = "https://sekai-world.github.io/sekai-master-db-diff/musicDifficulties.json"
-VLIVE_URL               = "https://sekai-world.github.io/sekai-master-db-diff/virtualLives.json"
-EVENT_URL               = "https://sekai-world.github.io/sekai-master-db-diff/events.json"
-EVENT_STORY_URL         = "https://sekai-world.github.io/sekai-master-db-diff/eventStories.json"
-CHARACTER_URL           = "https://sekai-world.github.io/sekai-master-db-diff/gameCharacters.json"
-CHARACTER_2DS_URL       = "https://sekai-world.github.io/sekai-master-db-diff/character2ds.json"
-STAMP_URL               = "https://sekai-world.github.io/sekai-master-db-diff/stamps.json"
+
+# META_BASE_URL = "https://sekai-world.github.io/sekai-master-db-diff"
+META_BASE_URL = "https://raw.githubusercontent.com/Sekai-World/sekai-master-db-diff/main"
+MUSIC_URL               = f"{META_BASE_URL}/musics.json"
+MUSIC_DIFFICULTY_URL    = f"{META_BASE_URL}/musicDifficulties.json"
+VLIVE_URL               = f"{META_BASE_URL}/virtualLives.json"
+EVENT_URL               = f"{META_BASE_URL}/events.json"
+EVENT_STORY_URL         = f"{META_BASE_URL}/eventStories.json"
+CHARACTER_URL           = f"{META_BASE_URL}/gameCharacters.json"
+CHARACTER_2DS_URL       = f"{META_BASE_URL}/character2ds.json"
+STAMP_URL               = f"{META_BASE_URL}/stamps.json"
+
 
 STAMP_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/stamp/{assetbundleName}_rip/{assetbundleName}.png"
 MUSIC_COVER_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/music/jacket/{assetbundleName}_rip/{assetbundleName}.webp"
@@ -146,142 +150,94 @@ async def update_all():
     await download_stamp_data()
     await update_stamp_embeddings()
 
-# 下载用户基本信息 返回json
-async def get_basic_user_profile(user_id):
-    url = BASIC_USER_PROFILE_URL.format(uid=user_id)
+async def download_json_data(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status == 200:
+                if "text/plain" in resp.content_type:
+                    return json.loads(await resp.text())
                 return await resp.json()
             else:
                 raise Exception(resp.status)
+
+# 下载用户基本信息 返回json
+async def get_basic_user_profile(user_id):
+    url = BASIC_USER_PROFILE_URL.format(uid=user_id)
+    return download_json_data(url)
 
 # 下载用户信息 返回json
 async def get_user_profile(user_id):
     url = USER_PROFILE_URL.format(uid=user_id)
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            else:
-                raise Exception(resp.status)
+    return download_json_data(url)
 
 # 下载音乐数据到本地
 async def download_music_data():
     logger.info(f"开始下载音乐数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(MUSIC_URL) as resp:
-            if resp.status == 200:
-                musics = await resp.json()
-                with open(MUSIC_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(musics, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载音乐数据成功: 共获取{len(musics)}条")
-                return
-            else:
-                raise Exception(f"下载音乐数据失败: {resp.status}")
+    data = await download_json_data(MUSIC_URL)
+    with open(MUSIC_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载音乐数据成功: 共获取{len(data)}条")
 
 # 下载音乐难度数据到本地
 async def download_music_difficulty_data():
     logger.info(f"开始下载音乐难度数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(MUSIC_DIFFICULTY_URL) as resp:
-            if resp.status == 200:
-                difficulties = await resp.json()
-                with open(MUSIC_DIFFICULTY_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(difficulties, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载音乐难度数据成功: 共获取{len(difficulties)}条")
-                return
-            else:
-                raise Exception(f"下载音乐难度数据失败: {resp.status}")
+    data = await download_json_data(MUSIC_DIFFICULTY_URL)
+    with open(MUSIC_DIFFICULTY_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载音乐难度数据成功: 共获取{len(data)}条")
 
 # 下载vlive数据到本地
 async def download_vlive_data():
     logger.info(f"开始下载vlive数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(VLIVE_URL) as resp:
-            if resp.status == 200:
-                lives = await resp.json()
-                valid_lives = []
-                for lives in lives:
-                    end_time = datetime.fromtimestamp(lives["endAt"] / 1000)
-                    if (datetime.now() - end_time).total_seconds() < MAX_VLIVE_ENDTIME_DIFF:
-                        valid_lives.append(lives)
-                with open(VLIVE_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(valid_lives, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载vlive数据成功: 共获取{len(valid_lives)}条")
-                return
-            else:
-                raise Exception(f"下载vlive数据失败: {resp.status}")
+    lives = await download_json_data(VLIVE_URL)
+    valid_lives = []
+    for lives in lives:
+        end_time = datetime.fromtimestamp(lives["endAt"] / 1000)
+        if (datetime.now() - end_time).total_seconds() < MAX_VLIVE_ENDTIME_DIFF:
+            valid_lives.append(lives)
+    with open(VLIVE_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(valid_lives, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载vlive数据成功: 共获取{len(valid_lives)}条")
 
 # 下载event数据到本地
 async def download_event_data():
     logger.info(f"开始下载event数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(EVENT_URL) as resp:
-            if resp.status == 200:
-                events = await resp.json()
-                with open(EVENT_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(events, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载event数据成功: 共获取{len(events)}条")
-                return
-            else:
-                raise Exception(f"下载event数据失败: {resp.status}")
+    data = await download_json_data(EVENT_URL)
+    with open(EVENT_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载event数据成功: 共获取{len(data)}条")
 
 # 下载eventstory数据到本地
 async def download_event_story_data():
     logger.info(f"开始下载eventstory数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(EVENT_STORY_URL) as resp:
-            if resp.status == 200:
-                event_stories = await resp.json()
-                with open(EVENT_STORY_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(event_stories, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载eventstory数据成功: 共获取{len(event_stories)}条")
-                return
-            else:
-                raise Exception(f"下载eventstory数据失败: {resp.status}")        
+    data = await download_json_data(EVENT_STORY_URL)
+    with open(EVENT_STORY_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载eventstory数据成功: 共获取{len(data)}条")     
 
 # 下载character数据到本地
 async def download_character_data():
     logger.info(f"开始下载character数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(CHARACTER_URL) as resp:
-            if resp.status == 200:
-                characters = await resp.json()
-                with open(CHARACTER_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(characters, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载character数据成功: 共获取{len(characters)}条")
-                return
-            else:
-                raise Exception(f"下载character数据失败: {resp.status}")
+    data = await download_json_data(CHARACTER_URL)
+    with open(CHARACTER_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载character数据成功: 共获取{len(data)}条")
 
 # 下载character2ds数据到本地
 async def download_character_2ds_data():
     logger.info(f"开始下载character2ds数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(CHARACTER_2DS_URL) as resp:
-            if resp.status == 200:
-                character_2ds = await resp.json()
-                with open(CHARACTER_2DS_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(character_2ds, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载character2ds数据成功: 共获取{len(character_2ds)}条")
-                return
-            else:
-                raise Exception(f"下载character2ds数据失败: {resp.status}")
+    data = await download_json_data(CHARACTER_2DS_URL)
+    with open(CHARACTER_2DS_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载character2ds数据成功: 共获取{len(data)}条")
 
 # 下载stamp数据到本地
 async def download_stamp_data():
     logger.info(f"开始下载stamp数据")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(STAMP_URL) as resp:
-            if resp.status == 200:
-                stamps = await resp.json()
-                with open(STAMP_SAVE_PATH, 'wb') as f:
-                    f.write(json.dumps(stamps, indent=4, ensure_ascii=False).encode('utf8'))
-                logger.info(f"下载stamp数据成功: 共获取{len(stamps)}条")
-                return
-            else:
-                raise Exception(f"下载stamp数据失败: {resp.status}")
+    data = await download_json_data(STAMP_URL)
+    with open(STAMP_SAVE_PATH, 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载stamp数据成功: 共获取{len(data)}条")
 
 
 # 更新eventstory详情数据
