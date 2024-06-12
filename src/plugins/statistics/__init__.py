@@ -50,7 +50,7 @@ async def get_statistic(bot, group_id, date=None):
     # 获取topk的名字
     topk_name = []
     for user in topk_user:
-        name = get_shortname(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
+        name = truncate(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
         topk_name.append(name)
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.jpg"

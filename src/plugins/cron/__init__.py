@@ -48,7 +48,7 @@ def get_task_time_desc(task):
 def task_to_str(task):
     res = f"【{task['id']}】{'(muted) ' if task['mute'] else ''}\n"
     res += f"创建者: {task['user_id']} 订阅者: {len(task['sub_users'])}人\n"
-    res += f"内容: {get_shortname(task['content'], 64)}\n"
+    res += f"内容: {truncate(task['content'], 64)}\n"
     res += f"时间: {get_task_time_desc(task)}\n"
     res += f"{get_task_next_run_time_str(task['group_id'], task['id'])}\n"
     return res

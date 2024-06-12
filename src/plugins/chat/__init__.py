@@ -229,33 +229,32 @@ async def _(bot: Bot, event: MessageEvent):
 
 
 # TTS
-# tts_request = on_command("/tts", block=False, priority=0)
-# @tts_request.handle()
-# async def _(bot: Bot, event: MessageEvent):
-#     if not check_superuser(event): return
-#     if not gwl.check(event, allow_private=True, allow_super=True): return
-#     if not (await tts_cd.check(event)): return
-# 
-#     text = event.get_plaintext().replace("/tts", "").strip()
-#     if not text: return
-# 
-#     audio_file_path = None
-# 
-#     try:
-#         audio_file_path = await tts(
-#             text=text, 
-#             usage="tts", 
-#             group_id=event.group_id if is_group(event) else None, 
-#             user_id=event.user_id
-#         )
-# 
-#         send_msg(tts_request, f"[CQ:record,file=file:///{audio_file_path}]")
-#     
-#     except Exception as e:
-#         logger.print_exc(f'TTS失败')
-#         return send_reply_msg(tts_request, event.message_id, f"TTS失败:{e}")
-# 
-#     finally:
-#         import shutil
-#         if audio_file_path and os.path.exists(audio_file_path):
-#             shutil.rmtree(audio_file_path)
+tts_request = on_command("/tts", block=False, priority=0)
+@tts_request.handle()
+async def _(bot: Bot, event: MessageEvent):
+    if not check_superuser(event): return
+    if not gwl.check(event, allow_private=True, allow_super=True): return
+    if not (await tts_cd.check(event)): return
+
+    text = event.get_plaintext().replace("/tts", "").strip()
+    if not text: return
+
+    audio_file_path = None
+
+    try:
+        audio_file_path = await tts(
+            text=text, 
+            usage="tts", 
+            group_id=event.group_id if is_group(event) else None, 
+            user_id=event.user_id
+        )
+
+        return await send_msg(tts_request, get_audio_cq(audio_file_path))
+    
+    except Exception as e:
+        logger.print_exc(f'TTS失败')
+        return await send_reply_msg(tts_request, event.message_id, f"TTS失败:{e}")
+
+    finally:
+        if audio_file_path and os.path.exists(audio_file_path):
+            os.remove(audio_file_path)

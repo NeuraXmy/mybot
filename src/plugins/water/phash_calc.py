@@ -22,7 +22,7 @@ def calc_phash(image_url):
     return hash
 
 
-DB_PATH = "data/record/record.sqlite"
+DB_PATH = "/root/program/qqbot/mybot/data/record/record.sqlite"
 
 conn = None         # 连接
 

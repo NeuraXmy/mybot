@@ -209,7 +209,7 @@ def draw_wordcloud(ax, recs, users, names):
                     name = names[k]
                     break
             if name == "": continue
-            name = get_shortname(name, 6)
+            name = truncate(name, 6)
             if fst: fst = False
             else: text += " | "
             text += f"{name}({int(rate * 100)}%)"

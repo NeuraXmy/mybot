@@ -98,7 +98,7 @@ async def update_rest_quota():
 
                     if response.status == 401:
                         # 登录失败，删除本地cookies重试
-                        shutil.rmtree(QUOTA_CHECK_COOKIES_PATH)
+                        os.remove(QUOTA_CHECK_COOKIES_PATH)
                         continue
 
                     if response.status != 200:
@@ -210,7 +210,7 @@ class ChatSession:
         prompt_tokens       = response.usage.prompt_tokens
         completion_tokens   = response.usage.completion_tokens
         
-        logger.info(f"会话{self.id}获取回复: {get_shortname(result, 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
+        logger.info(f"会话{self.id}获取回复: {truncate(result, 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
 
         # 添加使用记录
         cost = CHAT_MODEL['input_pricing'] * prompt_tokens + CHAT_MODEL['output_pricing'] * completion_tokens

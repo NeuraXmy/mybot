@@ -95,16 +95,6 @@ async def download_image(image_url):
             image = await resp.read()
             return Image.open(io.BytesIO(image))
         
-# 读取本地图片并且转化为CQ码
-def read_image_to_cq(image_path, logger):
-    try:
-        with open(image_path, 'rb') as f:
-            image = f.read()
-            return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'    
-    except Exception as e:
-        logger.print_exc(f'读取图片 {image_path} 失败: {e}')
-        return "[图片加载失败]"    
-
 # 编辑距离
 def levenshtein_distance(s1, s2):
     if len(s1) < len(s2):
@@ -224,7 +214,7 @@ class FileDB:
         return deepcopy(self.data.get(key, default))
 
     def set(self, key, value):
-        self.logger.debug(f'设置数据库 {self.path} {key} = {get_shortname(str(value), 32)}')
+        self.logger.debug(f'设置数据库 {self.path} {key} = {truncate(str(value), 32)}')
         self.data[key] = deepcopy(value)
         self.save()
 
@@ -475,19 +465,19 @@ def get_image_cq(image, allow_error=False, logger=None):
             return "[图片加载失败]"
         raise e
 
+# 获取音频的cq码用于发送
+def get_audio_cq(audio_path):
+    with open(audio_path, 'rb') as f:
+        return f'[CQ:record,file=base64://{base64.b64encode(f.read()).decode()}]'
 
-
-# 缩短名字
-def get_shortname(name, limit):
+# 缩短字符串
+def truncate(s, limit):
     l = 0
-    ret = ""
-    for c in name:
+    for i, c in enumerate(s):
         if l >= limit:
-            ret += "..."
-            break
+            return s[:i] + "..."
         l += 1 if ord(c) < 128 else 2
-        ret += c
-    return ret
+    return s
 
 
 # 开始重复执行某个异步任务
