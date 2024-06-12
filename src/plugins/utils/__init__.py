@@ -65,7 +65,7 @@ def create_transparent_gif(img, save_path):
             retry_num += 1
             continue
         def replace_alpha(pixel):
-            return (*transparent_color, 255) if pixel[3] < 128 else pixel
+            return (*transparent_color, 255) if len(pixel) == 4 and pixel[3] < 128 else pixel
         trans_data = list(map(replace_alpha, img.getdata()))
         img.putdata(trans_data)
         img = img.convert("RGB").quantize(256)
