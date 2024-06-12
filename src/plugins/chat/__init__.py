@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, get_image_b64, tts
+from ..llm import ChatSession, get_image_b64, tts, get_rest_quota
 from ..utils import *
 from datetime import datetime, timedelta
 
@@ -211,7 +211,7 @@ async def _(bot: Bot, event: MessageEvent):
         return send_reply_msg(chat_request, event.message_id, str(error))
     
     additional_info = f"{total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
-    if (rest_quota := file_db.get("rest_quota", -1)) > 0:
+    if (rest_quota := get_rest_quota()) > 0:
         additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
 

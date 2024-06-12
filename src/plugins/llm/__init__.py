@@ -126,6 +126,10 @@ def update_rest_quota_local(cost):
         file_db.set("rest_quota", rest_quota - cost)
         logger.info(f"更新额度: -{cost}$, 剩余额度: {rest_quota - cost}$")
 
+# 获取当前额度
+def get_rest_quota():
+    return file_db.get("rest_quota", -1.0)
+
 
 # -------------------------------- GPT聊天相关 -------------------------------- #
 
