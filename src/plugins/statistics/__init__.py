@@ -235,7 +235,8 @@ async def _(bot: Bot, event: MessageEvent):
 @scheduler.scheduled_job("cron", hour=STATICSTIC_TIME[0], minute=STATICSTIC_TIME[1], second=STATICSTIC_TIME[2])
 async def cron_statistic():
     bot = get_bot()
-    for group_id in notify_gwl.get() and group_id not in gbl.get():
+    for group_id in notify_gwl.get():
+        if group_id in gbl.get(): continue
         logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)

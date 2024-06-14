@@ -25,6 +25,12 @@ def process_msg(msg):
         msg['time'] = msg['time'].timestamp()
     pass
 
+def get_md5(s):
+    import hashlib
+    m = hashlib.md5()
+    m.update(s.encode())
+    return m.hexdigest()
+
 # ------------------------------ 新聊天 ------------------------------ #
 
 # 为每个客户端分别存储的新消息
@@ -180,3 +186,35 @@ async def handle_get_forward_msg(cid, forward_id):
         'msg': msg['content'],
     } for msg in msgs]
 
+group_msg_segments = {}
+
+# 清空分段消息
+@rpc('clear_group_msg_split')
+async def handle_clear_group_msg_split(cid):
+    if cid in group_msg_segments:
+        del group_msg_segments[cid]
+    return True
+
+# 上传分段发送群消息的片段
+@rpc('upload_group_msg_split')
+async def handle_upload_group_msg_split(cid, message, index):
+    if cid not in group_msg_segments:
+        group_msg_segments[cid] = {}
+    segments = group_msg_segments[cid]
+    segments[index] = message
+    return len(segments)
+    
+# 连接片段并发送
+@rpc('send_group_msg_split')
+async def handle_send_group_msg_split(cid, group_id, md5, is_str):
+    segments = group_msg_segments[cid]
+    message = ''.join([segments[i] for i in range(len(segments))])
+    del group_msg_segments[cid]
+    if get_md5(message) != md5:
+        raise Exception("MD5 Verification Failed")
+    if not is_str:
+        message = json.loads(message)
+    bot = get_bot()
+    if isinstance(message, str):
+        message=OutMessage(message)
+    return await bot.send_group_msg(group_id=int(group_id), message=message)
