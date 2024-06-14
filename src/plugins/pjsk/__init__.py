@@ -158,12 +158,12 @@ async def download_json_data(url):
 # 下载用户基本信息 返回json
 async def get_basic_user_profile(user_id):
     url = BASIC_USER_PROFILE_URL.format(uid=user_id)
-    return download_json_data(url)
+    return await download_json_data(url)
 
 # 下载用户信息 返回json
 async def get_user_profile(user_id):
     url = USER_PROFILE_URL.format(uid=user_id)
-    return download_json_data(url)
+    return await download_json_data(url)
 
 # 下载音乐数据到本地
 async def download_music_data():

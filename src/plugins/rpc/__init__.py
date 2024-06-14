@@ -214,7 +214,7 @@ async def handle_send_group_msg_split(cid, group_id, md5, is_str):
         raise Exception("MD5 Verification Failed")
     if not is_str:
         message = json.loads(message)
+    else:
+        message = OutMessage(message)
     bot = get_bot()
-    if isinstance(message, str):
-        message=OutMessage(message)
     return await bot.send_group_msg(group_id=int(group_id), message=message)
