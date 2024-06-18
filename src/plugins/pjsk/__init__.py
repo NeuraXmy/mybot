@@ -650,14 +650,14 @@ async def search_stamp(text, topk, cid):
 async def get_stamp_image_cq(stamps, sid):
     save_path = STAMP_IMG_SAVE_DIR.format(sid=sid)
     try:
-        return get_image_cq(save_path)
+        return await get_image_cq(save_path)
     except:
         pass
     logger.info(f"下载 stamp {sid}")
     url = get_stamp_url_by_id(stamps, sid)
     img = await download_image(url)
     create_transparent_gif(img, save_path)
-    return get_image_cq(save_path)
+    return await get_image_cq(save_path)
 
 # 获取表情图片
 async def get_stamp_image(stamps, sid):
@@ -786,7 +786,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         if vlive is None: continue
         if datetime.now() > vlive["end"]: continue
         msg += f"【{vlive['name']}】\n"
-        msg += f"{get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
+        msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
         msg += f"开始时间: {vlive['start'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         msg += f"结束时间: {vlive['end'].strftime('%Y-%m-%d %H:%M:%S')}\n"
         if vlive["living"]: 
@@ -987,7 +987,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
         if nickname and text is None:
             logger.info(f"合成角色表情: cid={cid}")
-            return await send_reply_msg(stamp, event.message_id, get_image_cq(await compose_character_stamp(stamp_data, cid)))
+            return await send_reply_msg(stamp, event.message_id, await get_image_cq(await compose_character_stamp(stamp_data, cid)))
 
         logger.info(f"搜索表情: cid={cid} text={text}")
         sids = await search_stamp(text, STAMP_SEARCH_TOPK, cid)
@@ -1048,7 +1048,7 @@ async def vlive_notify():
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
                     msg = f"【{vlive['name']}】\n"
-                    msg += f"{get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
+                    msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
                     msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
                     
                     for group_id in notify_gwl.get():
@@ -1073,7 +1073,7 @@ async def vlive_notify():
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
                     msg = f"【{vlive['name']}】\n"
-                    msg += f"{get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
+                    msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
                     msg += f"将于 {get_readable_datetime(vlive['end'])} 结束\n"
 
                     if vlive["living"]: 
@@ -1113,13 +1113,13 @@ async def new_music_notify():
         publish_time = datetime.fromtimestamp(music["publishedAt"] / 1000)
         if mid in notified_musics: continue
         if now - publish_time > timedelta(hours=6): continue
-        if publish_time - now > timedelta(minutes=10): continue
+        if publish_time - now > timedelta(minutes=1): continue
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
         msg = f"【PJSK新曲上线】\n"
         msg += f"{music['composer']} - {music['title']}\n"
         cover_image_url = get_music_cover_url(music_data, mid)
-        msg += f"{get_image_cq(cover_image_url, allow_error=True, logger=logger)}\n"
+        msg += f"{await get_image_cq(cover_image_url, allow_error=True, logger=logger)}\n"
         
         if pdata := parsed_data.get(mid):
             easy_diff   = pdata['diff']['easy']['playLevel']

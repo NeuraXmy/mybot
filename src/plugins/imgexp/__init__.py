@@ -42,6 +42,6 @@ async def handle(bot: Bot, event: MessageEvent):
     if len(res_info) == 0:
         return await send_reply_msg(search, event.message_id, f"无搜索结果")
     
-    return await send_reply_msg(search, event.message_id, get_image_cq(res_img))
+    return await send_reply_msg(search, event.message_id, await get_image_cq(res_img))
 
 

@@ -56,10 +56,10 @@ async def get_statistic(bot, group_id, date=None):
     path = PLOT_PATH + f"plot_{group_id}.jpg"
     draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path)
     # 发送图片
-    return get_image_cq(path)
+    return await get_image_cq(path)
 
 # 获取总消息量关于时间的统计图数据
-def get_date_count_statistic(bot, group_id, days, user_id=None):
+async def get_date_count_statistic(bot, group_id, days, user_id=None):
     t = datetime.now()
     dates, counts = [], []
     user_counts = None if user_id is None else []
@@ -80,7 +80,7 @@ def get_date_count_statistic(bot, group_id, days, user_id=None):
         counts.append(cnt)
     save_path = PLOT_PATH + f"plot_{group_id}_date_count.jpg"
     draw_date_count_plot(dates, counts, save_path, user_counts)
-    return get_image_cq(save_path)
+    return await get_image_cq(save_path)
 
 # 获取某个词的统计图
 async def get_word_statistic(bot, group_id, days, word):
@@ -106,7 +106,7 @@ async def get_word_statistic(bot, group_id, days, word):
     topk_name = [await get_user_name(bot, group_id, user) for user in topk_user]
     save_path = PLOT_PATH + f"plot_{group_id}_word_count.jpg"
     draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_counts, word, save_path)
-    return get_image_cq(save_path)
+    return await get_image_cq(save_path)
 
 # ------------------------------------------------ 聊天逻辑 ------------------------------------------------
 
@@ -150,7 +150,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         except:
             logger.info(f'日期格式错误, 使用默认30天')
             days = 30
-        res = get_date_count_statistic(bot, event.group_id, days, user_id)
+        res = await get_date_count_statistic(bot, event.group_id, days, user_id)
         return await send_reply_msg(sta2, event.message_id, res)
 
     except Exception as e:

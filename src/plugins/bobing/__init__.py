@@ -97,6 +97,6 @@ async def handle_function(bot: Bot, event: MessageEvent, args: Message = Command
         user_id = int(user['user_id'])
         icon_url = get_avatar_url(user_id)
         nickname = await get_user_name(bot, event.group_id, user_id)
-        msg += f"{get_image_cq(icon_url)}\n{nickname}({user_id})\n"
+        msg += f"{await get_image_cq(icon_url)}\n{nickname}({user_id})\n"
 
     return await send_reply_msg(randuser, event.message_id, msg.strip())

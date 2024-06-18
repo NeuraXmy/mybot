@@ -44,9 +44,9 @@ async def apply_trans_and_reply(handler, event, img, trans, tmp_path):
     if is_gif(img):
         frames = [trans(frame.copy()) for frame in ImageSequence.Iterator(img)]
         frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=img.info['duration'], loop=0)
-        await send_reply_msg(handler, event.message_id, get_image_cq(tmp_path))
+        await send_reply_msg(handler, event.message_id, await get_image_cq(tmp_path))
     else:
-        await send_reply_msg(handler, event.message_id, get_image_cq(trans(img)))
+        await send_reply_msg(handler, event.message_id, await get_image_cq(trans(img)))
 
 
 gif = on_command("/img gif", priority=5, block=False)
@@ -64,7 +64,7 @@ async def handle(bot: Bot, event: MessageEvent):
     try:
         tmp_img_path = "data/imgtool/tmp/img2gif.gif"
         create_transparent_gif(img, tmp_img_path)
-        await send_reply_msg(gif, event.message_id, get_image_cq(tmp_img_path))
+        await send_reply_msg(gif, event.message_id, await get_image_cq(tmp_img_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -165,7 +165,7 @@ async def handle(bot: Bot, event: MessageEvent):
         frames.reverse()
         tmp_image_path = "data/imgtool/tmp/back.gif"
         frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0)
-        await send_reply_msg(back, event.message_id, get_image_cq(tmp_image_path))
+        await send_reply_msg(back, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -196,7 +196,7 @@ async def handle(bot: Bot, event: MessageEvent):
         frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
         tmp_image_path = "data/imgtool/tmp/speed.gif"
         frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0)
-        await send_reply_msg(speed, event.message_id, get_image_cq(tmp_image_path))
+        await send_reply_msg(speed, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -393,7 +393,7 @@ async def handle(bot: Bot, event: MessageEvent):
         
         tmp_image_path = "data/imgtool/tmp/flow.gif"
         frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
-        await send_reply_msg(flow, event.message_id, get_image_cq(tmp_image_path))
+        await send_reply_msg(flow, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -489,7 +489,7 @@ async def handle(bot: Bot, event: MessageEvent):
         tmp_image_path = "data/imgtool/tmp/fan.gif"
         frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
 
-        await send_reply_msg(fan, event.message_id, get_image_cq(tmp_image_path))
+        await send_reply_msg(fan, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -541,7 +541,7 @@ async def handle(bot: Bot, event: MessageEvent):
         img = qr.make_image(fill_color="black", back_color="white")
         tmp_img_path = "data/imgtool/tmp/qrcode.png"
         img.save(tmp_img_path)
-        await send_reply_msg(gen_qrcode, event.message_id, get_image_cq(tmp_img_path))
+        await send_reply_msg(gen_qrcode, event.message_id, await get_image_cq(tmp_img_path))
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
