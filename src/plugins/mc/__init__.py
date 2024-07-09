@@ -91,23 +91,17 @@ class ServerData:
             'rcon_url': self.rcon_url,
             'rcon_password': self.rcon_password,
             'player_time': self.player_time,
-            'game_name': self.game_name
+            'game_name': self.game_name,
+            'offset': self.offset,
+            'chatprefix': self.chatprefix,
+            'notify_on': self.notify_on,
         }
         file_db.set(f'{self.group_id}.server_info', data)
         # logger.info(f'在 {self.group_id} 中保存服务器 {data}')
 
     # 加载配置
     def load(self):
-        data = file_db.get(f'{self.group_id}.server_info', {
-            'url': '',
-            'bot_on': True,
-            'info': '',
-            'admin': [],
-            'rcon_url': '',
-            'rcon_password': '',
-            'player_time': {},
-            'game_name': 'unknown_game'
-        })
+        data = file_db.get(f'{self.group_id}.server_info', {})
         self.url    = data.get('url', '')
         self.bot_on = data.get('bot_on', True)
         self.info   = data.get('info', '')
@@ -116,6 +110,9 @@ class ServerData:
         self.admin = data.get('admin', [])
         self.player_time = data.get('player_time', {})
         self.game_name = data.get('game_name', 'unknown_game')
+        self.offset = data.get('offset', 0)
+        self.chatprefix = data.get('chatprefix', '')
+        self.notify_on = data.get('notify_on', True)
         logger.info(f'在 {self.group_id} 中加载服务器 url={data["url"]}')
 
     # 增加玩家游玩时间
@@ -135,7 +132,7 @@ class ServerData:
     async def update(self, mute=False):
         data = await query(self.url, self.next_query_ts)
         current_ts = int(data['timestamp'])
-        self.next_query_ts = int(current_ts + QUERY_INTERVAL * 1000 + OFFSET)
+        self.next_query_ts = int(current_ts + QUERY_INTERVAL * 1000 + OFFSET + self.offset) 
 
         # 更新全局信息
         self.time       = data['servertime']
@@ -181,6 +178,7 @@ class ServerData:
             self.save()
 
         # 检测消息更新
+        # print(data['updates'])
         for upd in data['updates']:
             logger.debug(f'{self.url} 消息更新: {upd}')
             if upd["type"] == "chat":
@@ -189,8 +187,9 @@ class ServerData:
                 logger.info(f'新消息: {upd}')
                 if key not in self.messages:
                     self.messages[key] = upd
-                    if not mute:
-                        self.queue.append(f'<{upd["playerName"]}> {upd["message"]}')
+                    if not mute and (upd["message"].startswith(self.chatprefix) or upd["message"].startswith('[')):
+                        msg = upd["message"].removeprefix(self.chatprefix)
+                        self.queue.append(f'<{upd["playerName"]}> {msg}')
         if self.first_update:
             logger.info(f'服务器 {self.url} 首次更新完成')
         self.first_update = False
@@ -243,27 +242,34 @@ for group_id in gwl.get():
 
 
 # 向服务器请求信息
-async def query_server():
-    for server in servers:
-        if server.bot_on:
-            try:
-                await server.update(mute=server.first_update)
-                if server.failed_count >= DISCONNECT_NOTIFY_COUNT:
-                    logger.info(f'发送重连通知到 {server.group_id}')
+async def query_server(server):
+    if server.bot_on:
+        try:
+            await server.update(mute=server.first_update)
+            if server.failed_count >= DISCONNECT_NOTIFY_COUNT:
+                logger.info(f'发送重连通知到 {server.group_id}')
+                if server.notify_on:
                     server.queue.append('重新建立到卫星地图的连接')
-                server.failed_count = 0
-                server.has_sucess_query = True
-            except Exception as e:
-                if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
-                    logger.warning(f'{server.url} 定时查询失败: {e}')
-                if server.failed_count == DISCONNECT_NOTIFY_COUNT:
-                    if server.has_sucess_query:
+            server.failed_count = 0
+            server.has_sucess_query = True
+        except Exception as e:
+            if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
+                logger.warning(f'{server.url} 定时查询失败: {e}')
+            if server.failed_count == DISCONNECT_NOTIFY_COUNT:
+                if server.has_sucess_query:
+                    if server.notify_on:
                         server.queue.append(f'与卫星地图的连接断开: {e}')
-                        logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
-                    else:
-                        logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}')
-                server.failed_count += 1
-                server.next_query_ts = 0
+                    logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
+                else:
+                    logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}')
+            server.failed_count += 1
+            server.next_query_ts = 0
+
+# 请求所有服务器
+async def query_all_servers():
+    for server in servers:
+        asyncio.get_event_loop().create_task(query_server(server))
+
 
 # 消费消息队列
 async def consume_queue():
@@ -281,7 +287,7 @@ async def consume_queue():
             consume_queue_failed_count += 1
 
 # 服务器请求信息定时任务
-start_repeat_with_interval(QUERY_INTERVAL, query_server, logger, '请求服务器')
+start_repeat_with_interval(QUERY_INTERVAL, query_all_servers, logger, '请求服务器')
 
 # 消费消息队列定时任务
 start_repeat_with_interval(QUEUE_CONSUME_INTERVAL, consume_queue, logger, '消费消息队列')
@@ -566,6 +572,76 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server.game_name = str(event.get_message()).replace('/start_game', '').strip()
     server.save()
     return await send_msg(start, f'开始新周目: {server.game_name}')
+
+# 设置时间偏移
+set_offset = on_command("/setoffset", priority=100, block=False)
+@set_offset.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    offset = str(event.get_message()).replace('/setoffset', '').strip()
+    if offset == '':
+        return await send_reply_msg(set_offset, event.message_id, '偏移不能为空')
+    try:
+        offset = int(offset)
+    except:
+        return await send_reply_msg(set_offset, event.message_id, '偏移必须是整数')
+    server.offset = offset
+    server.save()
+    return await send_reply_msg(set_offset, event.message_id, f'设置时间偏移为: {offset}')
+
+# 获取时间偏移
+get_offset = on_command("/getoffset", priority=100, block=False)
+@get_offset.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not (await cd.check(event)): return
+    server = get_server(event.group_id)
+    return await send_msg(get_offset, f'时间偏移为: {server.offset}')
+
+# 设置聊天前缀
+set_chatprefix = on_command("/setchatprefix", priority=100, block=False)
+@set_chatprefix.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    chatprefix = str(event.get_message()).replace('/setchatprefix', '').strip()
+    server.chatprefix = chatprefix
+    server.save()
+    return await send_msg(set_chatprefix, f'设置聊天前缀为: {chatprefix}')
+
+# 获取聊天前缀
+get_chatprefix = on_command("/getchatprefix", priority=100, block=False)
+@get_chatprefix.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    if not (await cd.check(event)): return
+    server = get_server(event.group_id)
+    return await send_msg(get_chatprefix, f'聊天前缀为: {server.chatprefix}')
+    
+# 开启服务器断线连线通知
+notify_on = on_command("/server_notify_on", priority=100, block=False)
+@notify_on.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    server.notify_on = True
+    server.save()
+    return await send_msg(notify_on, '开启服务器断线连线通知')
+
+# 关闭服务器断线连线通知
+notify_off = on_command("/server_notify_off", priority=100, block=False)
+@notify_off.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    if not gwl.check(event): return
+    server = get_server(event.group_id)
+    if not server.check_admin_or_superuser(event): return
+    server.notify_on = False
+    server.save()
+    return await send_msg(notify_off, '关闭服务器断线连线通知')
     
     
 

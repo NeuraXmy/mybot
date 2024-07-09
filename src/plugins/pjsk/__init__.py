@@ -620,6 +620,13 @@ def get_stamp_url_by_id(stamps, id):
     name = stamp['assetbundleName']
     return STAMP_IMG_URL.format(assetbundleName=name)
 
+# 根据stampid获取角色id
+def get_stamp_cid_by_id(stamps, id):
+    stamp = find_by(stamps, "id", id)
+    if stamp is None:
+        return None
+    return stamp.get("characterId1", None)
+
 # 根据文本搜索cid角色最相似的topk个stamp
 async def search_stamp(text, topk, cid):
     global stamp_embeddings, stamp_embeddings_id, stamp_embeddings_cid
@@ -685,9 +692,9 @@ async def compose_character_stamp(stamps, cid):
     
     stamp_ids = sorted(list(stamp_embeddings_id[stamp_embeddings_cid == cid]))
     num_per_row = 5
-    scale = 4
+    scale = 2
     stamp_w, stamp_h = 296 // scale, 256 // scale + 10
-    font_size = 10
+    font_size = 30
     row_num = (len(stamp_ids) + num_per_row - 1) // num_per_row
     img = Image.new('RGBA', (stamp_w * num_per_row, stamp_h * row_num))
     for i, sid in enumerate(stamp_ids):
@@ -704,7 +711,10 @@ async def compose_character_stamp(stamps, cid):
     for i, sid in enumerate(stamp_ids):
         x = (i % num_per_row) * stamp_w
         y = (i // num_per_row) * stamp_h
-        draw.text((x, y), str(sid), font=font, fill=(200, 0, 0, 255))
+        color = (200, 0, 0, 255)
+        if os.path.exists(f"data/pjsk/maker/images/{int(sid):06d}.png"):
+            color = (0, 0, 200, 255)
+        draw.text((x, y), str(sid), font=font, fill=color, stroke_width=2, stroke_fill=(255, 255, 255, 255))
     return img
 
 # 获取歌曲封面url
@@ -950,16 +960,20 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     return await send_reply_msg(mineral_search, event.message_id, res.strip())
 
 
-
 # 表情获取
-stamp = on_command("/pjsk stamp", priority=1, block=False, aliases={"/pjsk 表情", '/pjsk_stamp', '/pjsk_表情', '/pjsk表情'})
+stamp_cmds = [
+    "/pjsk stamp", "/pjsk 表情", '/pjsk_stamp', '/pjsk_表情', '/pjsk表情'
+]
+stamp = on_command(stamp_cmds[0], priority=1, block=False, aliases=set(stamp_cmds[1:]))
 @stamp.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
     if not (await cd.check(event)): return
     if not gbl.check(event, allow_private=True): return
 
     sid, cid, text = None, None, None
-    args = event.get_plaintext().replace("/pjsk stamp", "").strip()
+    args = event.message.extract_plain_text()
+    for cmd in stamp_cmds:
+        args = args.replace(cmd, "").strip()
 
     try:
         sid = int(args)
@@ -976,7 +990,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
                 cid = get_character_id(nickname)
                 assert cid is not None and len(text) > 0
         except:
-            return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/stamp 123\n/stamp miku 你好")
+            return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk stamp 123\n/pjsk stamp miku 你好")
 
     try:
         stamp_data = await get_stamp_data()
@@ -987,7 +1001,8 @@ async def handle(bot: Bot, event: GroupMessageEvent):
 
         if nickname and text is None:
             logger.info(f"合成角色表情: cid={cid}")
-            return await send_reply_msg(stamp, event.message_id, await get_image_cq(await compose_character_stamp(stamp_data, cid)))
+            msg = f"{await get_image_cq(await compose_character_stamp(stamp_data, cid))}蓝色ID支持表情制作"
+            return await send_reply_msg(stamp, event.message_id, msg)
 
         logger.info(f"搜索表情: cid={cid} text={text}")
         sids = await search_stamp(text, STAMP_SEARCH_TOPK, cid)
@@ -1006,6 +1021,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         return await send_reply_msg(stamp, event.message_id, "获取表情失败")
     
 
+# 立刻更新数据
 update = on_command("/pjsk update", priority=1, block=False)
 @update.handle()
 async def handle(bot: Bot, event: GroupMessageEvent):
@@ -1016,6 +1032,94 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f"pjsk数据更新失败: {e}")
         return await send_msg(update, f"pjsk数据更新失败: {e}")
+
+
+# 表情制作
+makestamp_cmds = [
+    "/pjsk makestamp", "/pjsk make_stamp", '/pjsk_makestamp', '/pjsk_make_stamp', 
+    "/pjsk diystamp", '/pjsk diystamp', '/pjsk_diystamp', '/pjsk_diystamp',
+    "/pjsk制作表情", '/pjsk 制作表情', '/pjsk_制作表情', '/pjsk 制作 表情',
+    "/pjsk表情制作", '/pjsk 表情制作', '/pjsk_表情制作', '/pjsk 表情 制作'
+]
+makestamp = on_command(makestamp_cmds[0], priority=1, block=False, aliases=set(makestamp_cmds[1:]))
+@makestamp.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    sid, cid, text = None, None, None
+    args = event.message.extract_plain_text()
+    for cmd in makestamp_cmds:
+        args = args.replace(cmd, "").strip()
+
+    try:
+        args = args.split(" ", 1)
+        sid, dst_text = args
+        sid = int(sid)
+        assert sid >= 0 and sid <= 9999
+    except Exception as e:
+        return await send_reply_msg(makestamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk makestamp 100 目标文本\n/pjsk makestamp miku 你好 目标文本")
+
+    try:
+        stamp_data = await get_stamp_data()
+
+        if sid:
+            msg = ""
+            cid = get_stamp_cid_by_id(stamp_data, sid)
+        else:
+            logger.info(f"搜索表情: cid={cid} text={text}")
+            sids = await search_stamp(text, STAMP_SEARCH_TOPK, cid)
+            sids = [
+                sid for sid in sids if os.path.exists(f"data/pjsk/maker/images/{int(sid):06d}.png")
+            ]
+            logger.info(f"搜索表情结果: {sids}")
+
+            if len(sids) == 0:
+                return await send_reply_msg(makestamp, event.message_id, "找不到可用表情")
+
+            sid = sids[0]
+        
+            msg = f"候选表情:"
+            if len(sids) == 1:
+                msg += "无"
+            for sid in sids[1:]:
+                if not os.path.exists(f"data/pjsk/maker/images/{int(sid):06d}.png"):
+                    continue
+                item = find_by(stamp_data, "id", sid)
+                if item is not None:
+                    msg += f"\n【{sid}】{item['name'].split('：')[-1]}"
+            
+        nickname = get_character_nickname(cid)[0]     
+
+        dst_len = get_str_appear_length(dst_text)
+        text_zoom_ratio = min(1.0, 0.5 + 0.05 * (dst_len - 1))
+        
+        from .sticker_maker import make_sticker
+        result_image = make_sticker(
+            id = sid,
+            character = nickname, 
+            text = dst_text,
+
+            degree = 5,
+            text_zoom_ratio = text_zoom_ratio,
+            text_pos = "mu",
+            line_spacing = 0,
+            text_x_offset = 0,
+            text_y_offset = 0,
+            disable_different_font_size = False
+        )
+        if result_image is None:
+            return await send_reply_msg(makestamp, event.message_id, "该表情ID不支持制作！")
+        
+        tmp_path = "data/pjsk/maker/tmp/stamp.gif"
+        os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
+        create_transparent_gif(result_image, tmp_path)
+        msg = f"{await get_image_cq(tmp_path)}{msg}"
+        return await send_reply_msg(makestamp, event.message_id, msg)
+
+    except Exception as e:
+        logger.print_exc(f"制作表情失败: {e}")
+        return await send_reply_msg(makestamp, event.message_id, "制作表情失败")
 
 
 # ----------------------------------------- 定时任务 ------------------------------------------ #

@@ -16,6 +16,7 @@ Project Sekai（世界计划）游戏相关服务
 - [`/pjsk id` 查询绑定的游戏ID](#pjsk-id)
 - [`/pjsk mine` 查询剩余矿产统计](#pjsk-mine)
 - [`/pjsk stamp` 获取表情](#pjsk-stamp)
+- [`/pjsk makestamp` 制作表情](#pjsk-makestamp)
 - [`/pjsk update` 手动更新数据](#pjsk-update)*
 - [`/pjsk charastory` 搜索包含指定角色的活动剧情](#pjsk-charastory)
 
@@ -109,6 +110,19 @@ Project Sekai（世界计划）游戏相关服务
     `/pjsk stamp ena 再见` 获取 ena 的再见表情
 
     `/pjsk stamp ena` 获取 ena 的所有表情
+
+
+## `/pjsk makestamp`
+
+制作表情，可以先通过`/pjsk stamp <角色简称>`获得能够制作的表情ID
+
+- **使用方式**
+
+    `/pjsk makestamp <ID> <文本>`
+
+- **示例**
+
+    `/pjsk makestamp 26 再见` 制作 ID 为 26 的表情，文本为再见
 
 
 ## `/pjsk update`

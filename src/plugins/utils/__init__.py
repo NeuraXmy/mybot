@@ -479,6 +479,13 @@ def truncate(s, limit):
         l += 1 if ord(c) < 128 else 2
     return s
 
+# 获取字符串外表长度
+def get_str_appear_length(s):
+    l = 0
+    for c in s:
+        l += 1 if ord(c) < 128 else 2
+    return l
+
 
 # 开始重复执行某个异步任务
 def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5, start_offset=5):

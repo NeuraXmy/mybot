@@ -25,6 +25,11 @@
 - [`/playtime` 查询玩家游玩时间](#playtime)
 - [`/playtime_clear` 清空玩家游玩时间](#playtime_clear)
 - [`/start_game` 切换到新周目](#start_game)
+- [`/setoffset` 设置请求时间偏移](#setoffset)
+- [`/getoffset` 获取请求时间偏移](#getoffset)
+- [`/setchatprefix` 设置聊天前缀](#setchatprefix)
+- [`/getchatprefix` 获取聊天前缀](#getchatprefix)
+- [`/server_notify_{on/off}` 开启/关闭服务器连线断线通知](#server_notify_{on/off})
 
 ---
 
@@ -164,5 +169,47 @@
     `/start_game <周目名>`
 
 
+## `/setoffset`
 
+设置请求时间偏移，只有超级用户或op可以操作
+
+- **使用方式**
+
+    `/setoffset <偏移量(ms)>`
+
+
+## `/getoffset`
+
+获取请求时间偏移
+
+- **使用方式**
+
+    `/getoffset`
+
+
+## `/setchatprefix`
+
+设置聊天前缀，只有超级用户或op可以操作，只有游戏中以前缀开头的消息以及/send发送的消息会被转发到群内
+
+- **使用方式**
+
+    `/setchatprefix <前缀>`
+
+
+## `/getchatprefix`
+
+获取聊天前缀
+
+- **使用方式**
+
+    `/getchatprefix`
+
+
+## `/server_notify_{on/off}`
+
+开启/关闭服务器连线断线通知，只有超级用户或op可以操作
+
+- **使用方式**
+
+    `/server_notify_on` 或 `/server_notify_off`
 
