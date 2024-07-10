@@ -1058,7 +1058,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         sid = int(sid)
         assert sid >= 0 and sid <= 9999
     except Exception as e:
-        return await send_reply_msg(makestamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk makestamp 100 目标文本\n/pjsk makestamp miku 你好 目标文本")
+        return await send_reply_msg(makestamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk makestamp 100 目标文本\n使用 /pjsk stamp 角色简称 获取能够制作的表情ID")
 
     try:
         stamp_data = await get_stamp_data()
