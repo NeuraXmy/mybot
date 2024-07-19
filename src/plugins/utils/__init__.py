@@ -13,6 +13,7 @@ import aiohttp
 from nonebot import require
 import random
 from retrying import retry
+from argparse import ArgumentParser
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -43,6 +44,11 @@ print(f'使用日志等级: {LOG_LEVEL}')
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+def rand_filename(ext):
+    if ext.startswith('.'):
+        ext = ext[1:]
+    return f"{random.randint(0, 1000000000):09}.{ext}"
 
 # 创建透明GIF
 def create_transparent_gif(img, save_path):
@@ -456,8 +462,9 @@ async def get_image_cq(image, allow_error=False, logger=None):
             image = await download_image(image)
             return await get_image_cq(image, allow_error, logger)
         else:
-            with open(image, 'rb') as f:
-                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+            if not os.path.exists(image):
+                raise Exception(f'图片文件不存在: {image}')
+            return f'[CQ:image,file=file:///{os.path.abspath(image)}]'
     except Exception as e:
         if allow_error:
             if logger: 
@@ -978,3 +985,24 @@ async def send_mail_async(
                     raise e
                 logger.warning(f'第{i + 1}次发送邮件失败: {e}')
             await asyncio.sleep(retry_interval)
+
+
+class MessageArgumentParser(ArgumentParser):
+    def __init__(self, handler, event, commands, logger=None, *args, **kwargs):
+        super().__init__(*args, **kwargs, exit_on_error=False)
+        self.event = event
+        self.handler = handler
+        self.commands = commands
+        self.logger = logger
+
+    def error(self, message):
+        loop = asyncio.get_event_loop()
+        loop.create_task(send_reply_msg(self.handler, self.event.message_id, f'参数解析失败: {message}'))
+        raise Exception(f'参数解析失败: {message}')
+
+    async def parse_args(self, *args, **kwargs):
+        s = self.event.get_plaintext().strip()
+        for cmd in self.commands:
+            s = s.removeprefix(cmd).strip()
+        s = s.split(' ')
+        return super().parse_args(s, *args, **kwargs)

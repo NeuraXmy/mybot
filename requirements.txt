@@ -13,3 +13,5 @@ ascii_magic
 PicImageSearch
 aiorpcx
 asteval
+yt-dlp
+imageio[ffmpeg]
