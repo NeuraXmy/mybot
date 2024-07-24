@@ -54,6 +54,9 @@ async def aget_video_info(url):
         with yt_dlp.YoutubeDL({}) as ydl:
             info = ydl.extract_info(url, download=False)
             info = ydl.sanitize_info(info)
+            # with open('test.json', 'w') as f:
+            #     import json
+            #     f.write(json.dumps(info, indent=4))
         return info
     return await asyncio.to_thread(get_video_info, url)
 
@@ -64,9 +67,14 @@ async def aconvert_video_to_gif(path):
         import imageio
         reader = imageio.get_reader(path)
         fps = reader.get_meta_data()['fps']
+        interval = 1
+        if fps > 50:
+            interval = 2
+            fps = fps // 2
         writer = imageio.get_writer(gif_path, fps=fps)
         for i, frame in enumerate(reader):
-            writer.append_data(frame)
+            if i % interval:
+                writer.append_data(frame)
         return gif_path
     return await asyncio.to_thread(convert_video_to_gif, path)
 
@@ -99,20 +107,18 @@ async def handle(bot: Bot, event: MessageEvent):
     args = await parser.parse_args()
 
     try:
-        logger.info(f'获取视频信息: {args.url}')
-        info = await aget_video_info(args.url)
-
-        title = info.get('title', '')
-        uploader = info.get('uploader', '')
-        description = info.get('description', '')
-        thumbnail = info.get('thumbnail', '')
-        video_url = info.get('url', '')
-        ext = info.get('ext', '')
-
-        if not video_url:
-            return await send_reply_msg(ytdlp, event.message_id, f"yt-dlp失败: 无法获取视频链接")
-
         if args.info:
+            logger.info(f'获取视频信息: {args.url}')
+            info = await aget_video_info(args.url)
+
+            title = info.get('title', '')
+            uploader = info.get('uploader', '')
+            description = info.get('description', '')
+            thumbnail = info.get('thumbnail', '')
+            video_url = info.get('url', '')
+            ext = info.get('ext', '')
+            logger.info(f'获取视频信息: title={title} video_url={video_url}')
+
             msg = ""
             if title:
                 msg += f"Title: {title}\n"
@@ -122,18 +128,18 @@ async def handle(bot: Bot, event: MessageEvent):
                 msg += f"{description}\n"
             if thumbnail:
                 msg += f"{await get_image_cq(thumbnail, allow_error=True, logger=logger)}\n" 
-            msg += f"{video_url}"
-            await send_reply_msg(ytdlp, event.message_id, msg)
+            if video_url:
+                msg += f"{video_url}"
+            return await send_reply_msg(ytdlp, event.message_id, msg)
 
         else:
-            if ext not in ['mp4', 'avi', 'webm', 'mkv']:
-                return await send_reply_msg(ytdlp, event.message_id, f"不支持的视频格式: {ext}")
+            logger.info(f'下载视频: {args.url}')
 
-            tmp_save_path = os.path.abspath(f"data/imgexp/tmp/{rand_filename(ext)}")
+            tmp_save_path = os.path.abspath(f"data/imgexp/tmp/{rand_filename('.mp4')}")
             os.makedirs('data/imgexp/tmp', exist_ok=True)
 
-            await send_reply_msg(ytdlp, event.message_id, f"正在下载视频: {video_url}")
-            await adownload_video(video_url, tmp_save_path, DOWNLOAD_MAXSIZE, args.low_quality)
+            await send_reply_msg(ytdlp, event.message_id, f"正在下载视频...")
+            await adownload_video(args.url, tmp_save_path, DOWNLOAD_MAXSIZE, args.low_quality)
 
             if args.gif:
                 gif_path = await aconvert_video_to_gif(tmp_save_path)
@@ -145,7 +151,7 @@ async def handle(bot: Bot, event: MessageEvent):
                 os.remove(tmp_save_path)
 
     except Exception as e:
-        logger.print_exc(f'获取视频信息失败: {args.url}')
+        logger.print_exc(f'获取视频失败: {args.url}')
         return await send_reply_msg(ytdlp, event.message_id, f"yt-dlp失败: {e}")
 
     

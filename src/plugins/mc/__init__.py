@@ -67,6 +67,7 @@ class ServerData:
 
         self.first_update = True
         self.failed_count = 0
+        self.failed_time = None
 
         self.players = {}
         self.player_login_time = {}
@@ -260,6 +261,7 @@ async def query_server(server):
                     if server.notify_on:
                         server.queue.append(f'与卫星地图的连接断开: {e}')
                     logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}，发送断连通知到 {server.group_id}')
+                    server.failed_time = datetime.now()
                 else:
                     logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}')
             server.failed_count += 1
@@ -312,7 +314,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not server.bot_on: 
         msg += "监听已关闭"
     elif server.failed_count > 0:
-        msg += "与卫星地图的连接断开"
+        msg += f"与卫星地图的连接断开\n断连时间: {server.failed_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
     else:
         msg += f'服务器时间: {gametick2time(server.time)}'
         if server.thundering: msg += ' ⛈'
