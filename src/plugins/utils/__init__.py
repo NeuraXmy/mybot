@@ -457,8 +457,11 @@ async def get_image_cq(image, allow_error=False, logger=None):
             tmp_file_path += '.gif' if is_gif(image) else '.png'
             os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
             image.save(tmp_file_path)
-            image = tmp_file_path
-        if image.startswith("http"):
+            with open(tmp_file_path, 'rb') as f:
+                cq = f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+            os.remove(tmp_file_path)
+            return cq
+        elif image.startswith("http"):
             image = await download_image(image)
             return await get_image_cq(image, allow_error, logger)
         else:
