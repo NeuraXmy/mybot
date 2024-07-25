@@ -71,9 +71,9 @@ async def aconvert_video_to_gif(path):
         if fps > 50:
             interval = 2
             fps = fps // 2
-        writer = imageio.get_writer(gif_path, fps=fps)
+        writer = imageio.get_writer(gif_path, fps=fps, loop=0)
         for i, frame in enumerate(reader):
-            if i % interval:
+            if i % interval == 0:
                 writer.append_data(frame)
         return gif_path
     return await asyncio.to_thread(convert_video_to_gif, path)
