@@ -122,6 +122,19 @@ def levenshtein_distance(s1, s2):
     
     return previous_row[-1]
 
+# 文件大小(byte)转换为可读字符串
+def get_readable_file_size(size):
+    if size < 1024:
+        return f"{size}B"
+    size /= 1024
+    if size < 1024:
+        return f"{size:.2f}KB"
+    size /= 1024
+    if size < 1024:
+        return f"{size:.2f}MB"
+    size /= 1024
+    return f"{size:.2f}GB"
+
 
 # 计数器
 class Counter:

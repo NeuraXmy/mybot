@@ -80,6 +80,9 @@ async def handle(bot: Bot, event: MessageEvent):
     img = await get_reply_image(check, bot, event)
     if not img: return
 
+    msg = await get_msg(bot, event.message_id)
+    reply_msg = await get_reply_msg(bot, msg)
+
     try:
         width = img.width
         height = img.height
@@ -87,7 +90,16 @@ async def handle(bot: Bot, event: MessageEvent):
 
         if is_gif(img):
             res += f"\nframe num: {img.n_frames}\nduration: {img.info['duration']}"
-    
+
+        cqs = extract_cq_code(reply_msg)
+        data = cqs['image'][0]
+        if 'file' in data:
+            res += f"\nfile: {data['file']}"
+        if 'url' in data:
+            res += f"\nurl: {data['url']}"
+        if 'file_size' in data:
+            res += f"\nsize: {get_readable_file_size(int(data['file_size']))}"
+
         await send_reply_msg(check, event.message_id, res)
 
     except Exception as e:

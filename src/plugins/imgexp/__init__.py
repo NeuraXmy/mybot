@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from ..utils import *
 from .imgexp import search_image
 from PIL import Image
+import numpy as np
 import io
 import yt_dlp
 
@@ -17,7 +18,8 @@ cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'imgexp')
 
 DOWNLOAD_MAXSIZE = 1024 * 1024 * 10
-
+GIF_MAX_FPS = 20
+GIF_MAX_SIZE = 512
 
 search = on_command('/search', priority=0, block=False)
 @search.handle()
@@ -68,12 +70,20 @@ async def aconvert_video_to_gif(path):
         reader = imageio.get_reader(path)
         fps = reader.get_meta_data()['fps']
         interval = 1
-        if fps > 50:
-            interval = 2
-            fps = fps // 2
-        writer = imageio.get_writer(gif_path, fps=fps, loop=0)
+        for i in range(1, 10):
+            if fps // i <= GIF_MAX_FPS:
+                interval = i
+                fps = fps // i
+                break
+        writer = imageio.get_writer(gif_path, fps=fps, loop=0, subrectangles=True)
         for i, frame in enumerate(reader):
             if i % interval == 0:
+                w, h = frame.shape[1], frame.shape[0]
+                if max(w, h) > GIF_MAX_SIZE:
+                    sacle = GIF_MAX_SIZE / max(w, h)
+                    image = Image.fromarray(frame)
+                    image = image.resize((int(w * sacle), int(h * sacle)))
+                    frame = np.array(image)
                 writer.append_data(frame)
         return gif_path
     return await asyncio.to_thread(convert_video_to_gif, path)
