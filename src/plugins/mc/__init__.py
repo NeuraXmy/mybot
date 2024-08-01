@@ -255,7 +255,8 @@ async def query_server(server):
             server.has_sucess_query = True
         except Exception as e:
             if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
-                logger.warning(f'{server.url} 定时查询失败: {e}')
+                # logger.warning(f'{server.url} 定时查询失败: {e}')
+                pass
             if server.failed_count == DISCONNECT_NOTIFY_COUNT:
                 if server.has_sucess_query:
                     if server.notify_on:

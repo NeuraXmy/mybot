@@ -43,7 +43,7 @@ async def get_reply_image(handler, bot: Bot, event: MessageEvent, need_gif=False
 async def apply_trans_and_reply(handler, event, img, trans, tmp_path):
     if is_gif(img):
         frames = [trans(frame.copy()) for frame in ImageSequence.Iterator(img)]
-        frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=img.info['duration'], loop=0)
+        frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=img.info['duration'], loop=0, disposal=2)
         await send_reply_msg(handler, event.message_id, await get_image_cq(tmp_path))
     else:
         await send_reply_msg(handler, event.message_id, await get_image_cq(trans(img)))

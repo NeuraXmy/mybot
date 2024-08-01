@@ -111,9 +111,9 @@ async def handle(bot: Bot, event: MessageEvent):
 
     parser = MessageArgumentParser(ytdlp, event, ytdlp_commands, logger)
     parser.add_argument('url', type=str)
-    parser.add_argument('--info', action='store_true')
-    parser.add_argument('--gif', action='store_true')
-    parser.add_argument('--low-quality', '-L', action='store_true')
+    parser.add_argument('--info', '-i', action='store_true')
+    parser.add_argument('--gif', '-g', action='store_true')
+    parser.add_argument('--low-quality', '-l', action='store_true')
     args = await parser.parse_args()
 
     try:
