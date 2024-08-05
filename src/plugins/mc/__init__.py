@@ -71,6 +71,8 @@ class ServerData:
 
         self.players = {}
         self.player_login_time = {}
+        self.player_real_login_time = {}
+        self.player_last_move_time = {}
         self.messages = {}
 
         self.next_query_ts = 0
@@ -139,7 +141,8 @@ class ServerData:
         self.time       = data['servertime']
         self.storming   = data['hasStorm']
         self.thundering = data['isThundering']
-        # 检测玩家上下线
+
+        # 检测玩家上线
         for player in data['players']:
             account = player['account']
             if account not in self.players:
@@ -147,9 +150,17 @@ class ServerData:
                 if not mute:
                     self.queue.append(f'{player["name"]} 加入了游戏')
                 self.players[account] = player
-                self.player_login_time[account] = datetime.now()
+                self.player_login_time[account]         = datetime.now()
+                self.player_real_login_time[account]    = datetime.now()
+                self.player_last_move_time[account]     = datetime.now()
             else:
+                # 更新玩家数据
+                if account in self.player_last_move_time:
+                    if player['x'] != self.players[account]['x'] or player['y'] != self.players[account]['y'] or player['z'] != self.players[account]['z']:
+                        self.player_last_move_time[account] = datetime.now()
                 self.players[account] = player
+
+        # 检测玩家下线
         remove_list = []
         for account in self.players:
             if account not in [player['account'] for player in data['players']]:
@@ -161,8 +172,10 @@ class ServerData:
                 # 玩家下线后更新游玩时间
                 play_time = timedelta2hour(datetime.now() - self.player_login_time[account])
                 self.player_login_time.pop(account)
+                self.player_real_login_time.pop(account)
                 self.inc_player_time(account, play_time)
 
+        # 移除下线玩家
         for account in remove_list:
             self.players.pop(account)
 
@@ -326,6 +339,12 @@ async def _(bot: Bot, event: GroupMessageEvent):
             msg += f'<{player["name"]}>\n'
             msg += f'{player["world"]}({player["x"]:.1f},{player["y"]:.1f},{player["z"]:.1f})\n'
             msg += f'HP:{player["health"]:.1f} Armor:{player["armor"]:.1f}\n'
+            online_time = timedelta2hour(datetime.now() - server.player_real_login_time.get(player["account"], datetime.now()))
+            afk_time    = timedelta2hour(datetime.now() - server.player_last_move_time.get(player["account"], datetime.now()))
+            msg += f'online time: {online_time:.2f}h\n'
+            if afk_time > 0.2:
+                msg += f'afk time: {afk_time:.2f}h'
+            
     return await send_msg(info, msg.strip())
 
 # 开关监听
@@ -545,7 +564,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not gwl.check(event): return
     if not (await cd.check(event)): return
     server = get_server(event.group_id)
-    if not server.check_admin_or_superuser(event): return
     msg = '游玩时间统计:\n'
     if server.game_name not in server.player_time or len(server.player_time[server.game_name]) == 0:
         msg += '暂无数据'
