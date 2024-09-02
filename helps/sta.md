@@ -10,6 +10,7 @@
 - [`/sta_ban` 添加词汇到停用词典](#staban)*
 - [`/sta_time` 发送群消息关于时间的统计图](#statime)
 - [`/sta_word` 发送群消息关于词汇的统计图](#staword)
+- [`/sta_cancel_today` 取消当天的群消息统计](#stacanceltoday)*
 
 
 ---
@@ -100,6 +101,18 @@
 
     `/sta_word 你好,世界 7` 发送最近7天的群消息关于你好和世界的统计图
 
+
+## `/sta_cancel_today`
+
+取消当天的群消息统计
+
+- **使用方式**
+
+    `/sta_cancel_today`
+
+- **示例**
+
+    `/sta_cancel_today` 取消当天的群消息统计
 
 
 

@@ -485,7 +485,7 @@ async def get_image_cq(image, allow_error=False, logger=None):
         if allow_error:
             if logger: 
                 logger.print_exc(f'图片加载失败: {e}')
-            return "[图片加载失败]"
+            return f"[图片加载失败:{truncate(str(e), 16)}]"
         raise e
 
 # 获取音频的cq码用于发送

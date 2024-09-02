@@ -237,6 +237,12 @@ async def cron_statistic():
     bot = get_bot()
     for group_id in notify_gwl.get():
         if group_id in gbl.get(): continue
+        
+        cancel_date = file_db.get("cancel_date", {})
+        if group_id in cancel_date and cancel_date[group_id] == datetime.now().strftime("%Y-%m-%d"):
+            logger.info(f'{group_id} 今天取消了统计图发送', flush=True)
+            continue
+
         logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
             res = await get_statistic(bot, group_id)
@@ -244,3 +250,25 @@ async def cron_statistic():
         except Exception as e:
             logger.print_exc(f'发送 {group_id} 统计图失败')
 
+
+# 取消今天的统计自动发送
+cancel_today = on_command("/sta_cancel_today", priority=100, block=False)
+@cancel_today.handle()
+async def _(bot: Bot, event: MessageEvent):
+    if not check_superuser(event): return
+    if not notify_gwl.check(event): return
+    try:
+        group_id = event.group_id
+        cancel_date = file_db.get("cancel_date", {})
+        if group_id in cancel_date and cancel_date[group_id] == datetime.now().strftime("%Y-%m-%d"):
+            cancel_date.pop(group_id)
+            file_db.set("cancel_date", cancel_date)
+            return await send_reply_msg(msgban, event.message_id, f'恢复今天的统计自动发送')
+        else:
+            cancel_date[group_id] = datetime.now().strftime("%Y-%m-%d")
+            file_db.set("cancel_date", cancel_date)
+            return await send_reply_msg(msgban, event.message_id, f'取消今天的统计自动发送')
+        
+    except Exception as e:
+        logger.print_exc(f'取消当天的定时统计发送失败')
+        return await send_reply_msg(msgban, event.message_id, f'取消今天的统计自动发送失败: {e}')
