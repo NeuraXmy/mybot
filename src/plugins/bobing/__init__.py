@@ -12,6 +12,11 @@ file_db = get_file_db("data/bobing/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'bobing')
 
+use_image_dice = True
+DICE_SIZE = 32
+dice_images = [f"data/bobing/dice/{i}.png" for i in range(1, 7)]
+dice_images = [Image.open(d).resize((DICE_SIZE, DICE_SIZE)) for d in dice_images]
+
     
 bing = on_command("/bing", priority=100, block=False)
 @bing.handle()
@@ -19,10 +24,24 @@ async def handle_function(bot: Bot, event: MessageEvent):
     if not gbl.check(event, allow_private=True): return
     if not (await cd.check(event)): return
     dices = [random.randint(1, 6) for _ in range(6)]
-    dices = [chr(0x267F + dice) for dice in dices]
-    msg = " ".join(dices)
-    logger.info(f"send: {msg}")
-    return await send_reply_msg(bing, event.message_id, msg)
+    try:
+        if not use_image_dice:
+            dices = [chr(0x267F + dice) for dice in dices]
+            msg = " ".join(dices)
+            logger.info(f"send: {msg}")
+            return await send_reply_msg(bing, event.message_id, msg)
+        else:
+            image = Image.new('RGBA', (DICE_SIZE * 6, DICE_SIZE * 2), (255, 255, 255, 0))
+            for i, dice in enumerate(dices):
+                image.paste(dice_images[dice - 1], (i * DICE_SIZE, DICE_SIZE // 2))
+            tmp_save_path = f"data/bobing/{rand_filename('gif')}"
+            create_transparent_gif(image, tmp_save_path)
+            image_cq = await get_image_cq(tmp_save_path)
+            await send_reply_msg(bing, event.message_id, image_cq)
+            os.remove(tmp_save_path)
+    except Exception as e:
+        logger.print_exc("bing失败")
+        return await send_reply_msg(bing, event.message_id, "发送失败")
 
 
 rand = on_command("/rand", priority=100, block=False, aliases={'/roll'})
