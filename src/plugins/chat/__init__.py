@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, get_image_b64, tts, get_rest_quota, check_modelname
+from ..llm import ChatSession, get_image_b64, tts, get_rest_quota, check_modelname, get_all_modelname
 from ..utils import *
 from datetime import datetime, timedelta
 import openai
@@ -305,6 +305,15 @@ async def _(bot: Bot, event: MessageEvent):
         return await send_reply_msg(change_model, event.message_id, f"已切换模型: {pre_model_name} -> {model_name}")
     except Exception as e:
         return await send_reply_msg(change_model, event.message_id, f"获取或切换模型失败: {e}")
+
+
+# 获取所有可用的模型名
+all_model = on_command("/chat_model_list", block=False, priority=0)
+@all_model.handle()
+async def _(bot: Bot, event: MessageEvent):
+    if not gwl.check(event, allow_private=True, allow_super=True): return
+    if not (await chat_cd.check(event)): return
+    return await send_reply_msg(all_model, event.message_id, f"可用的模型: {', '.join(get_all_modelname())}")
 
 
 # TTS

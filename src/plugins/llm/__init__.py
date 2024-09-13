@@ -149,6 +149,9 @@ def check_modelname(name):
     if not get_model_by_name(name):
         raise ValueError(f"未找到模型 {name}, 是否是 {get_closest_modelname(name)}?")
 
+def get_all_modelname():
+    return [model['name'] for model in CHAT_MODELS]
+
 session_id_top = 0
 
 # 下载并编码图片为base64
@@ -225,7 +228,7 @@ class ChatSession:
             closest_name = get_closest_modelname(model_name)
             raise Exception(f"未找到模型 {model_name}, 是否是: {closest_name}?")
 
-        if not model['multimodal'] and self.has_image:
+        if not model.get('multimodal', False) and self.has_image:
             raise Exception(f"模型 {model_name} 不支持多模态输入")
 
         # 请求回复

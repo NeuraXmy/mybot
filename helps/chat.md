@@ -6,6 +6,7 @@
 
 - [`聊天`](#聊天)
 - [`/chat_model`](#查询或修改聊天模型)*
+- [`/chat_model_list`](#查询支持的聊天模型)*
 - [`/tts 文本转语音`](#tts)*
 
 ---
@@ -52,6 +53,15 @@
 - **示例**
 
     `/chat_model gpt-4o`
+
+
+## `/chat_model_list`
+
+显示支持的聊天模型
+
+- **使用方式**
+
+    `/chat_model_list`
 
 
 ## `/tts`
