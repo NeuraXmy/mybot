@@ -16,6 +16,7 @@ cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'cron')
 
 MAX_RETIRES = config['max_retries']
+MODEL_NAME = config['model_name']
 
 # 获取下次提醒时间描述
 def get_task_next_run_time_str(group_id, task_id):
@@ -84,6 +85,7 @@ async def parse_instruction(group_id, user_id, user_instruction):
     for retry_count in range(MAX_RETIRES):
         try:
             res = await session.get_response(
+                model_name=MODEL_NAME,
                 usage="cron",
                 group_id=group_id,
                 user_id=user_id,

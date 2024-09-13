@@ -3,9 +3,10 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, get_image_b64, tts, get_rest_quota
+from ..llm import ChatSession, get_image_b64, tts, get_rest_quota, check_modelname
 from ..utils import *
 from datetime import datetime, timedelta
+import openai
 
 
 config = get_config('chat')
@@ -15,6 +16,8 @@ chat_cd = ColdDown(file_db, logger, config['chat_cd'], cold_down_name="chat_cd")
 tts_cd = ColdDown(file_db, logger, config['tts_cd'], cold_down_name="tts_cd")
 gwl = get_group_white_list(file_db, logger, 'chat')
 
+DEFAULT_PRIVATE_MODEL_NAME = config['default_private_model_name']
+DEFAULT_GROUP_MODEL_NAME = config['default_group_model_name']
 
 FOLD_LENGTH_THRESHOLD = config['fold_response_threshold']
 SESSION_LEN_LIMIT = config['session_len_limit']
@@ -53,6 +56,45 @@ async def use_tool(handle, session, type, data, event):
         return res
     else:
         raise Exception(f"unknown tool type")
+
+
+# 获取某个群组当前的模型名
+def get_group_model_name(group_id):
+    group_model_dict = file_db.get("group_model_dict", {})
+    return group_model_dict.get(str(group_id), DEFAULT_GROUP_MODEL_NAME)
+
+# 获取某个用户私聊当前的模型名
+def get_private_model_name(user_id):
+    private_model_dict = file_db.get("private_model_dict", {})
+    return private_model_dict.get(str(user_id), DEFAULT_PRIVATE_MODEL_NAME)
+
+# 获取某个event的模型名
+def get_model_name(event):
+    if is_group(event):
+        return get_group_model_name(event.group_id)
+    else:
+        return get_private_model_name(event.user_id)
+    
+# 修改某个群组当前的模型名
+def change_group_model_name(group_id, model_name):
+    check_modelname(model_name)
+    group_model_dict = file_db.get("group_model_dict", {})
+    group_model_dict[str(group_id)] = model_name
+    file_db.set("group_model_dict", group_model_dict)
+
+# 修改某个用户的私聊当前的模型名
+def change_private_model_name(user_id, model_name):
+    check_modelname(model_name)
+    private_model_dict = file_db.get("private_model_dict", {})
+    private_model_dict[str(user_id)] = model_name
+    file_db.set("private_model_dict", private_model_dict)
+
+# 根据event修改模型名
+def change_model_name(event, model_name):
+    if is_group(event):
+        change_group_model_name(event.group_id, model_name)
+    else:
+        change_private_model_name(event.user_id, model_name)
 
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
@@ -115,6 +157,19 @@ async def _(bot: Bot, event: MessageEvent):
         # 用于备份的session_id
         session_id_backup = None
 
+        # 获取对话的模型名
+        if "model:" in query_text:
+            if is_group(event) and not check_superuser(event): 
+                return await send_reply_msg(chat_request, event.message_id, "非超级用户不允许自定义模型")
+            model_name = query_text.split("model:")[1].strip().split(" ")[0]
+            try:
+                check_modelname(model_name)
+            except Exception as e:
+                return await send_reply_msg(chat_request, event.message_id, str(e))
+            query_text = query_text.replace(f"model:{model_name}", "").strip()
+        else:
+            model_name = get_model_name(event)
+
         # 是否是cleanchat
         if any([word in query_text for word in CLEANCHAT_TRIGGER_WORDS]):
             for word in CLEANCHAT_TRIGGER_WORDS:
@@ -158,7 +213,7 @@ async def _(bot: Bot, event: MessageEvent):
                 reply_uid = reply_msg_obj["sender"]["user_id"]
                 # 不在历史会话中则不回复折叠内容
                 if "json" in reply_cqs:
-                    return await chat_request.send(OutMessage(f"[CQ:reply,id={event.message_id}]不支持的消息格式"))
+                    return await send_reply_msg(chat_request, event.message_id, "不支持的消息类型")
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
 
                 session = ChatSession(system_prompt)
@@ -181,7 +236,8 @@ async def _(bot: Bot, event: MessageEvent):
         while range(5):
             t = datetime.now()
             res = await session.get_response(
-                "chat", 
+                model_name=model_name,
+                usage="chat", 
                 group_id=(event.group_id if is_group(event) else None),
                 user_id=event.user_id,
             )
@@ -204,13 +260,19 @@ async def _(bot: Bot, event: MessageEvent):
                 logger.info(f"工具调用失败: {exc}")
                 break
 
+    except openai.APIError as e:
+        logger.print_exc(f'会话 {session.id} 失败')
+        if session_id_backup:
+            sessions[session_id_backup] = session
+        return await send_reply_msg(chat_request, event.message_id, f"会话失败({e.code}): {e.message}")
+
     except Exception as error:
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
-        return send_reply_msg(chat_request, event.message_id, str(error))
+        return await send_reply_msg(chat_request, event.message_id, f"会话失败: {error}")
     
-    additional_info = f"{total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
+    additional_info = f"{model_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if (rest_quota := get_rest_quota()) > 0:
         additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
@@ -226,6 +288,23 @@ async def _(bot: Bot, event: MessageEvent):
         sessions[ret_id] = session
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
 
+
+# 获取或修改当前私聊或群聊使用的模型
+change_model = on_command("/chat_model", block=False, priority=0)
+@change_model.handle()
+async def _(bot: Bot, event: MessageEvent):
+    if not gwl.check(event, allow_private=True, allow_super=True): return
+    if is_group(event) and not check_superuser(event): return
+    if not (await chat_cd.check(event)): return
+    try:
+        model_name = event.get_plaintext().replace("/chat_model", "").strip()
+        if not model_name:
+            return await send_reply_msg(change_model, event.message_id, f"当前模型: {get_model_name(event)}")
+        pre_model_name = get_model_name(event)
+        change_model_name(event, model_name)
+        return await send_reply_msg(change_model, event.message_id, f"已切换模型: {pre_model_name} -> {model_name}")
+    except Exception as e:
+        return await send_reply_msg(change_model, event.message_id, f"获取或切换模型失败: {e}")
 
 
 # TTS

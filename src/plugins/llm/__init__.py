@@ -133,8 +133,21 @@ def get_rest_quota():
 
 # -------------------------------- GPT聊天相关 -------------------------------- #
 
-CHAT_MODEL = config['chat_model']
+CHAT_MODELS = json.load(open("data/llm/models.json"))
 CHAT_MAX_TOKENS = config['chat_max_tokens']
+
+def get_model_by_name(name):
+    for model in CHAT_MODELS:
+        if model['name'] == name:
+            return model
+    return None
+
+def get_closest_modelname(name):
+    return min(CHAT_MODELS, key=lambda x: levenshtein_distance(name, x['name']))['name']
+
+def check_modelname(name):
+    if not get_model_by_name(name):
+        raise ValueError(f"未找到模型 {name}, 是否是 {get_closest_modelname(name)}?")
 
 session_id_top = 0
 
@@ -156,6 +169,7 @@ class ChatSession:
         logger.info(f"创建会话{self.id}")
 
         self.content = []
+        self.has_image = False
         if system_prompt:
             self.append_system_content(system_prompt, verbose=False)
 
@@ -170,6 +184,7 @@ class ChatSession:
                     "type": "image_url",
                     "image_url": { "url": img }
                 })
+            self.has_image = True
         else:
             content = text
         self.content.append({
@@ -199,14 +214,23 @@ class ChatSession:
     def clear_content(self):
         logger.info(f"会话{self.id}清空消息")
         self.content = []
+        self.has_image = False
 
     # 获取回复 并且自动添加回复到消息列表
-    async def get_response(self, usage, group_id=None, user_id=None):
-        logger.info(f"会话{self.id}请求回复, 使用模型: {CHAT_MODEL['id']}")
+    async def get_response(self, model_name, usage, group_id=None, user_id=None):
+        logger.info(f"会话{self.id}请求回复, 使用模型: {model_name}")
+
+        model = get_model_by_name(model_name)
+        if not model:
+            closest_name = get_closest_modelname(model_name)
+            raise Exception(f"未找到模型 {model_name}, 是否是: {closest_name}?")
+
+        if not model['multimodal'] and self.has_image:
+            raise Exception(f"模型 {model_name} 不支持多模态输入")
 
         # 请求回复
         response = await get_client().chat.completions.create(
-            model=CHAT_MODEL['id'],
+            model=model['name'],
             messages=self.content,
             max_tokens=CHAT_MAX_TOKENS
         )
@@ -217,10 +241,10 @@ class ChatSession:
         logger.info(f"会话{self.id}获取回复: {truncate(result, 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
 
         # 添加使用记录
-        cost = CHAT_MODEL['input_pricing'] * prompt_tokens + CHAT_MODEL['output_pricing'] * completion_tokens
+        cost = model.get('input_pricing', 0) * prompt_tokens + model.get('output_pricing', 0) * completion_tokens
         insert(
             time = datetime.now(),
-            model = CHAT_MODEL['id'],
+            model = model_name,
             cost = cost,
             group_id = group_id,
             user_id = user_id,
@@ -236,7 +260,7 @@ class ChatSession:
 
         return {
             "result": result,
-            "model": CHAT_MODEL['id'],
+            "model": model['name'],
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "cost": cost,
