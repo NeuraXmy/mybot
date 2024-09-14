@@ -28,6 +28,8 @@ TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
 SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
 CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
 
+FORWARD_MSG_INPUT_LIMIT = 10
+
 # 使用工具 返回需要添加到回复的额外信息
 async def use_tool(handle, session, type, data, event):
     if type == "python":
@@ -211,13 +213,24 @@ async def _(bot: Bot, event: MessageEvent):
                 reply_cqs = extract_cq_code(reply_msg)
                 reply_imgs = extract_image_url(reply_msg)
                 reply_uid = reply_msg_obj["sender"]["user_id"]
-                # 不在历史会话中则不回复折叠内容
-                if "json" in reply_cqs:
-                    return await send_reply_msg(chat_request, event.message_id, "不支持的消息类型")
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
-
+                # 不支持的回复类型
+                if any([t in reply_cqs for t in ["json", "video"]]):
+                    return await send_reply_msg(chat_request, event.message_id, "不支持的消息类型")
                 session = ChatSession(system_prompt)
-                if len(reply_imgs) > 0 or reply_text.strip() != "":
+                # 回复折叠内容
+                if "forward" in reply_cqs:
+                    forward_msgs = await get_forward_msg(bot, reply_cqs["forward"][0]["id"])
+                    forward_msgs = [m['content'] for m in forward_msgs["messages"]]
+                    if len(forward_msgs) > FORWARD_MSG_INPUT_LIMIT:
+                        forward_msgs = forward_msgs[-FORWARD_MSG_INPUT_LIMIT:]
+                    for forward_msg in forward_msgs:
+                        forward_msg_text = extract_text(forward_msg)
+                        forward_imgs = extract_image_url(forward_msg)
+                        if forward_msg_text.strip() != "" or forward_imgs:
+                            session.append_user_content(forward_msg_text, forward_imgs)
+                # 回复普通内容
+                elif len(reply_imgs) > 0 or reply_text.strip() != "":
                     reply_imgs = [await get_image_b64(img) for img in reply_imgs]
                     if str(reply_uid) == str(bot.self_id):
                         session.append_bot_content(reply_text, reply_imgs)
