@@ -16,9 +16,10 @@ use_image_dice = True
 DICE_SIZE = 32
 dice_images = [f"data/bobing/dice/{i}.png" for i in range(1, 7)]
 dice_images = [Image.open(d).resize((DICE_SIZE, DICE_SIZE)) for d in dice_images]
+dice_rule_image = Image.open("data/bobing/dice_rule.jpg")
 
     
-bing = on_command("/bing", priority=100, block=False)
+bing = on_command("/bing", aliases={"/bobing", "/博饼", "/饼"}, priority=100, block=False)
 @bing.handle()
 async def handle_function(bot: Bot, event: MessageEvent):
     if not gbl.check(event, allow_private=True): return
@@ -42,6 +43,16 @@ async def handle_function(bot: Bot, event: MessageEvent):
     except Exception as e:
         logger.print_exc("bing失败")
         return await send_reply_msg(bing, event.message_id, "发送失败")
+    
+
+bing_rule = on_command("/bingrule", priority=100, block=False, aliases={
+    "/bing_rule", "/bing rule", "/bobing_rule", "/bobingrule", "/bobing rule",
+    "/博饼规则", "/博饼 规则", "/饼 规则", "/饼规则"})
+@bing_rule.handle()
+async def handle_function(bot: Bot, event: MessageEvent):
+    if not gbl.check(event, allow_private=True): return
+    if not (await cd.check(event)): return
+    return await send_reply_msg(bing_rule, event.message_id, await get_image_cq(dice_rule_image))
 
 
 rand = on_command("/rand", priority=100, block=False, aliases={'/roll'})

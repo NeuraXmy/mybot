@@ -7,6 +7,7 @@
 - [`/roll` 随机数生成](#rand) 
 - [`/choose` 随机选择](#choose) 
 - [`/bing` 博饼](#bing) 
+- [`/bing rule` 博饼规则](#bing_rule)
 - [`/shuffle` 洗牌](#shuffle)
 - [`/rolluser` 随机群友](#rolluser)
 
@@ -44,11 +45,20 @@
 
 ## `/bing`
 
-中秋博饼（使用六个骰子的东南沿海传统游戏）
+中秋博饼（使用六个骰子的闽南传统游戏）
 
 - **使用方式**
 
     `/bing`
+
+
+## `/bing rule`
+
+查看博饼规则
+
+- **使用方式**
+
+    `/bing rule`
 
 
 ## `/shuffle`
