@@ -194,18 +194,27 @@ async def handle(bot: Bot, event: MessageEvent):
     if not img: return
     
     duration = img.info['duration']
+    interval = 1
     args = event.get_plaintext().replace("/img speed", "").strip()
     try:
         if args.endswith("x"):
             duration *= 1.0 / float(args[:-1])
         else:
             duration = float(args)
-        duration = max(20, int(duration))
+        # 抽帧
+        for i in range(1, 1000):
+            interval = i
+            if int(duration * interval) >= 20:
+                duration = int(duration * interval)
+                break
     except:
         return await send_reply_msg(speed, event.message_id, "请输入速度参数(直接输入数字调整duration，输入2x格式加倍速度")
 
     try:
-        frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
+        frames = []
+        for idx, frame in enumerate(ImageSequence.Iterator(img)):
+            if idx % interval == 0:
+                frames.append(frame.copy())
         tmp_image_path = "data/imgtool/tmp/speed.gif"
         frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0, disposal=2)
         await send_reply_msg(speed, event.message_id, await get_image_cq(tmp_image_path))
