@@ -47,6 +47,10 @@ def get_image_table_names():
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     return [x[0] for x in cursor.fetchall() if x[0].startswith("phash_")]
 
+# 清空phash表
+def clear_table(table_name):
+    cursor = get_conn().cursor()
+    cursor.execute(f"DELETE FROM {table_name}")
 
 # phash表row转换为返回值
 def msg_row_to_ret(row):
@@ -85,6 +89,8 @@ def main():
             table_names = get_image_table_names()
             print(f"获取所有phash记录的表名: {table_names}") 
             for table_name in table_names:
+                clear_table(table_name)
+                commit()
                 print(f"开始更新 {table_name} 的 phash")
                 records = get_none(table_name)
                 print(f"获取 {table_name} 的待更新记录 {len(records)} 条")

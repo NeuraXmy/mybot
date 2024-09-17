@@ -176,7 +176,7 @@ async def handle(bot: Bot, event: MessageEvent):
         frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
         frames.reverse()
         tmp_image_path = "data/imgtool/tmp/back.gif"
-        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0)
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0, disposal=2)
         await send_reply_msg(back, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
@@ -207,7 +207,7 @@ async def handle(bot: Bot, event: MessageEvent):
     try:
         frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
         tmp_image_path = "data/imgtool/tmp/speed.gif"
-        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0)
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=duration, loop=0, disposal=2)
         await send_reply_msg(speed, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
@@ -404,7 +404,7 @@ async def handle(bot: Bot, event: MessageEvent):
             frames.append(new_img)
         
         tmp_image_path = "data/imgtool/tmp/flow.gif"
-        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0, disposal=2)
         await send_reply_msg(flow, event.message_id, await get_image_cq(tmp_image_path))
 
     except Exception as e:
@@ -499,7 +499,7 @@ async def handle(bot: Bot, event: MessageEvent):
             frames.append(new_img)
 
         tmp_image_path = "data/imgtool/tmp/fan.gif"
-        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0)
+        frames[0].save(tmp_image_path, save_all=True, append_images=frames[1:], duration=50, loop=0, disposal=2)
 
         await send_reply_msg(fan, event.message_id, await get_image_cq(tmp_image_path))
 
