@@ -679,11 +679,11 @@ class RateLimit:
             self.logger.debug(f'{self.rate_limit_name}检查: {key} 频率超限')
             if verbose:
                 reply_msg = "达到{period}使用次数限制({limit})"
-                if self.period_type == "minute":
+                if self.period_type == "m":
                     reply_msg = reply_msg.format(period="分钟", limit=self.limit)
-                elif self.period_type == "hour":
+                elif self.period_type == "h":
                     reply_msg = reply_msg.format(period="小时", limit=self.limit)
-                elif self.period_type == "day":
+                elif self.period_type == "d":
                     reply_msg = reply_msg.format(period="天", limit=self.limit)
                 try:
                     if hasattr(event, 'message_id'):

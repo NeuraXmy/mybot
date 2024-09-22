@@ -24,14 +24,20 @@ async def get_reply_image(handler, bot: Bot, event: MessageEvent, need_gif=False
     reply_msg = await get_reply_msg(bot, msg)
     if not reply_msg:
         await send_reply_msg(handler, event.message_id, "请回复一张图片")
+        return None
     imgs = extract_image_url(reply_msg)
     if not imgs:
-        await send_reply_msg(handler, event.message_id, "请回复一张图片")
+        await send_reply_msg(handler, event.message_id, "回复的消息中不包含图片")
+        return None
     img_url = imgs[0]   
     try:
         img = await download_image(img_url)
     except Exception as e:
         logger.print_exc(f"获取图片 {img_url} 失败: {e}")
+        # 暂时无法获取自己发送的图片
+        if event.user_id == bot.self_id:
+            await send_reply_msg(handler, event.message_id, "由于Bot框架问题，暂时无法获取Bot自己发送的图片")
+            return None
         await send_reply_msg(handler, event.message_id, "获取图片失败")
         return None
     if need_gif and not is_gif(img):
