@@ -50,7 +50,7 @@ async def handle_bird(bot: Bot, event: MessageEvent):
     if bird_name in birds.keys():
         bird_info = birds[bird_name]
         res = ""
-        res += f"[CQ:image,file={bird_info['图片']}]"
+        res += await get_image_cq(bird_info['图片'])
         res += f"{bird_info['名称']}\n"
         res += f"{bird_info['分类']}\n"
         res += f"{bird_info['描述']}\n"
@@ -81,8 +81,7 @@ async def handle_bird(bot: Bot, event: MessageEvent):
 
     logger.info(f"鸟类查询：{bird_name}，模糊匹配: {blur_names} 俗名匹配: {folk_names}")
 
-    res = f"[CQ:reply,id={event.message_id}]"
-    res += f"没有找到这个鸟类哦\n"
+    res = f"没有找到这个鸟类哦\n"
     if len(folk_names) > 0:
         res += f"\"{bird_name}\"可能是这些鸟的俗名：{', '.join(folk_names)}\n"
     if len(blur_names) > 0:

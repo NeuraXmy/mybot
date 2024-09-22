@@ -60,6 +60,8 @@ def create_transparent_gif(img, save_path):
         if retry_num > 20:
             raise Exception("生成透明GIF失败")
         img = original_img.copy()
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
         transparent_color = (
             random.randint(0, 255), 
             random.randint(0, 255), 
