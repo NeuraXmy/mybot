@@ -990,7 +990,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
                 cid = get_character_id(nickname)
                 assert cid is not None and len(text) > 0
         except:
-            return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk stamp 123\n/pjsk stamp miku 你好")
+            return await send_reply_msg(stamp, event.message_id, "请使用表情ID或角色简称+文本，示例：\n/pjsk stamp 123\n/pjsk stamp miku 你好\n制作表情请使用:\n/pjsk makestamp 角色简称 文本")
 
     try:
         stamp_data = await get_stamp_data()
