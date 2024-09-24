@@ -23,7 +23,7 @@ matplotlib.rcParams['axes.unicode_minus']=False
 
 
 # 绘制饼图
-def draw_pie(ax, recs, topk_user, topk_name):
+def draw_pie(ax, recs, topk_user, topk_name, date):
     logger.info(f"开始绘制饼图")
     topk = len(topk_user)
     user_count, user_image_count = Counter(), Counter()
@@ -41,8 +41,7 @@ def draw_pie(ax, recs, topk_user, topk_name):
     labels = [f'{topk_name[i]} ({topk_user_count[i]},{user_image_count.get(topk_user[i])})' for i in range(topk)] 
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
 
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    ax.text(-0.4, 0.98, f"{current_date} 今日消息总数：{len(recs)}", fontsize=12, transform=ax.transAxes)
+    ax.text(-0.4, 0.98, f"{date} 今日消息总数：{len(recs)}", fontsize=12, transform=ax.transAxes)
     ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
 
 
@@ -218,13 +217,13 @@ def draw_wordcloud(ax, recs, users, names):
 
 
 # 绘制所有图
-def draw_all(recs, interval, topk1, topk2, user, name, path):
+def draw_all(recs, interval, topk1, topk2, user, name, path, date):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
     fig, ax = plt.subplots(figsize=(8, 15), nrows=3, ncols=1)
     fig.tight_layout()
 
-    draw_pie(ax[0], recs, user[:topk1], name[:topk1])
+    draw_pie(ax[0], recs, user[:topk1], name[:topk1], date)
     draw_plot(ax[2], recs, interval, user[:topk2], name[:topk2])
     draw_wordcloud(ax[1], recs, user, name)
 

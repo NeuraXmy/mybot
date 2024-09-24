@@ -53,8 +53,8 @@ async def get_statistic(bot, group_id, date=None):
         name = truncate(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
         topk_name.append(name)
     # 画图
-    path = PLOT_PATH + f"plot_{group_id}.jpg"
-    draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path)
+    path = PLOT_PATH + f"plot_{group_id}.png"
+    draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
     # 发送图片
     return await get_image_cq(path)
 
@@ -120,7 +120,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
     try:
         try:
             date = event.get_plaintext().split()[1]
-            datetime.strptime(date, "%Y-%m-%d")
+            if date.count('-') == 2:
+                datetime.strptime(date, "%Y-%m-%d")
+            else:
+                delta_day = int(date)
+                date = (datetime.now() + timedelta(days=delta_day)).strftime("%Y-%m-%d")
         except:
             logger.info(f'日期格式错误, 使用当前日期')
             date = None
