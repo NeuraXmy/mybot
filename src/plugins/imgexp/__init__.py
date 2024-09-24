@@ -48,7 +48,17 @@ async def handle(bot: Bot, event: MessageEvent):
     if len(res_info) == 0:
         return await send_reply_msg(search, event.message_id, f"无搜索结果")
     
-    return await send_reply_msg(search, event.message_id, await get_image_cq(res_img))
+    msg = await get_image_cq(res_img)
+    source_urls = {}
+    for info in res_info:
+        source, url = info['source'], info['url']
+        if source not in source_urls:
+            source_urls[source] = []
+        source_urls[source].append(url)
+    for source in source_urls:
+        for i, url in enumerate(source_urls[source]):
+            msg += f"NO.{i} from {source}:\n{url}\n"
+    return await send_fold_msg_adaptive(bot, search, event, msg.strip(), 0)
 
 
 async def aget_video_info(url):
