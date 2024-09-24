@@ -57,7 +57,7 @@ async def handle(bot: Bot, event: MessageEvent):
         source_urls[source].append(url)
     for source in source_urls:
         for i, url in enumerate(source_urls[source]):
-            msg += f"NO.{i} from {source}:\n{url}\n"
+            msg += f"NO.{i+1} from {source}:\n{url}\n"
     return await send_fold_msg_adaptive(bot, search, event, msg.strip(), 0)
 
 
