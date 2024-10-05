@@ -14,6 +14,7 @@ from nonebot import require
 import random
 from retrying import retry
 from argparse import ArgumentParser
+import colorsys
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -44,6 +45,15 @@ print(f'使用日志等级: {LOG_LEVEL}')
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+def lighten_color(color, amount=0.5):
+    """Lighten the given color by a specified amount."""
+    color = color.lstrip('#')
+    r, g, b = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+    h, l, s = colorsys.rgb_to_hls(r/255.0, g/255.0, b/255.0)
+    l = min(1, l + amount * (1 - l))
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
 
 def rand_filename(ext):
     if ext.startswith('.'):
@@ -102,7 +112,40 @@ async def download_image(image_url):
                 raise Exception(f"Failed to download image {image_url}: {resp.status} {resp.reason}")
             image = await resp.read()
             return Image.open(io.BytesIO(image))
-        
+
+# 下载svg图片，返回PIL.Image对象
+@retry(stop_max_attempt_number=3, wait_fixed=1000)
+async def download_and_convert_svg(image_url):
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    import time
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    driver = webdriver.Chrome(options=options)
+    try:
+        driver.get(image_url)
+        await asyncio.sleep(1)
+        svg_element = driver.find_element(By.TAG_NAME, 'svg')
+        width = driver.execute_script("return arguments[0].getBoundingClientRect().width;", svg_element)
+        height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", svg_element)
+        driver.set_window_size(width, height)
+        tmp_file = os.path.join("data/utils/svg/tmp", rand_filename(".png"))
+        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
+        if not driver.save_screenshot(tmp_file):
+            raise Exception("Failed to save screenshot")
+        image = Image.open(tmp_file)
+        os.remove(tmp_file)
+        return image
+    except Exception as e:
+        traceback.print_exc()
+        raise Exception(f"Failed to download SVG image")
+    finally:
+        driver.quit()
+
 # 编辑距离
 def levenshtein_distance(s1, s2):
     if len(s1) < len(s2):

@@ -5,6 +5,7 @@ from .sql import commit, insert
 import json
 import shutil
 import random
+import numpy as np
 
 config = get_config('llm')
 logger = get_logger("Llm")
@@ -305,6 +306,90 @@ async def get_text_embedding(text, usage, group_id=None, user_id=None):
     return embedding
 
 
+# 文本检索工具
+class TextRetriever:
+    def __init__(self, name):
+        self.name = name
+        self.embedding_path = os.path.join(f"data/llm/embeddings/{name}.npz")
+        self.keys = []
+        self.embeddings = None
+        self.load()
+
+    def save(self):
+        os.makedirs(os.path.dirname(self.embedding_path), exist_ok=True)
+        np.savez(self.embedding_path, embeddings=self.embeddings, keys=self.keys)
+        logger.info(f"保存{self.name}的{len(self.keys)}条embs")
+
+    def load(self):
+        try:
+            data = np.load(self.embedding_path)
+            self.embeddings = data['embeddings']
+            self.keys = data['keys']
+            logger.info(f"加载{self.name}的{len(self.keys)}条embs")
+        except:
+            logger.warning(f"加载{self.name}的embs失败, 使用空检索库")
+            self.embeddings = None
+            self.keys = []
+
+    async def set_emb(self, key, text, only_add=False):
+        key = str(key)
+        if only_add and self.exists(key):
+            return
+        emb = await get_text_embedding(text, f'{self.name}-set-emb', group_id=None, user_id=None)
+        if not self.exists(key):
+            if self.embeddings is None:
+                self.embeddings = np.array([emb])
+            else:
+                self.embeddings = np.concatenate([self.embeddings, np.array([emb])])
+            self.keys.append(key)
+            logger.info(f"添加{key}:\"{text}\"到{self.name}中")
+        else:
+            self.embeddings[self.keys.index(key)] = emb
+            logger.info(f"更新{key}:\"{text}\"到{self.name}中")
+        self.save()
+
+    def del_emb(self, key):
+        key = str(key)
+        index = self.keys.index(key)
+        if index < 0:
+            logger.warning(f"{key}不存在于{self.name}中")
+            return
+        self.embeddings = np.delete(self.embeddings, index)
+        self.keys.remove(key)
+        logger.info(f"从{self.name}中移除{key}")
+        self.save()
+
+    def clear(self):
+        self.embeddings = None
+        self.keys = []
+        logger.info(f"清空{self.name}")
+        self.save()
+
+    def __len__(self):
+        return len(self.keys)
+    
+    def exists(self, key):
+        key = str(key)
+        return key in self.keys
+
+    async def find(self, query, top_k, filter=None):
+        logger.info(f"查找{self.name}中与\"{query}\"最相似的{top_k}条记录")
+        if len(self.keys) == 0:
+            logger.warning(f"{self.name}为空")
+            return []
+        q_emb = await get_text_embedding(query, f'{self.name}-find-emb', group_id=None, user_id=None)
+        valid_index = []
+        for i in range(len(self.keys)):
+            if filter and not filter(self.keys[i]):
+                continue
+            valid_index.append(i)
+        embs = self.embeddings[valid_index]
+        distances = np.linalg.norm(embs - q_emb, axis=1)
+        indexes = np.argsort(distances)[:top_k]
+        logger.info(f"找到{len(indexes)}条记录")
+        return [(self.keys[valid_index[i]], distances[i]) for i in indexes]
+        
+        
 # -------------------------------- TTS相关 -------------------------------- #
 
 TTS_MODEL = config['tts_model']

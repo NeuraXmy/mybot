@@ -19,6 +19,7 @@ Project Sekai（世界计划）游戏相关服务
 - [`/pjsk makestamp` 制作表情](#pjsk-makestamp)
 - [`/pjsk update` 手动更新数据](#pjsk-update)*
 - [`/pjsk charastory` 搜索包含指定角色的活动剧情](#pjsk-charastory)
+- [`/pjsk chart` 谱面查询](#pjsk-chart)
 
 ---
 
@@ -147,3 +148,20 @@ Project Sekai（世界计划）游戏相关服务
     `/pjsk charastory mnr mzk` 搜索同时包含 mnr 和 mzk 的活动剧情对话
 
 
+## `/pjsk chart`
+
+谱面查询，默认难度为master
+
+- **使用方式**
+
+    `/pjsk chart <歌曲名> <难度>`
+
+    `/谱面查询 <歌曲名> <难度>`
+
+    `/谱面预览 <歌曲名> <难度>`
+
+- **示例**
+
+    `/pjsk chart 热风`
+
+    `/pjsk chart 热风 apd`

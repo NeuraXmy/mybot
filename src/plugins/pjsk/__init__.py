@@ -10,7 +10,7 @@ import aiohttp
 import json
 from ..utils import *
 import numpy as np
-from ..llm import get_text_embedding
+from ..llm import get_text_embedding, TextRetriever
 from PIL import Image, ImageDraw, ImageFont
 
 config = get_config('pjsk')
@@ -19,7 +19,7 @@ file_db = get_file_db("data/pjsk/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'pjsk')
 notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify', is_service=False)
-
+music_name_retriever = TextRetriever("music_name")
 
 STAMP_SEARCH_TOPK = config['stamp_search_topk']
 
@@ -144,6 +144,7 @@ async def update_all():
     await update_event_story_detail(force_update=False)
     await download_stamp_data()
     await update_stamp_embeddings()
+    await update_music_name_embs()
 
 async def download_json_data(url):
     async with aiohttp.ClientSession() as session:
@@ -455,6 +456,16 @@ def find_by(lst, key, value, mode="first", convert_to_str=True):
         return ret[-1]
     return ret
 
+# 获取去重后的列表
+def unique_by(lst, key):
+    val_set = set()
+    ret = []
+    for item in lst:
+        if item[key] not in val_set:
+            val_set.add(item[key])
+            ret.append(item)
+    return ret
+    
 # 获取用户游戏id
 def get_user_game_id(user_id):
     user_binds = file_db.get("user_binds", {})
@@ -724,6 +735,40 @@ def get_music_cover_url(musics, mid):
     url = MUSIC_COVER_IMG_URL.format(assetbundleName=music["assetbundleName"])
     return url
     
+# 更新歌曲名embs
+async def update_music_name_embs():
+    musics = await get_music_data()
+    for music in musics:
+        mid = music['id']
+        title = music['title']
+        pron = music['pronunciation']
+        await music_name_retriever.set_emb(f"{mid} title", title, only_add=True)
+        await music_name_retriever.set_emb(f"{mid} pron",  pron,  only_add=True)
+
+# 查询歌曲
+async def query_music_by_text(musics, text, limit=5):
+    query_result = await music_name_retriever.find(text, limit)
+    ids = [int(item[0].split()[0]) for item in query_result]
+    result_musics = [find_by(musics, "id", mid) for mid in ids]
+    scores = [item[1] for item in query_result]
+    return result_musics, scores
+
+# 获取谱面图片
+async def get_chart_image(mid, diff):
+    mid = int(mid)
+    cache_dir = f"data/pjsk/chart/{mid:04d}_{diff}.png"
+    os.makedirs(os.path.dirname(cache_dir), exist_ok=True)
+    if not os.path.exists(cache_dir):
+        url = f"https://asset3.pjsekai.moe/music/music_score/{mid:04d}_01/{diff}.svg"
+        logger.info(f"下载谱面: {url}")
+        if url.endswith(".svg"):
+            image = await download_and_convert_svg(url)
+        else:
+            image = await download_image(url)
+        image.save(cache_dir)
+    return await get_image_cq(cache_dir)
+    
+
 # ----------------------------------------- 聊天逻辑 ------------------------------------------ #
 
 # 绑定用户id
@@ -1120,6 +1165,57 @@ async def handle(bot: Bot, event: GroupMessageEvent):
     except Exception as e:
         logger.print_exc(f"制作表情失败: {e}")
         return await send_reply_msg(makestamp, event.message_id, "制作表情失败")
+
+
+# 铺面查询
+chart_search_cmds = [
+    "/铺面", "/谱面", "/谱面查询", "/谱面预览", "/铺面查询", "/铺面预览", "/pjsk chart", "/pjsk_chart"
+]
+chart_search = on_command(chart_search_cmds[0], priority=1, block=False, aliases=set(chart_search_cmds[1:]))
+@chart_search.handle()
+async def handle(bot: Bot, event: GroupMessageEvent):
+    if not (await cd.check(event)): return
+    if not gbl.check(event, allow_private=True): return
+
+    args = event.message.extract_plain_text()
+    for cmd in makestamp_cmds:
+        args = args.replace(cmd, "").strip()
+    args = args.lower()
+
+    try:
+        diff = "master"
+        diff_sufs = [("append", "apd"), ("expert", "ex"), ("hard", "hd"), ("normal",), ("easy",), ("master", "ma")]
+        for sufs in diff_sufs:
+            for suf in sufs:
+                if args.endswith(suf):
+                    diff = sufs[0]
+                    args = args.removesuffix(suf)
+                    break
+        
+        logger.info(f"搜索谱面: {args} diff={diff}")
+        
+        musics = await get_music_data()
+        res_musics, scores = await query_music_by_text(musics, args, 5)
+        res_musics = unique_by(res_musics, "id")
+        if len(res_musics) == 0:
+            return await send_reply_msg(chart_search, event.message_id, "找不到相关曲目")
+        
+        msg = ""
+        try:
+            mid = res_musics[0]["id"]
+            title = res_musics[0]["title"]
+            msg += await get_chart_image(mid, diff)
+        except Exception as e:
+            return await send_reply_msg(chart_search, event.message_id, f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
+        
+        if len(res_musics) > 1:
+            msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
+        
+        return await send_reply_msg(chart_search, event.message_id, msg.strip())
+
+    except Exception as e:
+        logger.print_exc(f"谱面查询失败")
+        return await send_reply_msg(chart_search, event.message_id, f"查询失败: {e}")
 
 
 # ----------------------------------------- 定时任务 ------------------------------------------ #
