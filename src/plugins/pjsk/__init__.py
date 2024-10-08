@@ -136,6 +136,7 @@ MUSIC_ACHIEVEMENT_MINE = [
 async def update_all():
     await download_music_data()
     await download_music_difficulty_data()
+    await download_music_cn_title_data()
     await download_vlive_data()
     await download_event_data()
     await download_event_story_data()
@@ -235,6 +236,13 @@ async def download_stamp_data():
         f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
     logger.info(f"下载stamp数据成功: 共获取{len(data)}条")
 
+# 下载歌曲中文标题数据到本地
+async def download_music_cn_title_data():
+    logger.info(f"开始下载中文标题数据")
+    data = await download_json_data("https://i18n-json.sekai.best/zh-CN/music_titles.json")
+    with open("data/pjsk/music_cn_titles.json", 'wb') as f:
+        f.write(json.dumps(data, indent=4, ensure_ascii=False).encode('utf8'))
+    logger.info(f"下载中文标题数据成功: 共获取{len(data)}条")
 
 # 更新eventstory详情数据
 async def update_event_story_detail(force_update=False):
@@ -382,6 +390,15 @@ async def get_stamp_data():
         with open(STAMP_SAVE_PATH, 'r') as f:
             return json.load(f)
 
+# 获取歌曲中文标题数据，如果不存在则下载
+async def get_music_cn_title_data():
+    try:
+        with open("data/pjsk/music_cn_titles.json", 'r') as f:
+            return json.load(f)
+    except:
+        await download_music_cn_title_data()
+        with open("data/pjsk/music_cn_titles.json", 'r') as f:
+            return json.load(f)
 
 # 从vlive数据中解析出需要的信息
 def parse_vlive_data(vlive):
@@ -734,16 +751,21 @@ def get_music_cover_url(musics, mid):
     if music is None: return None
     url = MUSIC_COVER_IMG_URL.format(assetbundleName=music["assetbundleName"])
     return url
-    
+
 # 更新歌曲名embs
 async def update_music_name_embs():
     musics = await get_music_data()
+    music_cn_title = await get_music_cn_title_data()
     for music in musics:
         mid = music['id']
         title = music['title']
         pron = music['pronunciation']
         await music_name_retriever.set_emb(f"{mid} title", title, only_add=True)
         await music_name_retriever.set_emb(f"{mid} pron",  pron,  only_add=True)
+
+        cn_title = music_cn_title.get(str(mid))
+        if cn_title:
+            await music_name_retriever.set_emb(f"{mid} cn_title", cn_title, only_add=True)
 
 # 查询歌曲
 async def query_music_by_text(musics, text, limit=5):
@@ -1195,6 +1217,7 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         logger.info(f"搜索谱面: {args} diff={diff}")
         
         musics = await get_music_data()
+        music_cn_title = await get_music_cn_title_data()
         res_musics, scores = await query_music_by_text(musics, args, 5)
         res_musics = unique_by(res_musics, "id")
         if len(res_musics) == 0:
@@ -1204,10 +1227,15 @@ async def handle(bot: Bot, event: GroupMessageEvent):
         try:
             mid = res_musics[0]["id"]
             title = res_musics[0]["title"]
+            cn_title = music_cn_title.get(str(mid))
             msg += await get_chart_image(mid, diff)
         except Exception as e:
             return await send_reply_msg(chart_search, event.message_id, f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
         
+        if cn_title:
+            msg += f"{title} ({cn_title}) 难度{diff}\n"
+        else:
+            msg += f"{title} 难度{diff}\n"
         if len(res_musics) > 1:
             msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
         

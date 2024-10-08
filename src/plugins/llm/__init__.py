@@ -324,7 +324,7 @@ class TextRetriever:
         try:
             data = np.load(self.embedding_path)
             self.embeddings = data['embeddings']
-            self.keys = data['keys']
+            self.keys = data['keys'].tolist()
             logger.info(f"加载{self.name}的{len(self.keys)}条embs")
         except:
             logger.warning(f"加载{self.name}的embs失败, 使用空检索库")
