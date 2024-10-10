@@ -3,6 +3,7 @@ import yaml
 from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command, get_bot, on
+from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment, MessageEvent, PrivateMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
@@ -15,6 +16,9 @@ import random
 from retrying import retry
 from argparse import ArgumentParser
 import colorsys
+import inspect
+from typing import Optional, List
+from functools import wraps
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -610,16 +614,15 @@ def start_async_task(func, logger, name, start_offset=5):
 def check_self(event):
     return event.user_id == event.self_id
 
-
 # 超级用户
 def check_superuser(event, superuser=SUPERUSER):
     if superuser is None: return False
     return event.user_id in superuser
 
-
 # 自身对指令的回复
 def check_self_reply(event):
     return int(event.message_id) in self_reply_msg_ids
+
 
 # 冷却时间
 class ColdDown:
@@ -1067,3 +1070,157 @@ class MessageArgumentParser(ArgumentParser):
             s = s.removeprefix(cmd).strip()
         s = s.split(' ')
         return super().parse_args(s, *args, **kwargs)
+
+
+from concurrent.futures import ThreadPoolExecutor
+pool_executor = ThreadPoolExecutor(max_workers=8)
+
+
+# 下载json文件，返回json
+async def download_json(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                if "text/plain" in resp.content_type:
+                    return json.loads(await resp.text())
+                return await resp.json()
+            else:
+                raise Exception(resp.status)
+
+
+# 用某个key查找某个dict列表中的元素 mode=first/last/all
+def find_by(lst, key, value, mode="first", convert_to_str=True):
+    if mode not in ["first", "last", "all"]:
+        raise Exception("find_by mode must be first/last/all")
+    if convert_to_str:
+        ret = [item for item in lst if key in item and str(item[key]) == str(value)]
+    else:
+        ret = [item for item in lst if key in item and item[key] == value]
+    if not ret: 
+        return None if mode != "all" else []
+    if mode == "first":
+        return ret[0]
+    if mode == "last":
+        return ret[-1]
+    return ret
+
+
+# 获取按某个key去重后的dict列表
+def unique_by(lst, key):
+    val_set = set()
+    ret = []
+    for item in lst:
+        if item[key] not in val_set:
+            val_set.add(item[key])
+            ret.append(item)
+    return ret
+
+
+
+class CmdHandler:
+    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=False):
+        self.commands = commands
+        self.trigger_cmd = None
+        self.arg_text = None
+        self.logger = logger
+        self.error_reply = error_reply
+        self.bot: Optional[Bot] = None
+        self.event: Optional[MessageEvent] = None
+        self.handler = on_command(commands[0], priority=priority, block=block, aliases=set(commands[1:]))
+        self.superuser_check = None
+        self.private_group_check = None
+        self.wblist_checks = []
+        self.cdrate_checks = []
+
+    # -------------------------- 权限检查 -------------------------- #
+
+    def check_group(self):
+        self.private_group_check = "group"
+        return self
+    
+    def check_private(self):
+        self.private_group_check = "private"
+        return self
+
+    def check_wblist(self, wblist: GroupWhiteList | GroupBlackList, allow_private=False, allow_super=False):
+        self.wblist_checks.append((wblist, { "allow_private": allow_private, "allow_super": allow_super }))
+        return self
+
+    def check_cdrate(self, cd_rate: ColdDown | RateLimit, allow_super=True, verbose=True):
+        self.cdrate_checks.append((cd_rate, { "allow_super": allow_super, "verbose": verbose }))
+        return self
+
+    def check_superuser(self, superuser=SUPERUSER):
+        self.superuser_check = { "superuser": superuser }
+        return self
+
+    # -------------------------- Handle -------------------------- #
+
+    def handle(self):
+        def decorator(handler_func):
+            @self.handler.handle()
+            async def func(bot: Bot, event: MessageEvent):
+                self.bot = bot
+                self.event = event
+
+                if self.private_group_check == "group" and not is_group(event):
+                    return
+                if self.private_group_check == "private" and is_group(event):
+                    return
+                if self.superuser_check and not check_superuser(event, **self.superuser_check):
+                    return
+                for wblist, kwargs in self.wblist_checks:
+                    if not wblist.check(event, **kwargs):
+                        return
+                for cdrate, kwargs in self.cdrate_checks:
+                    if not (await cdrate.check(event, **kwargs)):
+                        return
+
+                plain_text = self.event.message.extract_plain_text()
+                for cmd in sorted(self.commands, key=len, reverse=True):
+                    if cmd in plain_text:
+                        self.trigger_cmd = cmd
+                        break
+                self.arg_text = plain_text.replace(self.trigger_cmd, "")
+
+                params = {}
+                for param in inspect.signature(handler_func).parameters.values():
+                    if param.name == "bot":
+                        params[param.name] = bot
+                    elif param.name == "event":
+                        params[param.name] = event
+                try:
+                    return await handler_func(**params)
+                except Exception as e:
+                    self.logger.print_exc(f'指令\"{self.trigger_cmd}\"处理失败')
+                    if self.error_reply:
+                        await self.asend_reply_msg(f"指令处理失败: {e}")
+            return func
+        return decorator
+
+    # -------------------------- 数据获取 -------------------------- #
+
+    def get_args(self) -> str:
+        return self.arg_text
+
+    def aget_msg(self):
+        return get_msg(self.bot, self.event.message_id)
+
+    def aget_msg_obj(self):
+        return get_msg_obj(self.bot, self.event.message_id)
+
+    # -------------------------- 消息发送 -------------------------- #
+
+    def asend_msg(self, msg):
+        return send_msg(self.handler, msg)
+
+    def asend_reply_msg(self, msg):
+        return send_reply_msg(self.handler, self.event.message_id, msg)
+
+    def asend_at_msg(self, msg):
+        return send_at_msg(self.handler, self.event.user_id, msg)
+
+    def asend_fold_msg_adaptive(self, msg, threshold=100, need_reply=True):
+        return send_fold_msg_adaptive(self.bot, self.handler, self.event, msg, threshold, need_reply)
+
+    
