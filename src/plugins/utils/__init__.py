@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import traceback
 from nonebot import on_command, get_bot, on
 from nonebot.matcher import Matcher
+from nonebot.rule import to_me as rule_to_me
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment, MessageEvent, PrivateMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
@@ -172,6 +173,46 @@ async def download_and_convert_svg(image_url):
         raise Exception(f"Failed to download SVG image")
     finally:
         driver.quit()
+
+# markdown转图片
+def markdown_to_image(markdown_text: str) -> Image.Image:
+    html_save_path = f"data/utils/m2i/tmp/{rand_filename('html')}"
+    img_save_path = f"data/utils/m2i/tmp/{rand_filename('png')}"
+    try:
+        import markdown2
+        markdown_text = markdown_text
+        html = markdown2.markdown(markdown_text)
+
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.common.by import By
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        driver = webdriver.Chrome(options=options)
+
+        create_parent_folder(html_save_path)
+        with open(html_save_path, 'w') as f:
+            f.write(html)
+        driver.get(f"file://{osp.abspath(html_save_path)}")
+
+        width = driver.execute_script("return document.body.scrollWidth")
+        height = driver.execute_script("return document.body.scrollHeight")
+        driver.set_window_size(width, height)
+
+        create_parent_folder(img_save_path)
+        driver.save_screenshot(img_save_path)
+        image = Image.open(img_save_path)
+        image.load()
+        return image
+
+    finally:
+        driver.quit()
+        remove_file(html_save_path)
+        remove_file(img_save_path)
+
 
 # 编辑距离
 def levenshtein_distance(s1, s2):
@@ -1192,11 +1233,13 @@ class HandlerContext:
 
 
 class CmdHandler:
-    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=False):
+    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=False, only_to_me=False):
         self.commands = commands
         self.logger = logger
         self.error_reply = error_reply
-        self.handler = on_command(commands[0], priority=priority, block=block, aliases=set(commands[1:]))
+        handler_kwargs = {}
+        if only_to_me: handler_kwargs["rule"] = rule_to_me()
+        self.handler = on_command(commands[0], priority=priority, block=block, aliases=set(commands[1:]), **handler_kwargs)
         self.superuser_check = None
         self.private_group_check = None
         self.wblist_checks = []

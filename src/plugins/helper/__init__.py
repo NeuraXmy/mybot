@@ -3,60 +3,51 @@ from ..utils import *
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.rule import to_me
+import glob
 
 config = get_config('helper')
 logger = get_logger('Helper')
 file_db = get_file_db('data/helper/db.json', logger)
 gbl = get_group_black_list(file_db, logger, 'helper')
-cds = []
+cd = ColdDown(file_db, logger, config['cd'])
 
-# 帮助
-HELPER_PATH = 'helper.yaml'
-def init_helper():
-    logger.info(f'初始化帮助')
-    # with open(HELPER_PATH, 'r') as f:
-    #     helps = yaml.load(f, Loader=yaml.FullLoader)
-    # help_keys = helps.keys()
-    # logger.info(f'可用的帮助: {",".join(help_keys)}')
-    helps = {}
-    
-    # 如果没有全局帮助, 则自动添加
-    if '_global' not in helps:
-        # global_help = "使用以下指令查看各服务的详细帮助\n"
-        # for key, val in helps.items():
-        #     global_help += f"/help {key} - {val['name']}\n"
-        # if global_help.endswith('\n'):
-        #     global_help = global_help[:-1]
-        global_help = """帮助文档: https://github.com/NeuraXmy/mybot/blob/master/helps/main.md"""
-        helps['_global'] = {
-            'name': '',
-            'help': global_help
-        }
 
-    for key, val in helps.items():
-        cd = ColdDown(file_db, logger, config['cd'], cold_down_name=key)
-        cds.append(cd)
-        cd_index = len(cds) - 1
-        help_text = f'【{val["name"]}帮助】\n{val["help"]}'
-        help_text = help_text.strip()
-        # 注册指令
-        cmd = "/help" if key == '_global' else f"/help {key}"
+HELP_DOCS_WEB_URL = "https://github.com/NeuraXmy/mybot/blob/master/helps/{name}.md"
+HELP_DOCS_PATH = "helps/{name}.md"
 
-        if cmd == "/help":
-            help = on_command(cmd, block=False, priority=100, rule=to_me())
-        else:
-            help = on_command(cmd, block=False, priority=100, aliases={f"/help_{key}", f"/{key} help", f"/{key}_help"})
+help = CmdHandler(['/help', '/帮助', 'help', '帮助'], logger, block=True, only_to_me=True, priority=99999)
+help.check_wblist(gbl).check_cdrate(cd)
+@help.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
 
-        @help.handle()
-        async def _(event: MessageEvent, help_text=help_text, cd_index=cd_index):
-            fake_event = deepcopy(event)
-            fake_event.user_id = 1
-            if not gbl.check(fake_event, allow_private=True): return
-            if not (await cds[cd_index].check(event)): return
-            return await send_msg(help, help_text)
-        
-    logger.info(f'初始化帮助完成')
-    
-    
+    help_doc_paths = glob.glob(HELP_DOCS_PATH.format(name='*'))
+    help_names = []
+    help_decs = []
+    for path in help_doc_paths:
+        try:
+            if path.endswith('main.md'): continue
+            with open(path, 'r') as f:
+                first_line = f.readline().strip()
+            help_decs.append(first_line.split()[1])
+            help_names.append(Path(path).stem)
+        except:
+            pass
 
-init_helper()
+    if not args or args not in help_names:
+        msg = "使用 \"/help 英文服务名\" 查看各服务的详细帮助\n"
+        msg += "\n可查询的服务列表:\n"
+        for name, desc in zip(help_names, help_decs):
+            msg += f"【{name}】{desc}\n"
+        msg += f"\n或前往网页查看帮助文档:\n"
+        msg += HELP_DOCS_WEB_URL.format(name='main')
+        return await ctx.asend_fold_msg_adaptive(msg, threshold=0, need_reply=False)
+    else:
+        doc_path = HELP_DOCS_PATH.format(name=args)
+        doc_text = Path(doc_path).read_text()
+        try:
+            image = await excute_in_pool(markdown_to_image, doc_text)
+        except Exception as e:
+            logger.print_exc(f"渲染{doc_path}帮助文档失败")
+            return await ctx.asend_reply_msg(f"帮助文档渲染失败, 前往网页获取帮助文档:\n{HELP_DOCS_WEB_URL.format(name=args)}")
+        return await ctx.asend_reply_msg(await get_image_cq(image))
