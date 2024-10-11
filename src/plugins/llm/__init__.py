@@ -388,7 +388,12 @@ class TextRetriever:
         indexes = np.argsort(distances)[:top_k]
         logger.info(f"找到{len(indexes)}条记录")
         return [(self.keys[valid_index[i]], distances[i]) for i in indexes]
-        
+
+text_retrievers = {}
+def get_text_retriever(name) -> TextRetriever:
+    if name not in text_retrievers:
+        text_retrievers[name] = TextRetriever(name)
+    return text_retrievers[name]
         
 # -------------------------------- TTS相关 -------------------------------- #
 

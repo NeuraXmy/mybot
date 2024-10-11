@@ -246,7 +246,7 @@ async def _(bot: Bot, event: MessageEvent):
         tools_additional_info = ""
 
         # 进行询问
-        while range(5):
+        for _ in range(3):
             t = datetime.now()
             res = await session.get_response(
                 model_name=model_name,

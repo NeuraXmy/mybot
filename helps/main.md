@@ -15,7 +15,7 @@
 - [图片处理服务 (imgtool)](./imgtool.md)
 - [Minecraft服务 (mc)](./mc.md)
 - [OEIS服务 (oeis)](./oeis.md)
-- [世界计划服务 (pjsk)](./pjsk.md)
+- [世界计划服务 (sekai)](./sekai.md)
 - [群消息记录服务 (record)](./record.md)
 - [代码运行服务 (run_code)](./run_code.md)
 - [群消息统计服务 (sta)](./sta.md)

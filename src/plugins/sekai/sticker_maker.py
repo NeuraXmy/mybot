@@ -7,8 +7,8 @@ from fontTools.ttLib import TTFont
 
 # ----------------------------------------- configs ----------------------------------------- #
 
-font_path = "data/pjsk/maker/fonts/ShangShouFangTangTi.ttf"
-font_jp_path = "data/pjsk/maker/fonts/YurukaStd.woff2"
+font_path = "data/sekai/maker/fonts/ShangShouFangTangTi.ttf"
+font_jp_path = "data/sekai/maker/fonts/YurukaStd.woff2"
 font_size = 100
 font_jp_size = 80
 s_font_zoom_ratio = 0.8

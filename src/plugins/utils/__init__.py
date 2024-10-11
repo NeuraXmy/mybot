@@ -7,6 +7,9 @@ from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment, MessageEvent, PrivateMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 import os
+import os.path as osp
+from os.path import join as pjoin
+from pathlib import Path
 from copy import deepcopy
 import asyncio
 import base64
@@ -17,8 +20,9 @@ from retrying import retry
 from argparse import ArgumentParser
 import colorsys
 import inspect
-from typing import Optional, List
-from functools import wraps
+from typing import Optional, List, Tuple
+import shutil
+from PIL import Image, ImageDraw, ImageFont
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -49,6 +53,25 @@ print(f'使用日志等级: {LOG_LEVEL}')
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+def create_folder(folder_path):
+    folder_path = str(folder_path)
+    os.makedirs(folder_path, exist_ok=True)
+    return folder_path
+
+def create_parent_folder(file_path):
+    parent_folder = os.path.dirname(file_path)
+    return create_folder(parent_folder)
+
+def remove_folder(folder_path):
+    folder_path = str(folder_path)
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+
+def remove_file(file_path):
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
 
 def lighten_color(color, amount=0.5):
     """Lighten the given color by a specified amount."""
@@ -560,7 +583,7 @@ def get_str_appear_length(s):
 
 
 # 开始重复执行某个异步任务
-def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5, start_offset=5):
+def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5, start_offset=10):
     @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset))
     async def _():
         try:
@@ -596,6 +619,12 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
         except Exception as e:
             logger.print_exc(f'循环执行 {name} 任务失败')
 
+# 重复执行某个任务的装饰器
+def repeat_with_interval(interval_secs: int, name: str, logger: Logger, every_output=False, error_output=True, error_limit=5, start_offset=10):
+    def wrapper(func):
+        start_repeat_with_interval(interval_secs, func, logger, name, every_output, error_output, error_limit, start_offset)
+        return func
+    return wrapper
 
 # 开始执行某个异步任务
 def start_async_task(func, logger, name, start_offset=5):   
@@ -1075,6 +1104,12 @@ class MessageArgumentParser(ArgumentParser):
 from concurrent.futures import ThreadPoolExecutor
 pool_executor = ThreadPoolExecutor(max_workers=8)
 
+async def excute_in_pool(func, *args):
+    return await asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
+
+def excute_in_pool_nowait(func, *args):
+    return asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
+
 
 # 下载json文件，返回json
 async def download_json(url):
@@ -1117,22 +1152,55 @@ def unique_by(lst, key):
 
 
 
+@dataclass
+class HandlerContext:
+    handler = None
+    nonebot_handler = None
+    bot: Bot = None
+    event: MessageEvent = None
+    trigger_cmd: str = None
+    arg_text: str = None
+    message_id: int = None
+    user_id: int = None
+    group_id: int = None
+
+    # --------------------------  数据获取 -------------------------- #
+
+    def get_args(self) -> str:
+        return self.arg_text
+
+    def aget_msg(self):
+        return get_msg(self.bot, self.message_id)
+
+    def aget_msg_obj(self):
+        return get_msg_obj(self.bot, self.message_id)
+
+    # -------------------------- 消息发送 -------------------------- # 
+
+    def asend_msg(self, msg: str):
+        return send_msg(self.nonebot_handler, msg)
+
+    def asend_reply_msg(self, msg: str):
+        return send_reply_msg(self.nonebot_handler, self.message_id, msg)
+
+    def asend_at_msg(self, msg: str):
+        return send_at_msg(self.nonebot_handler, self.user_id, msg)
+
+    def asend_fold_msg_adaptive(self, msg: str, threshold=100, need_reply=True):
+        return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply)
+
+
+
 class CmdHandler:
     def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=False):
         self.commands = commands
-        self.trigger_cmd = None
-        self.arg_text = None
         self.logger = logger
         self.error_reply = error_reply
-        self.bot: Optional[Bot] = None
-        self.event: Optional[MessageEvent] = None
         self.handler = on_command(commands[0], priority=priority, block=block, aliases=set(commands[1:]))
         self.superuser_check = None
         self.private_group_check = None
         self.wblist_checks = []
         self.cdrate_checks = []
-
-    # -------------------------- 权限检查 -------------------------- #
 
     def check_group(self):
         self.private_group_check = "group"
@@ -1154,15 +1222,11 @@ class CmdHandler:
         self.superuser_check = { "superuser": superuser }
         return self
 
-    # -------------------------- Handle -------------------------- #
-
     def handle(self):
         def decorator(handler_func):
             @self.handler.handle()
             async def func(bot: Bot, event: MessageEvent):
-                self.bot = bot
-                self.event = event
-
+                # 权限检查
                 if self.private_group_check == "group" and not is_group(event):
                     return
                 if self.private_group_check == "private" and is_group(event):
@@ -1176,51 +1240,91 @@ class CmdHandler:
                     if not (await cdrate.check(event, **kwargs)):
                         return
 
-                plain_text = self.event.message.extract_plain_text()
+                # 上下文构造
+                context = HandlerContext()
+                context.handler = self
+                context.nonebot_handler = self.handler
+                context.bot = bot
+                context.event = event
+
+                plain_text = event.message.extract_plain_text()
                 for cmd in sorted(self.commands, key=len, reverse=True):
                     if cmd in plain_text:
-                        self.trigger_cmd = cmd
+                        context.trigger_cmd = cmd
                         break
-                self.arg_text = plain_text.replace(self.trigger_cmd, "")
+                context.arg_text = plain_text.replace(context.trigger_cmd, "")
 
-                params = {}
-                for param in inspect.signature(handler_func).parameters.values():
-                    if param.name == "bot":
-                        params[param.name] = bot
-                    elif param.name == "event":
-                        params[param.name] = event
+                context.message_id = event.message_id
+                context.user_id = event.user_id
+                if is_group(event):
+                    context.group_id = event.group_id
+
                 try:
-                    return await handler_func(**params)
+                    return await handler_func(context)
                 except Exception as e:
-                    self.logger.print_exc(f'指令\"{self.trigger_cmd}\"处理失败')
+                    self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
-                        await self.asend_reply_msg(f"指令处理失败: {e}")
+                        await context.asend_reply_msg(f"指令处理失败: {e}")
+                        
             return func
         return decorator
 
-    # -------------------------- 数据获取 -------------------------- #
 
-    def get_args(self) -> str:
-        return self.arg_text
 
-    def aget_msg(self):
-        return get_msg(self.bot, self.event.message_id)
+class SubHelper:
+    def __init__(self, name: str, db: FileDB, logger: Logger, store_func=None, get_func=None):
+        self.name = name
+        self.db = db
+        self.logger = logger
+        self.store_func = store_func or (lambda x: str(x))
+        self.get_func = get_func or (lambda x: x)
+        self.key = f'{self.name}_sub_list'
 
-    def aget_msg_obj(self):
-        return get_msg_obj(self.bot, self.event.message_id)
+    def is_subbed(self, *args):
+        uid = self.store_func(*args)
+        return uid in self.db.get(self.key, [])
 
-    # -------------------------- 消息发送 -------------------------- #
+    def sub(self, *args):
+        uid = self.store_func(*args)
+        lst = self.db.get(self.key, [])
+        if uid in lst:
+            return False
+        lst.append(uid)
+        self.db.set(self.key, lst)
+        self.logger.log(f'{uid}订阅{self.name}')
+        return True
 
-    def asend_msg(self, msg):
-        return send_msg(self.handler, msg)
+    def unsub(self, *args):
+        uid = self.store_func(*args)
+        lst = self.db.get(self.key, [])
+        if uid not in lst:
+            return False
+        lst.remove(uid)
+        self.db.set(self.key, lst)
+        self.logger.log(f'{uid}取消订阅{self.name}')
+        return True
 
-    def asend_reply_msg(self, msg):
-        return send_reply_msg(self.handler, self.event.message_id, msg)
+    def get_all(self):
+        return [self.get_func(item) for item in self.db.get(self.key, [])]
 
-    def asend_at_msg(self, msg):
-        return send_at_msg(self.handler, self.event.user_id, msg)
+    def clear(self):
+        self.db.delete(self.key)
+        self.logger.log(f'{self.name}清空订阅')
 
-    def asend_fold_msg_adaptive(self, msg, threshold=100, need_reply=True):
-        return send_fold_msg_adaptive(self.bot, self.handler, self.event, msg, threshold, need_reply)
 
+
+def get_text_size(font: ImageFont.ImageFont, text: str) -> Tuple[int, int]:
+    bbox = font.getbbox(text)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def resize_keep_ratio(img: Image.Image, max_size: int) -> Image.Image:
+    w, h = img.size
+    if w > h:
+        new_w = max_size
+        new_h = int(h / w * max_size)
+    else:
+        new_h = max_size
+        new_w = int(w / h * max_size)
+    return img.resize((new_w, new_h))
     

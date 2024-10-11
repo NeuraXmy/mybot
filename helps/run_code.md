@@ -29,3 +29,9 @@
     a, b = map(int, input().split())
     print(a + b)
     ```
+
+
+
+--- 
+
+[回到帮助目录](./main.md)

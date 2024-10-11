@@ -112,19 +112,6 @@ oeis:
   cd: 10
 
 
-pjsk:
-  cd: 10                                 
-  max_vlive_endtime_diff: 7               # 最多只获取多久之前的vlive（天）
-  vlive_notify_interval_minute: 1         # 每隔多少分钟检查vlive的提醒
-  vlive_start_notify_before_minute:       # 提前多少分钟提醒vlive开始（列表）
-    - 10
-  vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
-    - 140
-  new_music_notify_interval_minute: 1     # 每隔多少分钟检查新歌的提醒
-  data_update_time: [5, 0, 0]             # 数据更新时间 [hour, minute, second]
-  stamp_search_topk: 6
-
-
 record:
   
 
@@ -135,6 +122,18 @@ rpc:
 
 run_code:
   cd: 10                       
+
+
+sekai:
+  font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"
+  data_update_times:  # 定时更新数据的时间[时，分，秒]
+    - [5, 0, 0]
+    - [11, 0, 0]
+  vlive_start_notify_before_minute:       # 提前多少分钟提醒vlive开始（列表）
+    - 10
+  vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
+    - 140
+  cd: 2               
 
 
 statistics:
