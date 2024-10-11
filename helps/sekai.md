@@ -3,18 +3,18 @@
 Project Sekai（世界计划）日服游戏相关服务
 
 
-###  用户指令列表
+###  用户指令
 
 - [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
-- [`/pjsk {sub|unsub} {live|song}` 订阅/取消订阅at提醒](#pjsk-subunsub-livesong)
+- [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
 - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
 - [`/pjsk chart` 谱面查询](#pjsk-chart)
 - [`/pjsk card` 卡牌查询](#pjsk-card)
 - [`/pjsk card img` 卡面查询](#pjsk-card-img)
 
-### 管理指令列表
+### 管理指令
 
-- [`/pjsk_notify_{live|song}_{on|off}` 开关提醒](#pjsk_notify_liveonsong_onoff)
+- [`/pjsk_notify_{提醒类型}_{on|off}` 开关提醒](#pjsk_notify_提醒类型_onoff)
 - [`/pjsk update` 手动更新数据](#pjsk-update)
 
 ---
@@ -31,12 +31,12 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pjsk live`
 
 
-## `/pjsk {sub|unsub} {live|song}`
+## `/pjsk {sub|unsub} {提醒类型}`
 
 ```
 订阅/取消订阅当前群聊的提醒，当提醒发送时会@所有订阅成员
-使用`sub`进行订阅，`unsub`进行取消订阅
-可以订阅的项目有: `live` 虚拟Live提醒 `song` 新曲上线提醒
+使用 sub 进行订阅， unsub 进行取消订阅
+可以订阅的项目有: live 虚拟Live提醒 song 新曲上线提醒
 ```
 
 - **示例**
@@ -127,7 +127,7 @@ Project Sekai（世界计划）日服游戏相关服务
 --- 
 
 
-## `/pjsk_notify_{live|song}_{on|off}`
+## `/pjsk_notify_{提醒类型}_{on|off}`
 
 ```
 开关当前群聊的提醒

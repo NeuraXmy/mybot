@@ -24,6 +24,7 @@ import inspect
 from typing import Optional, List, Tuple
 import shutil
 from PIL import Image, ImageDraw, ImageFont
+import re
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -178,11 +179,23 @@ async def download_and_convert_svg(image_url):
 def markdown_to_image(markdown_text: str) -> Image.Image:
     html_save_path = f"data/utils/m2i/tmp/{rand_filename('html')}"
     img_save_path = f"data/utils/m2i/tmp/{rand_filename('png')}"
+    css_content = Path("data/utils/m2i/m2i.css").read_text()
     try:
-        import markdown2
-        markdown_text = markdown_text
-        html = markdown2.markdown(markdown_text)
-
+        import mistune
+        md_renderer = mistune.create_markdown()
+        html = md_renderer(markdown_text)
+        # 插入css
+        full_html = f"""
+            <html>
+                <head><style>
+                    {css_content}
+                    .markdown-body {{
+                        padding: 32px;
+                    }}
+                </style></head>
+                <body class="markdown-body">{html}</body>
+            </html>
+        """
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.common.by import By
@@ -195,7 +208,7 @@ def markdown_to_image(markdown_text: str) -> Image.Image:
 
         create_parent_folder(html_save_path)
         with open(html_save_path, 'w') as f:
-            f.write(html)
+            f.write(full_html)
         driver.get(f"file://{osp.abspath(html_save_path)}")
 
         width = driver.execute_script("return document.body.scrollWidth")
