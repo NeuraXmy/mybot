@@ -13,6 +13,7 @@ import numpy as np
 from ..llm import get_text_retriever
 from PIL import Image, ImageDraw, ImageFont
 from . import res
+from datetime import datetime
 
 config = get_config('sekai')
 logger = get_logger("Sekai")
@@ -261,7 +262,7 @@ async def compose_character_stamp(cid):
             draw.text((x, y), str(sid), font=font, fill=color, stroke_width=2, stroke_fill=(255, 255, 255, 255))
         return img
     
-    return await excute_in_pool(compose)
+    return await run_in_pool(compose)
 
 # 从文本提取卡牌属性 返回(属性名, 文本)
 def extract_card_attr(text, default=None):
@@ -309,6 +310,20 @@ def extract_card_skill(text, default=None):
     for first_name, name in all_names:
         if name in text:
             return first_name, text.replace(name, "").strip()
+    return default, text
+
+# 从文本提取年份 返回(年份, 文本)
+def extract_year(text, default=None):
+    now_year = datetime.now().year
+    if "今年" in text:
+        return now_year, text.replace("今年", "").strip()
+    if "去年" in text:
+        return now_year - 1, text.replace("去年", "").strip()
+    if "前年" in text:
+        return now_year - 2, text.replace("前年", "").strip()
+    for year in range(now_year, 2020, -1):
+        if str(year) in text:
+            return year, text.replace(str(year), "").strip()
     return default, text
 
 # 判断卡牌是否有after_training模式
@@ -367,7 +382,7 @@ async def get_card_full_thumbnail(card, after_training):
             for i in range(rare_num):
                 img.paste(rare_img, (offset + rare_w * i, img_h - rare_h - offset), rare_img)
             return img
-        img = await excute_in_pool(draw, img, card)
+        img = await run_in_pool(draw, img, card)
         create_parent_folder(cache_dir)
         img.save(cache_dir)
         return img
@@ -431,7 +446,7 @@ async def compose_card_list_image(cards):
             img.paste(skill_type_img, (x + grid_w - skill_w - 3, y + grid_h - skill_h - 3), skill_type_img)
 
         return img
-    return await excute_in_pool(compose, card_and_thumbs)
+    return await run_in_pool(compose, card_and_thumbs)
 
 # 获取卡面图片
 async def get_card_image(cid, after_training):
@@ -448,6 +463,71 @@ async def get_card_image(cid, after_training):
         img = await download_image(url)
         img.save(cache_dir)
         return img
+
+# 获取玩家基本信息
+async def get_basic_profile(uid):
+    url = f"http://api.unipjsk.com/api/user/{uid}/profile"
+    profile = await download_json(url)
+    if not profile:
+        raise Exception(f"找不到ID为{uid}的玩家")
+    return profile
+
+# 获取玩家详细信息
+async def get_detailed_profile(uid):
+    url = f"http://suite.unipjsk.com/api/user/{uid}/profile"
+    try:
+        profile = await download_json(url)
+    except Exception as e:
+        if int(e.args[0]) == 403:
+            raise Exception("获取数据失败，上传抓包数据时未选择公开可读")
+        elif int(e.args[0]) == 404:
+            raise Exception("获取数据失败，未上传过抓包数据")
+        else:
+            raise e
+    if not profile:
+        raise Exception(f"找不到ID为{uid}的玩家")
+    return profile if profile else None
+
+# 获取用户绑定的游戏id
+async def get_user_bind_uid(user_id, check_bind=True):
+    user_id = str(user_id)
+    bind_list = file_db.get("bind_list", {})
+    if check_bind and not bind_list.get(user_id, None):
+        raise Exception(f"请使用 /绑定 ID 绑定游戏账号")
+    return bind_list.get(user_id, None)
+
+# 合成名片图片
+async def compose_profile_image(basic_profile):
+    imgs = {}
+    decks = basic_profile['userDeck']
+    cards = [find_by(basic_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
+    for card in cards:
+        card['after_training'] = card['defaultImage'] == "special_training" and card['specialTrainingStatus'] == "done"
+    imgs['avatar'] = await get_card_thumbnail(cards[0]['cardId'], cards[0]['after_training'])
+        
+    def compose(basic_profile, imgs):
+        img_w, img_h = 800, 720
+        round_radius = 10
+        p = Painter(Image.new('RGBA', (img_w, img_h)))
+        # 背景
+        bg_img = res.misc_images.get("bg_25.png")
+        bg_img = resize_keep_ratio(bg_img, min(img_w, img_h), long_side=False)
+        bg_w, bg_h = bg_img.size
+        p.paste(bg_img, (img_w // 2 - bg_w // 2, img_h // 2 - bg_h // 2))
+        # 背景区域
+        p.roundrect((20, 20), (755, 675), (255, 255, 255, 150), round_radius)
+        # 头像
+        p.paste(imgs['avatar'], (54, 49), (120, 120))
+        # 昵称
+        name = basic_profile['user']['name']
+        p.text(name, (191, 49), font=get_font(FONT_PATH, 36), fill=BLACK)
+        # id
+        p.text(f"ID: {basic_profile['user']['userId']}", (191, 100), font=get_font(FONT_PATH, 16), fill=BLACK)
+
+        return p.get()
+
+    return await run_in_pool(compose, basic_profile, imgs)
+        
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -530,6 +610,7 @@ async def _(ctx: HandlerContext):
     musics = await res.musics.get()
     music_cn_title = await res.music_cn_titles.get()
     res_musics, scores = await query_music_by_text(musics, query)
+    res_musics = unique_by(res_musics, "id")
     if len(res_musics) == 0: 
         return await ctx.asend_reply_msg("没有找到相关曲目")
     
@@ -548,6 +629,36 @@ async def _(ctx: HandlerContext):
         msg += f"{title} 难度{diff}\n"
     if len(res_musics) > 1:
         msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
+    return await ctx.asend_reply_msg(msg.strip())
+
+
+# 物量查询
+pjsk_note_num = CmdHandler(["/pjsk note num", "/pjsk_note_num", 
+    "/pjsk note count", "/pjsk_note_count", "/物量", "/查物量"], logger)
+pjsk_note_num.check_cdrate(cd).check_wblist(gbl)
+@pjsk_note_num.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try:
+        note_count = int(args)
+    except:
+        return await ctx.asend_reply_msg("请输入物量数值")
+    musics = await res.musics.get()
+    music_diffs = await res.music_diffs.get()
+    music_cn_titles = await res.music_cn_titles.get()
+    diffs = find_by(music_diffs, "totalNoteCount", note_count, mode="all")
+    if not diffs:
+        return await ctx.asend_reply_msg(f"没有物量为{note_count}的谱面")
+    msg = ""
+    for diff in diffs:
+        mid = diff["musicId"]
+        d = diff['musicDifficulty']
+        lv = diff['playLevel']
+        title = find_by(musics, "id", mid)["title"]
+        cn_title = music_cn_titles.get(str(mid))
+        msg += f"【{mid}】{title} "
+        if cn_title: msg += f"({cn_title}) "
+        msg += f"{d} {lv}\n"
     return await ctx.asend_reply_msg(msg.strip())
 
 
@@ -681,6 +792,7 @@ async def _(ctx: HandlerContext):
             attr, args = extract_card_attr(args)
             supply, args = extract_card_supply(args)
             skill, args = extract_card_skill(args)
+            year, args = extract_year(args)
             chara_id = get_cid_by_nickname(args)
             assert chara_id is not None
         except:
@@ -688,7 +800,7 @@ async def _(ctx: HandlerContext):
 
     if not any([chara_id, card]):
         return await ctx.asend_reply_msg("""使用方式
-按角色查询: /pjsk card miku 绿草 四星 限定 分卡
+按角色查询: /pjsk card miku 绿草 四星 限定 分卡 今年
 根据ID查询: /pjsk card 123""")
 
     # 直接按id查询
@@ -725,6 +837,8 @@ async def _(ctx: HandlerContext):
             card["skill_type"] = skill_type
             if skill and skill_type != skill: continue
 
+            if year and datetime.fromtimestamp(card["releaseAt"] / 1000).year != int(year): continue
+
             res_cards.append(card)
 
         logger.info(f"搜索到{len(res_cards)}个卡牌")
@@ -748,6 +862,40 @@ async def _(ctx: HandlerContext):
         msg += await get_image_cq(await get_card_image(cid, True))
     return await ctx.asend_reply_msg(msg)
 
+
+# 绑定id或查询绑定id
+pjsk_bind = CmdHandler(["/pjsk bind", "/pjsk_bind", "/绑定"], logger)
+pjsk_bind.check_cdrate(cd).check_wblist(gbl)
+@pjsk_bind.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    # 查询
+    if not args:
+        uid = await get_user_bind_uid(ctx.user_id, check_bind=False)
+        if not uid:
+            return await ctx.asend_reply_msg("在指令后加上游戏ID进行绑定")
+        return await ctx.asend_reply_msg(f"已绑定游戏ID: {uid}")
+    # 绑定
+    profile = await get_basic_profile(args)
+    user_name = profile['user']['name']
+
+    bind_list = file_db.get("bind_list", {})
+    bind_list[str(ctx.user_id)] = args
+    file_db.set("bind_list", bind_list)
+
+    return await ctx.asend_reply_msg(f"绑定成功: {user_name} ({args})")
+
+
+# 查询个人名片
+pjsk_info = CmdHandler(["/pjsk info", "/pjsk_info", "/个人信息", "/名片"], logger)
+pjsk_info.check_cdrate(cd).check_wblist(gbl)
+@pjsk_info.handle()
+async def _(ctx: HandlerContext):
+    uid = await get_user_bind_uid(ctx.user_id)
+    res_profile = await get_basic_profile(uid)
+    logger.info(f"绘制名片 uid={uid}")
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_profile_image(res_profile)))
+        
 
 # ========================================= 定时任务 ========================================= #
 

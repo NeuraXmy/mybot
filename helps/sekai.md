@@ -9,6 +9,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
 - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
 - [`/pjsk chart` 谱面查询](#pjsk-chart)
+- [`/pjsk note num` 物量查询](#pjsk-note-num)
 - [`/pjsk card` 卡牌查询](#pjsk-card)
 - [`/pjsk card img` 卡面查询](#pjsk-card-img)
 
@@ -85,15 +86,30 @@ Project Sekai（世界计划）日服游戏相关服务
     `/谱面查询 热风 apd` 查询热风的 Append 谱面
 
 
+## `/pjsk note num`
+
+```
+根据物量查询谱面
+```
+
+- **指令别名**
+
+    `/物量` `/查物量` `/pjsk note count` 
+
+- **示例**
+
+    `/物量 1000` 查询物量为 1000 的谱面
+
 
 ## `/pjsk card`
 
 ```
-搜索某个角色的卡牌信息，支持用星级、属性、技能类型、限定类型过滤
+搜索某个角色的卡牌信息，支持用星级、属性、技能类型、限定类型、时间过滤
 星级示例：四星 4星 生日
 属性示例：粉花 粉 花 
 技能类型示例：奶 奶卡
 限定类型示例：限定 期间限定 fes限 非限
+时间示例：今年 去年 2024
 ```
 
 - **指令别名**
@@ -104,7 +120,7 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/查卡 knd` 查询 knd 的所有卡牌
 
-    `/查卡 knd 四星 粉花 奶卡 限定` 查询 knd 的四星粉花奶卡限定卡牌
+    `/查卡 knd 四星 粉花 奶卡 限定 今年` 查询 knd 今年的四星粉花奶卡限定卡牌
 
     `/查卡 123` 查询 ID 为 123 的卡牌详情，目前该功能未实现
 
@@ -138,6 +154,7 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pjsk_notify_live_on` 开启虚拟Live提醒
 
     `/pjsk_notify_song_off` 关闭新曲上线提醒
+
 
 ## `/pjsk update`
 

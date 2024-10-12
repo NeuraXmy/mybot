@@ -1158,10 +1158,10 @@ class MessageArgumentParser(ArgumentParser):
 from concurrent.futures import ThreadPoolExecutor
 pool_executor = ThreadPoolExecutor(max_workers=8)
 
-async def excute_in_pool(func, *args):
+async def run_in_pool(func, *args):
     return await asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
 
-def excute_in_pool_nowait(func, *args):
+def run_in_pool_nowait(func, *args):
     return asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
 
 
@@ -1369,18 +1369,70 @@ class SubHelper:
 
 
 
+BLACK = (0, 0, 0, 255)
+WHITE = (255, 255, 255, 255)
+TRANSPARENT = (0, 0, 0, 0)
+
+def get_font(path: str, size: int) -> ImageFont.ImageFont:
+    return ImageFont.truetype(path, size)
+
 def get_text_size(font: ImageFont.ImageFont, text: str) -> Tuple[int, int]:
     bbox = font.getbbox(text)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
+def get_text_offset(font: ImageFont.ImageFont, text: str) -> Tuple[int, int]:
+    bbox = font.getbbox(text)
+    return bbox[0], bbox[1]
 
-def resize_keep_ratio(img: Image.Image, max_size: int) -> Image.Image:
+def resize_keep_ratio(img: Image.Image, max_size: int, long_side=True) -> Image.Image:
     w, h = img.size
-    if w > h:
-        new_w = max_size
-        new_h = int(h / w * max_size)
+    if long_side:
+        if w > h:
+            ratio = max_size / w
+        else:
+            ratio = max_size / h
     else:
-        new_h = max_size
-        new_w = int(w / h * max_size)
-    return img.resize((new_w, new_h))
-    
+        if w > h:
+            ratio = max_size / h
+        else:
+            ratio = max_size / w
+    return img.resize((int(w * ratio), int(h * ratio)))
+
+class Painter:
+    def __init__(self, img: Image.Image):
+        self.img = img
+
+    def get(self) -> Image.Image:
+        return self.img
+
+    def text(self, text: str, pos: Tuple[int, int], font: ImageFont.ImageFont, fill: Tuple[int, int, int], align: str = "left"):
+        draw = ImageDraw.Draw(self.img)
+        offset = get_text_offset(font, text)
+        draw.text((pos[0] - offset[0], pos[1] - offset[1]), text, font=font, fill=fill, align=align)
+        
+    def paste(self, sub_img: Image.Image, pos: Tuple[int, int], size: Tuple[int, int] = None) -> Image.Image:
+        if size:
+            sub_img = resize_keep_ratio(sub_img, size[0])
+        self.img.paste(sub_img, pos, sub_img)
+
+    def rect(self, pos: Tuple[int, int], size: Tuple[int, int], fill: Tuple[int, int, int, int]):
+        pos = pos + (pos[0] + size[0], pos[1] + size[1])
+        if fill[3] == 255:
+            draw = ImageDraw.Draw(self.img)
+            draw.rectangle(pos, fill=fill)
+            return
+        overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        draw.rectangle(pos, fill=fill)
+        self.img = Image.alpha_composite(self.img, overlay)
+        
+    def roundrect(self, pos: Tuple[int, int], size: Tuple[int, int], fill: Tuple[int, int, int, int], radius: int):
+        pos = pos + (pos[0] + size[0], pos[1] + size[1])
+        if fill[3] == 255:
+            draw = ImageDraw.Draw(self.img)
+            draw.rounded_rectangle(pos, fill=fill, radius=radius)
+            return
+        overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        draw.rounded_rectangle(pos, fill=fill, radius=radius)
+        self.img = Image.alpha_composite(self.img, overlay)

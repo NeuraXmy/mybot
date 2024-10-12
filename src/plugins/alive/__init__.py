@@ -23,6 +23,8 @@ MAIL_USER = config['mail_user']
 MAIL_PASS = config['mail_pass']
 MAIL_RECEIVERS = config['mail_receivers']
 
+REPORT_GROUPS = config['report_groups']
+
 NONE_STATE = "none"
 CONNECT_STATE = "connect"
 DISCONNECT_STATE = "disconnect"
@@ -31,7 +33,7 @@ cur_state = NONE_STATE      # 当前连接状态
 noti_state = NONE_STATE     # 认为的连接状态
 cur_elapsed = timedelta(seconds=0)  # 当前连接状态持续时间
 last_check_time = None      # 上次检测时间
-
+group_reported = False      # 群已报告 
 
 # 发送通知
 async def send_noti(state):
@@ -58,7 +60,7 @@ async def send_noti(state):
 
 # 存活检测
 async def alive_check():
-    global cur_state, noti_state, cur_elapsed, last_check_time
+    global cur_state, noti_state, cur_elapsed, last_check_time, group_reported
     # 检测连接状态
     try:
         from nonebot import get_bot
@@ -78,6 +80,15 @@ async def alive_check():
     else:
         cur_elapsed += datetime.now() - last_check_time
     cur_state = new_state
+
+    # 如果获取链接，立刻报告群聊
+    if not group_reported and cur_state == CONNECT_STATE:
+        for group_id in REPORT_GROUPS:
+            try:
+                await send_group_msg_by_bot(bot, group_id, f"恢复连接")
+            except Exception as e:
+                logger.print_exc(f"向群 {group_id} 发送恢复连接通知失败")
+        group_reported = True
 
     # 如果当前状态不等于认为的状态且持续时间超过阈值，发送通知
     if cur_state != noti_state and cur_elapsed >= timedelta(seconds=TIME_THRESHOLD):

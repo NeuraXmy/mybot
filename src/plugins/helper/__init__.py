@@ -46,7 +46,7 @@ async def _(ctx: HandlerContext):
         doc_path = HELP_DOCS_PATH.format(name=args)
         doc_text = Path(doc_path).read_text()
         try:
-            image = await excute_in_pool(markdown_to_image, doc_text)
+            image = await run_in_pool(markdown_to_image, doc_text)
         except Exception as e:
             logger.print_exc(f"渲染{doc_path}帮助文档失败")
             return await ctx.asend_reply_msg(f"帮助文档渲染失败, 前往网页获取帮助文档:\n{HELP_DOCS_WEB_URL.format(name=args)}")
