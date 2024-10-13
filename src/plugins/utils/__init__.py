@@ -25,6 +25,7 @@ from typing import Optional, List, Tuple
 import shutil
 from PIL import Image, ImageDraw, ImageFont
 import re
+from .plot import *
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -1193,7 +1194,6 @@ def find_by(lst, key, value, mode="first", convert_to_str=True):
         return ret[-1]
     return ret
 
-
 # 获取按某个key去重后的dict列表
 def unique_by(lst, key):
     val_set = set()
@@ -1204,6 +1204,9 @@ def unique_by(lst, key):
             ret.append(item)
     return ret
 
+# 获取删除某个key为某个值的dict列表
+def remove_by(lst, key, value):
+    return [item for item in lst if key not in item or item[key] != value]
 
 
 @dataclass
@@ -1401,21 +1404,71 @@ def resize_keep_ratio(img: Image.Image, max_size: int, long_side=True) -> Image.
 class Painter:
     def __init__(self, img: Image.Image):
         self.img = img
+        self.offset = (0, 0)
+        self.size = img.size
+        self.w = img.size[0]
+        self.h = img.size[1]
+        self.region_stack = []
+
+    def set_region(self, pos: Tuple[int, int], size: Tuple[int, int]):
+        self.offset = pos
+        self.size = size
+        self.w = size[0]
+        self.h = size[1]
+        self.region_stack.append((self.offset, self.size))
+
+    def move_region(self, dlt: Tuple[int, int] = None, size: Tuple[int, int] = None):
+        if dlt is None: dlt = (0, 0)
+        if size is None: size = self.size
+        self.set_region((self.offset[0] + dlt[0], self.offset[1] + dlt[1]), size)
+
+    def back_last_region(self):
+        if not self.region_stack:
+            self.offset = (0, 0)
+            self.size = self.img.size
+            self.w = self.img.size[0]
+            self.h = self.img.size[1]
+        else:
+            self.offset, self.size = self.region_stack.pop()
+            self.w = self.size[0]
+            self.h = self.size[1]
 
     def get(self) -> Image.Image:
         return self.img
 
+    def bg_img(self, bg_img: Image.Image, align="mid"):
+        img_w, img_h = self.img.size
+        bg_w, bg_h = bg_img.size
+        scale = max(img_w / bg_w, img_h / bg_h)
+        bg_img = bg_img.resize((int(bg_w * scale), int(bg_h * scale)))
+
+        bg_w, bg_h = bg_img.size
+        if align == "mid":
+            pos = (img_w // 2 - bg_w // 2, img_h // 2 - bg_h // 2)
+        elif align == "top":
+            pos = (img_w // 2 - bg_w // 2, 0)
+        elif align == "bottom":
+            pos = (img_w // 2 - bg_w // 2, img_h - bg_h)
+        elif align == "left":
+            pos = (0, img_h // 2 - bg_h // 2)
+        elif align == "right":
+            pos = (img_w - bg_w, img_h // 2 - bg_h // 2)
+        else:
+            raise Exception("align must be mid/top/bottom/left/right")
+        self.img.paste(bg_img, pos)
+
     def text(self, text: str, pos: Tuple[int, int], font: ImageFont.ImageFont, fill: Tuple[int, int, int], align: str = "left"):
         draw = ImageDraw.Draw(self.img)
-        offset = get_text_offset(font, text)
-        draw.text((pos[0] - offset[0], pos[1] - offset[1]), text, font=font, fill=fill, align=align)
+        text_offset = get_text_offset(font, text)
+        draw.text((pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1]), text, font=font, fill=fill, align=align)
         
     def paste(self, sub_img: Image.Image, pos: Tuple[int, int], size: Tuple[int, int] = None) -> Image.Image:
         if size:
             sub_img = resize_keep_ratio(sub_img, size[0])
-        self.img.paste(sub_img, pos, sub_img)
+        self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]), sub_img)
 
     def rect(self, pos: Tuple[int, int], size: Tuple[int, int], fill: Tuple[int, int, int, int]):
+        pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
         if fill[3] == 255:
             draw = ImageDraw.Draw(self.img)
@@ -1427,6 +1480,7 @@ class Painter:
         self.img = Image.alpha_composite(self.img, overlay)
         
     def roundrect(self, pos: Tuple[int, int], size: Tuple[int, int], fill: Tuple[int, int, int, int], radius: int):
+        pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
         if fill[3] == 255:
             draw = ImageDraw.Draw(self.img)

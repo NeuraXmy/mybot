@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 from . import res
 from datetime import datetime
 
+
 config = get_config('sekai')
 logger = get_logger("Sekai")
 file_db = get_file_db("data/sekai/db.json", logger)
@@ -31,8 +32,6 @@ subs = {
 
 music_name_retriever = get_text_retriever("music_name")
 stamp_text_retriever = get_text_retriever("stamp_text")
-
-FONT_PATH = get_config('font_path')
 
 VLIVE_START_NOTIFY_BEFORE_MINUTE = config['vlive_start_notify_before_minute']
 VLIVE_END_NOTIFY_BEFORE_MINUTE  = config['vlive_end_notify_before_minute']
@@ -81,6 +80,22 @@ CARD_SKILL_NAMES = [
     ("judgment_up", "判", "判卡"),
 ]
 
+# ========================================= 绘图相关 ========================================= #
+
+FONT_PATH = get_config('font_path')
+
+BG_PADDING = 20
+REGION_COLOR = (255, 255, 255, 150)
+REGION_RADIUS = 10
+
+def random_bg():
+    bg = res.misc_images.get("bg_25.png")
+    return ImageBg(bg)
+
+def roundrect_bg():
+    return RoundRectBg(REGION_COLOR, REGION_RADIUS)
+
+
 # ========================================= 工具函数 ========================================= #
 
 # 获取资源路径
@@ -109,7 +124,19 @@ def extract_diff_suffix(s: str, default="master"):
                 return names[0], s.removesuffix(name)
     return diff, s
 
-# 根据曲目id获取曲目难度信息（等级、note数）
+# 从字符串中获取难度 返回(难度名, 去掉难度后缀的字符串)
+def extract_diff(text: str, default="master"):
+    all_names = []
+    for names in DIFF_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
+
+# 根据曲目id获取曲目难度信息
 def get_music_diff_info(mid, music_diffs):
     diffs = find_by(music_diffs, 'musicId', mid, mode='all')
     ret = {'level': {}, 'note_count': {}, 'has_append': False}
@@ -127,6 +154,19 @@ def get_music_cover_url(mid, musics):
     if music is None: return None
     url = MUSIC_COVER_IMG_URL.format(assetbundleName=music["assetbundleName"])
     return url
+
+# 获取歌曲封面图片
+async def get_music_cover_image(mid):
+    cache_path = res_path(f"music_cover/{mid}.png")
+    create_parent_folder(cache_path)
+    try:
+        return Image.open(cache_path)
+    except:
+        url = get_music_cover_url(mid, await res.musics.get())
+        if not url: raise Exception(f"曲目{mid}不存在")
+        img = await download_image(url)
+        img.save(cache_path)
+        return img
 
 # 更新曲名语义库
 @res.SekaiJsonRes.updated_hook("曲名语义库更新")
@@ -401,52 +441,41 @@ async def compose_card_list_image(cards):
     card_and_thumbs = [(card, thumb) for card, thumb in zip(cards, thumbs) if thumb is not None]
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
 
-    def compose(card_and_thumbs):
-        col_num = 3
-        row_num = (len(cards) + col_num - 1) // col_num
-        border = 20
-        grid_w, grid_h = 350, 200
-        full_w, full_h = col_num * (grid_w + border) + border, row_num * (grid_h + border) + border
-        img = Image.new('RGBA', (full_w, full_h))
-        draw = ImageDraw.Draw(img)
-        # 白色背景
-        draw.rectangle((0, 0, full_w, full_h), fill=(255, 255, 255, 255))
-        for i, (card, (normal, after)) in enumerate(card_and_thumbs):
-            col, row = i % col_num, i // col_num
-            x, y = col * (grid_w + border) + border, row * (grid_h + border) + border
-            # 绘制grid背景（长方形纯色）
-            grid_color = (240, 240, 240, 255)
-            if card["supply_show_name"]:
-                grid_color = (250, 240, 220, 255)
-            draw.rectangle((x, y, x + grid_w, y + grid_h), fill=grid_color)
-            # 绘制卡面完整缩略图
-            thumb_size = 128
-            normal = normal.resize((thumb_size, thumb_size))
-            if after is not None:
-                after = after.resize((thumb_size, thumb_size))
-                img.paste(normal, (x + grid_w // 2 - thumb_size - 5, y + 10), normal)
-                img.paste(after, (x + grid_w // 2 + 5, y + 10), after)
-            else:
-                img.paste(normal, (x + grid_w // 2 - thumb_size // 2, y + 10), normal)
-            # 绘制卡面名称
-            font = ImageFont.truetype(FONT_PATH, 16)
-            name = card['prefix']
-            cid = f"ID:{card['id']}"
-            if card["supply_show_name"]:
-                cid += f"【{card['supply_show_name']}】"
-            name_w, name_h = get_text_size(font, name)
-            cid_w, cid_h = get_text_size(font, cid)
-            draw.text((x + grid_w // 2 - name_w // 2, y + 10 + thumb_size + 10), name,             font=font, fill=(0, 0, 0, 255))
-            draw.text((x + grid_w // 2 - cid_w // 2,  y + 10 + thumb_size + 10 + name_h + 5), cid, font=font, fill=(32, 32, 32, 255))
-            # 绘制技能类型
-            skill_type_img = res.misc_images.get(f"skill_{card['skill_type']}.png")
-            skill_type_img_size = 32
-            skill_type_img = resize_keep_ratio(skill_type_img, skill_type_img_size)
-            skill_w, skill_h = skill_type_img.size
-            img.paste(skill_type_img, (x + grid_w - skill_w - 3, y + grid_h - skill_h - 3), skill_type_img)
+    canvas = Canvas(bg=random_bg()).set_padding(BG_PADDING)
+    grid = Grid(col_count=3).set_bg(roundrect_bg()).set_padding(16)
+    canvas.add_item(grid)
 
-        return img
-    return await run_in_pool(compose, card_and_thumbs)
+    for i, (card, (normal, after)) in enumerate(card_and_thumbs):
+        bg = RoundRectBg(fill=(255, 255, 255, 150), radius=REGION_RADIUS)
+        if card["supply_show_name"]: 
+            bg.fill = (255, 250, 220, 150)
+        f = Frame().set_content_align('rb').set_bg(bg)
+        grid.add_item(f)
+
+        skill_type_img = res.misc_images.get(f"skill_{card['skill_type']}.png")
+        f.add_item(ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(10))
+
+        vs = VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8)
+        f.add_item(vs)
+
+        GW = 300
+        hs = HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16)
+        if after is not None:
+            hs.add_item(ImageBox(normal, size=(100, 100), image_size_mode='fill'))
+            hs.add_item(ImageBox(after,  size=(100, 100), image_size_mode='fill'))
+        else:
+            hs.add_item(ImageBox(normal, size=(100, 100), image_size_mode='fill'))
+        vs.add_item(hs)
+
+        name_text = card['prefix']
+        vs.add_item(Text(name_text, TextStyle(font=FONT_PATH, size=16, color=BLACK)).set_w(GW).set_content_align('c'))
+
+        id_text = f"ID:{card['id']}"
+        if card["supply_show_name"]:
+            id_text += f"【{card['supply_show_name']}】"
+        vs.add_item(Text(id_text, TextStyle(font=FONT_PATH, size=16, color=BLACK)).set_w(GW).set_content_align('c'))
+
+    return await run_in_pool(canvas.get_img)
 
 # 获取卡面图片
 async def get_card_image(cid, after_training):
@@ -507,15 +536,11 @@ async def compose_profile_image(basic_profile):
         
     def compose(basic_profile, imgs):
         img_w, img_h = 800, 720
-        round_radius = 10
         p = Painter(Image.new('RGBA', (img_w, img_h)))
         # 背景
-        bg_img = res.misc_images.get("bg_25.png")
-        bg_img = resize_keep_ratio(bg_img, min(img_w, img_h), long_side=False)
-        bg_w, bg_h = bg_img.size
-        p.paste(bg_img, (img_w // 2 - bg_w // 2, img_h // 2 - bg_h // 2))
+        p.bg_img(res.misc_images.get("bg_25.png"))
         # 背景区域
-        p.roundrect((20, 20), (755, 675), (255, 255, 255, 150), round_radius)
+        p.roundrect((20, 20), (755, 675), REGION_COLOR, REGION_RADIUS)
         # 头像
         p.paste(imgs['avatar'], (54, 49), (120, 120))
         # 昵称
@@ -528,6 +553,48 @@ async def compose_profile_image(basic_profile):
 
     return await run_in_pool(compose, basic_profile, imgs)
         
+# 合成难度排行图片
+async def compose_diff_board_image(lv_musics, uid):
+    profile = (await get_detailed_profile(uid)) if uid else None
+    async def get_cover_nothrow(mid):
+        try: return await get_music_cover_image(mid)
+        except: return None
+    for i in range(len(lv_musics)):
+        lv, musics = lv_musics[i]
+        mids = [m['id'] for m in musics]
+        covers = await asyncio.gather(*[get_cover_nothrow(mid) for mid in mids])
+        for j in range(len(musics)):
+            musics[j]['cover_img'] = covers[j]
+        lv_musics[i] = (lv, [m for m in musics if m['cover_img'] is not None])
+
+    def compose(lv_musics, profile):
+        col_num = 10
+        border = 16
+        cover_size, sep = 20, 5
+        lv_row_num = [(len(musics) + col_num - 1) // col_num for lv, musics in lv_musics]
+        lv_region_h = [cover_size * row_num + sep * (row_num - 1) + border * 2 for row_num in lv_row_num]
+        full_w, full_h = border * 4, border * 4 # 外边界
+        full_w += border * 2 # 每个难度的内边界
+        full_w += cover_size * col_num + sep * (col_num - 1) # 曲目封面
+        for h in lv_region_h: full_h += h # 每个难度的高度
+        full_h += border * (len(lv_musics) - 1) # 难度间的间隔
+
+        p = Painter(Image.new('RGBA', (full_w, full_h)))
+        # 背景
+        p.bg_img(res.misc_images.get("bg_25.png"))
+        p.set_region((border, border, p.w - border * 2, p.h - border * 2))
+        p.roundrect((0, 0), (p.w, p.h), REGION_COLOR, REGION_RADIUS)
+        # 每个难度的区域
+        current_y = border
+        for (lv, musics), row_num, this_lv_h in zip(lv_musics, lv_row_num, lv_region_h):
+            p.set_region((border, current_y, p.w - border * 2, this_lv_h))
+
+            p.back_last_region()
+            current_y += this_lv_h + border
+
+
+
+    return await run_in_pool(compose, lv_musics, profile)
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -660,6 +727,42 @@ async def _(ctx: HandlerContext):
         if cn_title: msg += f"({cn_title}) "
         msg += f"{d} {lv}\n"
     return await ctx.asend_reply_msg(msg.strip())
+
+
+# 难度排行
+pjsk_diff_board = CmdHandler(["/pjsk diff board", "/pjsk_diff_board", "/难度排行"], logger)
+pjsk_diff_board.check_cdrate(cd).check_wblist(gbl)
+@pjsk_diff_board.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try:
+        diff, args = extract_diff(args)
+        assert diff
+    except:
+        return await ctx.asend_reply_msg("使用方式: /难度排行 难度 或 /难度排行 难度 等级")
+    lv = None
+    try: lv = int(args)
+    except: pass
+
+    musics = await res.musics.get()
+    music_diffs = await res.music_diffs.get()
+
+    logger.info(f"查询难度排行 diff={diff} lv={lv}")
+    lv_musics = {}
+
+    for music in musics:
+        mid = music["id"]
+        diff_info = get_music_diff_info(mid, music_diffs)
+        if diff == 'append' and not diff_info['has_append']: continue
+        music_lv = diff_info['level'][diff]
+        if lv and lv != music_lv: continue
+        if music_lv not in lv_musics:
+            lv_musics[music_lv] = []
+        lv_musics[music_lv].append(music)
+
+    lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
+    uid = get_user_bind_uid(ctx.user_id, check_bind=False)
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(lv_musics, uid)))
 
 
 # 表情查询/制作
