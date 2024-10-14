@@ -54,7 +54,7 @@ async def get_statistic(bot, group_id, date=None):
         topk_name.append(name)
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.png"
-    draw_all(recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
+    await run_in_pool(draw_all, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
     # 发送图片
     return await get_image_cq(path)
 

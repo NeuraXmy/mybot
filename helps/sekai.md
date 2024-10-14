@@ -5,6 +5,9 @@ Project Sekai（世界计划）日服游戏相关服务
 
 ###  用户指令
 
+- [`/pjsk bind` 绑定账号](#pjsk-bind)
+- [`/pjsk info` 查询个人信息](#pjsk-info)
+- [`/pjsk hide` 隐藏抓包数据](#pjsk-hide)
 - [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
 - [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
 - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
@@ -12,6 +15,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk note num` 物量查询](#pjsk-note-num)
 - [`/pjsk card` 卡牌查询](#pjsk-card)
 - [`/pjsk card img` 卡面查询](#pjsk-card-img)
+- [`/pjsk diff board` 难度排行查询](#pjsk-diff-board)
 
 ### 管理指令
 
@@ -19,6 +23,33 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk update` 手动更新数据](#pjsk-update)
 
 ---
+
+## `/pjsk bind`
+```
+绑定游戏ID
+```
+- **指令别名**
+    `/绑定`
+- **示例**
+    `/pjsk bind 123456789`
+
+
+## `/pjsk info`
+```
+查询个人信息
+```
+- **指令别名**
+    `/个人信息`
+- **示例**
+    `/pjsk info`
+
+
+## `/pjsk hide`
+```
+隐藏抓包数据，再次使用取消隐藏
+```
+- **示例**
+    `/pjsk hide`
 
 
 ## `/pjsk live`
@@ -104,12 +135,13 @@ Project Sekai（世界计划）日服游戏相关服务
 ## `/pjsk card`
 
 ```
-搜索某个角色的卡牌信息，支持用星级、属性、技能类型、限定类型、时间过滤
+搜索某个角色的卡牌信息，支持用星级、属性、技能类型、限定类型、时间、box过滤
 星级示例：四星 4星 生日
 属性示例：粉花 粉 花 
 技能类型示例：奶 奶卡
 限定类型示例：限定 期间限定 fes限 非限
 时间示例：今年 去年 2024
+加上"box"后可以只显示自己账户有的卡牌（需要绑定并上传抓包数据）
 ```
 
 - **指令别名**
@@ -165,6 +197,19 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/pjsk update`
+
+
+## `/pjsk diff board`
+```
+查询某个难度歌曲列表
+支持按等级筛选
+```
+- **指令别名**
+    `/难度排行`
+- **示例**
+    `/难度排行 ma` 查询 Master 难度歌曲列表
+    `/难度排行 ma 30` 查询 Master 30歌曲列表
+    `/难度排行 ma 30 32` 查询 Master 30~32歌曲列表
 
 
 --- 

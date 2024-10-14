@@ -14,6 +14,7 @@ from ..llm import get_text_retriever
 from PIL import Image, ImageDraw, ImageFont
 from . import res
 from datetime import datetime
+import random
 
 
 config = get_config('sekai')
@@ -80,16 +81,49 @@ CARD_SKILL_NAMES = [
     ("judgment_up", "判", "判卡"),
 ]
 
+
 # ========================================= 绘图相关 ========================================= #
 
 FONT_PATH = get_config('font_path')
 
-BG_PADDING = 20
+BG_PADDING = 16
 REGION_COLOR = (255, 255, 255, 150)
 REGION_RADIUS = 10
 
-def random_bg():
-    bg = res.misc_images.get("bg_25.png")
+COMMON_BGS = [
+    res.misc_images.get("bg/bg_area_1.png"),
+    res.misc_images.get("bg/bg_area_2.png"),
+    res.misc_images.get("bg/bg_area_3.png"),
+    res.misc_images.get("bg/bg_area_4.png"),
+    res.misc_images.get("bg/bg_area_11.png"),
+    res.misc_images.get("bg/bg_area_12.png"),
+    res.misc_images.get("bg/bg_area_13.png"),
+]
+GROUP_BGS = {
+    "ln": [res.misc_images.get("bg/bg_area_5.png"), res.misc_images.get("bg/bg_area_17.png")],
+    "mmj": [res.misc_images.get("bg/bg_area_7.png"), res.misc_images.get("bg/bg_area_18.png")],
+    "vbs": [res.misc_images.get("bg/bg_area_8.png"), res.misc_images.get("bg/bg_area_19.png")],
+    "ws": [res.misc_images.get("bg/bg_area_9.png"), res.misc_images.get("bg/bg_area_20.png")],
+    "25": [res.misc_images.get("bg/bg_area_10.png"), res.misc_images.get("bg/bg_area_21.png")],
+}
+
+DIFF_COLORS = {
+    "easy": (102, 221, 17, 255),
+    "normal": (51,187, 238, 255),
+    "hard": (255, 170, 0, 255),
+    "expert": (238, 68, 102, 255),
+    "master": (187, 51, 238, 255),
+    "append": (255, 131, 197, 255),
+}
+
+def random_bg(chara_id=None):
+    if chara_id is None:
+        return ImageBg(random.choice(COMMON_BGS))
+    else:
+        group = get_group_by_cid(chara_id)
+        if group not in GROUP_BGS:
+            group = random.choice(list(GROUP_BGS.keys()))
+        bg = random.choice(GROUP_BGS[group])
     return ImageBg(bg)
 
 def roundrect_bg():
@@ -108,6 +142,10 @@ def get_cid_by_nickname(nickname):
         if nickname in item['nicknames']:
             return int(item['id'])
     return None
+
+# 从角色id获取角色团名
+def get_group_by_cid(cid):
+    return find_by(CHARACTER_NICKNAMES, "id", cid)['group']
 
 # 从角色id获取角色昵称
 def get_nickname_by_cid(cid):
@@ -428,7 +466,7 @@ async def get_card_full_thumbnail(card, after_training):
         return img
 
 # 合成卡牌列表图片
-async def compose_card_list_image(cards):
+async def compose_card_list_image(chara_id, cards, qid):
     async def get_thumb_nothrow(card):
         try: 
             normal = await get_card_full_thumbnail(card, False)
@@ -441,11 +479,25 @@ async def compose_card_list_image(cards):
     card_and_thumbs = [(card, thumb) for card, thumb in zip(cards, thumbs) if thumb is not None]
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
 
-    canvas = Canvas(bg=random_bg()).set_padding(BG_PADDING)
+
+    canvas = Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING)
+    vs0 = VSplit().set_sep(16).set_content_align('lt').set_item_align('lt')
+    canvas.add_item(vs0)
+
+    box_card_ids = None
+    if qid:
+        profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
+        vs0.add_item(await get_detailed_profile_card(profile, pmsg))
+        if profile:
+            box_card_ids = set([int(item['cardId']) for item in profile['userCards']])
+
     grid = Grid(col_count=3).set_bg(roundrect_bg()).set_padding(16)
-    canvas.add_item(grid)
+    vs0.add_item(grid)
 
     for i, (card, (normal, after)) in enumerate(card_and_thumbs):
+        if box_card_ids and int(card['id']) not in box_card_ids: 
+            continue
+
         bg = RoundRectBg(fill=(255, 255, 255, 150), radius=REGION_RADIUS)
         if card["supply_show_name"]: 
             bg.fill = (255, 250, 220, 150)
@@ -453,7 +505,7 @@ async def compose_card_list_image(cards):
         grid.add_item(f)
 
         skill_type_img = res.misc_images.get(f"skill_{card['skill_type']}.png")
-        f.add_item(ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(10))
+        f.add_item(ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8))
 
         vs = VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8)
         f.add_item(vs)
@@ -468,12 +520,12 @@ async def compose_card_list_image(cards):
         vs.add_item(hs)
 
         name_text = card['prefix']
-        vs.add_item(Text(name_text, TextStyle(font=FONT_PATH, size=16, color=BLACK)).set_w(GW).set_content_align('c'))
+        vs.add_item(TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c'))
 
         id_text = f"ID:{card['id']}"
         if card["supply_show_name"]:
             id_text += f"【{card['supply_show_name']}】"
-        vs.add_item(Text(id_text, TextStyle(font=FONT_PATH, size=16, color=BLACK)).set_w(GW).set_content_align('c'))
+        vs.add_item(TextBox(id_text, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c'))
 
     return await run_in_pool(canvas.get_img)
 
@@ -501,24 +553,104 @@ async def get_basic_profile(uid):
         raise Exception(f"找不到ID为{uid}的玩家")
     return profile
 
-# 获取玩家详细信息
-async def get_detailed_profile(uid):
-    url = f"http://suite.unipjsk.com/api/user/{uid}/profile"
+# 获取玩家详细信息 -> profile, msg
+async def get_detailed_profile(qid, raise_exc=False):
+    cache_path = None
     try:
-        profile = await download_json(url)
-    except Exception as e:
-        if int(e.args[0]) == 403:
-            raise Exception("获取数据失败，上传抓包数据时未选择公开可读")
-        elif int(e.args[0]) == 404:
-            raise Exception("获取数据失败，未上传过抓包数据")
-        else:
+        try:
+            uid = get_user_bind_uid(qid)
+        except Exception as e:
+            logger.info(f"获取{qid}抓包数据失败: 未绑定游戏账号")
             raise e
-    if not profile:
-        raise Exception(f"找不到ID为{uid}的玩家")
-    return profile if profile else None
+        
+        hide_list = file_db.get("hide_list", [])
+        if qid in hide_list:
+            logger.info(f"获取{qid}抓包数据失败: 用户已隐藏抓包信息")
+            raise Exception("已隐藏抓包信息")
+        
+        cache_path = f"data/sekai/profile_cache/{uid}.json"
+
+        url = f"http://suite.unipjsk.com/api/user/{uid}/profile"
+        try:
+            profile = await download_json(url)
+        except Exception as e:
+            if int(e.args[0]) == 403:
+                logger.info(f"获取{qid}抓包数据失败: 上传抓包数据时未选择公开可读")
+                raise Exception("上传抓包数据时未选择公开可读")
+            elif int(e.args[0]) == 404:
+                logger.info(f"获取{qid}抓包数据失败: 未上传过抓包数据")
+                raise Exception("未上传过抓包数据")
+            else:
+                logger.info(f"获取{qid}抓包数据失败: {e}")
+                raise Exception(f"HTTP ERROR {e}")
+        if not profile:
+            logger.info(f"获取{qid}抓包数据失败: 找不到ID为{uid}的玩家")
+            raise Exception(f"找不到ID为{uid}的玩家")
+        
+        create_parent_folder(cache_path)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(profile, f, ensure_ascii=False, indent=4)
+        logger.info(f"获取{qid}抓包数据成功，数据已缓存")
+        
+    except Exception as e:
+        if cache_path and os.path.exists(cache_path):
+            with open(cache_path, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+            logger.info(f"从缓存获取{qid}抓包数据")
+            return profile, str(e) + "(使用缓存数据)"
+        else:
+            logger.info(f"未找到{qid}的缓存抓包数据")
+
+        if raise_exc:
+            raise Exception(f"获取抓包数据失败: {e}")
+        else:
+            return None, str(e)
+    return profile, ""
+
+# 从玩家详细信息获取该玩家头像的card id、chara id、group、avatar img
+async def get_player_avatar_info(detail_profile):
+    decks = detail_profile['userDecks'][0]
+    cards = [find_by(detail_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
+    for card in cards:
+        card['after_training'] = card['defaultImage'] == "special_training" and card['specialTrainingStatus'] == "done"
+    card_id = cards[0]['cardId']
+    avatar_img = await get_card_thumbnail(card_id, cards[0]['after_training'])
+    chara_id = find_by(await res.cards.get(), 'id', card_id)['characterId']
+    group = get_group_by_cid(chara_id)
+    return {
+        'card_id': card_id,
+        'chara_id': chara_id,
+        'group': group,
+        'avatar_img': avatar_img
+    }
+
+# 获取玩家详细信息的简单卡片
+async def get_detailed_profile_card(profile, msg) -> Frame:
+    f = Frame().set_bg(roundrect_bg()).set_padding(16)
+
+    hs = HSplit().set_content_align('c').set_item_align('c').set_sep(16)
+    f.add_item(hs)
+
+    if profile:
+        avatar_info = await get_player_avatar_info(profile)
+        hs.add_item(ImageBox(avatar_info['avatar_img'], size=(80, 80), image_size_mode='fill'))
+
+        vs = VSplit().set_content_align('c').set_item_align('l').set_sep(5)
+        hs.add_item(vs)
+
+        game_data = profile['user']['userGamedata']
+        update_time = datetime.fromtimestamp(profile['updatedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+
+        vs.add_item(TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)))
+        vs.add_item(TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)))
+        vs.add_item(TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)))
+
+    if msg:
+        vs.add_item(TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=16, color=RED)))
+    return f
 
 # 获取用户绑定的游戏id
-async def get_user_bind_uid(user_id, check_bind=True):
+def get_user_bind_uid(user_id, check_bind=True):
     user_id = str(user_id)
     bind_list = file_db.get("bind_list", {})
     if check_bind and not bind_list.get(user_id, None):
@@ -534,28 +666,27 @@ async def compose_profile_image(basic_profile):
         card['after_training'] = card['defaultImage'] == "special_training" and card['specialTrainingStatus'] == "done"
     imgs['avatar'] = await get_card_thumbnail(cards[0]['cardId'], cards[0]['after_training'])
         
-    def compose(basic_profile, imgs):
-        img_w, img_h = 800, 720
-        p = Painter(Image.new('RGBA', (img_w, img_h)))
-        # 背景
-        p.bg_img(res.misc_images.get("bg_25.png"))
-        # 背景区域
-        p.roundrect((20, 20), (755, 675), REGION_COLOR, REGION_RADIUS)
-        # 头像
-        p.paste(imgs['avatar'], (54, 49), (120, 120))
-        # 昵称
-        name = basic_profile['user']['name']
-        p.text(name, (191, 49), font=get_font(FONT_PATH, 36), fill=BLACK)
-        # id
-        p.text(f"ID: {basic_profile['user']['userId']}", (191, 100), font=get_font(FONT_PATH, 16), fill=BLACK)
+    # def compose(basic_profile, imgs):
+    #     img_w, img_h = 800, 720
+    #     p = Painter(Image.new('RGBA', (img_w, img_h)))
+    #     # 背景
+    #     p.bg_img(res.misc_images.get("bg_25.png"))
+    #     # 背景区域
+    #     p.roundrect((20, 20), (755, 675), REGION_COLOR, REGION_RADIUS)
+    #     # 头像
+    #     p.paste(imgs['avatar'], (54, 49), (120, 120))
+    #     # 昵称
+    #     name = basic_profile['user']['name']
+    #     p.text(name, (191, 49), font=get_font(FONT_PATH, 36), fill=BLACK)
+    #     # id
+    #     p.text(f"ID: {basic_profile['user']['userId']}", (191, 100), font=get_font(FONT_PATH, 16), fill=BLACK)
 
-        return p.get()
+    #     return p.get()
 
-    return await run_in_pool(compose, basic_profile, imgs)
+    # return await run_in_pool(compose, basic_profile, imgs)
         
 # 合成难度排行图片
-async def compose_diff_board_image(lv_musics, uid):
-    profile = (await get_detailed_profile(uid)) if uid else None
+async def compose_diff_board_image(diff, lv_musics, qid):
     async def get_cover_nothrow(mid):
         try: return await get_music_cover_image(mid)
         except: return None
@@ -567,34 +698,46 @@ async def compose_diff_board_image(lv_musics, uid):
             musics[j]['cover_img'] = covers[j]
         lv_musics[i] = (lv, [m for m in musics if m['cover_img'] is not None])
 
-    def compose(lv_musics, profile):
-        col_num = 10
-        border = 16
-        cover_size, sep = 20, 5
-        lv_row_num = [(len(musics) + col_num - 1) // col_num for lv, musics in lv_musics]
-        lv_region_h = [cover_size * row_num + sep * (row_num - 1) + border * 2 for row_num in lv_row_num]
-        full_w, full_h = border * 4, border * 4 # 外边界
-        full_w += border * 2 # 每个难度的内边界
-        full_w += cover_size * col_num + sep * (col_num - 1) # 曲目封面
-        for h in lv_region_h: full_h += h # 每个难度的高度
-        full_h += border * (len(lv_musics) - 1) # 难度间的间隔
+    profile, pmsg = await get_detailed_profile(qid, raise_exc=False)
+    if profile:
+        avatar_info = await get_player_avatar_info(profile)
+        chara_id = avatar_info['chara_id']
+    else:
+        chara_id = None
+    canvas = Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING)
 
-        p = Painter(Image.new('RGBA', (full_w, full_h)))
-        # 背景
-        p.bg_img(res.misc_images.get("bg_25.png"))
-        p.set_region((border, border, p.w - border * 2, p.h - border * 2))
-        p.roundrect((0, 0), (p.w, p.h), REGION_COLOR, REGION_RADIUS)
-        # 每个难度的区域
-        current_y = border
-        for (lv, musics), row_num, this_lv_h in zip(lv_musics, lv_row_num, lv_region_h):
-            p.set_region((border, current_y, p.w - border * 2, this_lv_h))
+    vs0 = VSplit().set_content_align('lt').set_item_align('lt').set_sep(16)
+    canvas.add_item(vs0)
 
-            p.back_last_region()
-            current_y += this_lv_h + border
+    if profile:
+        vs0.add_item(await get_detailed_profile_card(profile, pmsg))
 
+    vs = VSplit().set_bg(roundrect_bg()).set_padding(16).set_sep(16)
+    vs0.add_item(vs)
 
+    lv_musics.sort(key=lambda x: x[0], reverse=False)
 
-    return await run_in_pool(compose, lv_musics, profile)
+    for lv, musics in lv_musics:
+        if not musics: continue
+        musics.sort(key=lambda x: x['releasedAt'], reverse=False)
+
+        vs2 = VSplit().set_bg(roundrect_bg()).set_padding(8).set_item_align('lt').set_sep(8)
+        vs.add_item(vs2)
+
+        lv_text = TextBox(f"{diff.upper()} {lv}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=WHITE))
+        lv_text.set_padding((10, 5)).set_bg(RoundRectBg(fill=DIFF_COLORS[diff], radius=10))
+        vs2.add_item(lv_text)
+        
+        grid = Grid(col_count=10).set_sep(5)
+        vs2.add_item(grid)
+        for i in range(len(musics)):
+            cover_f = Frame()
+            grid.add_item(cover_f)
+
+            
+            cover_f.add_item(ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill'))
+
+    return await run_in_pool(canvas.get_img)
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -739,30 +882,44 @@ async def _(ctx: HandlerContext):
         diff, args = extract_diff(args)
         assert diff
     except:
-        return await ctx.asend_reply_msg("使用方式: /难度排行 难度 或 /难度排行 难度 等级")
-    lv = None
-    try: lv = int(args)
-    except: pass
+        return await ctx.asend_reply_msg("使用方式: /难度排行 ma 或 /难度排行 ma 32 或 /难度排行 ma 24 32")
+    lv, ma_lv, mi_lv = None, None, None
+
+    try: 
+        lvs = args.strip().split()
+        assert len(lvs) == 2
+        lvs = list(map(int, lvs))
+        ma_lv = max(lvs)
+        mi_lv = min(lvs)
+    except:
+        ma_lv = mi_lv = None
+        try: lv = int(args)
+        except: pass
 
     musics = await res.musics.get()
     music_diffs = await res.music_diffs.get()
 
-    logger.info(f"查询难度排行 diff={diff} lv={lv}")
+    logger.info(f"查询难度排行 diff={diff} lv={lv} ma_lv={ma_lv} mi_lv={mi_lv}")
     lv_musics = {}
 
     for music in musics:
         mid = music["id"]
         diff_info = get_music_diff_info(mid, music_diffs)
-        if diff == 'append' and not diff_info['has_append']: continue
+        if diff not in diff_info['level']: continue
         music_lv = diff_info['level'][diff]
+        if ma_lv and music_lv > ma_lv: continue
+        if mi_lv and music_lv < mi_lv: continue
         if lv and lv != music_lv: continue
         if music_lv not in lv_musics:
             lv_musics[music_lv] = []
         lv_musics[music_lv].append(music)
+    
+    if not lv_musics:
+        return await ctx.asend_reply_msg(f"没有找到符合条件的曲目")
 
     lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
-    uid = get_user_bind_uid(ctx.user_id, check_bind=False)
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(lv_musics, uid)))
+
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(diff, lv_musics, ctx.user_id)))
 
 
 # 表情查询/制作
@@ -896,6 +1053,13 @@ async def _(ctx: HandlerContext):
             supply, args = extract_card_supply(args)
             skill, args = extract_card_skill(args)
             year, args = extract_year(args)
+
+            if 'box' in args:
+                args = args.replace('box', '').strip()
+                box = True
+            else:
+                box = False
+
             chara_id = get_cid_by_nickname(args)
             assert chara_id is not None
         except:
@@ -947,7 +1111,10 @@ async def _(ctx: HandlerContext):
         logger.info(f"搜索到{len(res_cards)}个卡牌")
         if len(res_cards) == 0:
             return await ctx.asend_reply_msg("没有找到相关卡牌")
-        return await ctx.asend_reply_msg(await get_image_cq(await compose_card_list_image(res_cards)))
+
+        qid = ctx.user_id if box else None
+        
+        return await ctx.asend_reply_msg(await get_image_cq(await compose_card_list_image(chara_id, res_cards, qid)))
         
         
 # 卡面查询
@@ -974,7 +1141,7 @@ async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     # 查询
     if not args:
-        uid = await get_user_bind_uid(ctx.user_id, check_bind=False)
+        uid = get_user_bind_uid(ctx.user_id, check_bind=False)
         if not uid:
             return await ctx.asend_reply_msg("在指令后加上游戏ID进行绑定")
         return await ctx.asend_reply_msg(f"已绑定游戏ID: {uid}")
@@ -989,12 +1156,28 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(f"绑定成功: {user_name} ({args})")
 
 
+# 隐藏/取消隐藏详细信息
+pjsk_hide = CmdHandler(["/pjsk hide", "/pjsk_hide", "/隐藏"], logger)
+pjsk_hide.check_cdrate(cd).check_wblist(gbl)
+@pjsk_hide.handle()
+async def _(ctx: HandlerContext):
+    lst = file_db.get("hide_list", [])
+    if ctx.user_id in lst:
+        lst.remove(ctx.user_id)
+        file_db.set("hide_list", lst)
+        return await ctx.asend_reply_msg("取消隐藏抓包信息")
+    else:
+        lst.append(ctx.user_id)
+        file_db.set("hide_list", lst)
+        return await ctx.asend_reply_msg("已隐藏抓包信息")
+    
+
 # 查询个人名片
 pjsk_info = CmdHandler(["/pjsk info", "/pjsk_info", "/个人信息", "/名片"], logger)
 pjsk_info.check_cdrate(cd).check_wblist(gbl)
 @pjsk_info.handle()
 async def _(ctx: HandlerContext):
-    uid = await get_user_bind_uid(ctx.user_id)
+    uid = get_user_bind_uid(ctx.user_id)
     res_profile = await get_basic_profile(uid)
     logger.info(f"绘制名片 uid={uid}")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_profile_image(res_profile)))

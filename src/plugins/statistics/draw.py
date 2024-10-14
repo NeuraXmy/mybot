@@ -14,13 +14,19 @@ config = get_config("statistics")
 logger = get_logger("Sta")
 file_db = get_file_db("data/statistics/db.json", logger)
 
-FONT_PATH = get_config('font_path')
-FONT_NAME = get_config('font_name')
+FONT_NAME = "Source Han Sans CN"
+FONT_PATH = "data/utils/fonts/SourceHanSansCN-Regular.otf"
 
 plt.switch_backend('agg')
-matplotlib.rcParams['font.sans-serif']=[FONT_NAME]
+matplotlib.rcParams['font.family']=[FONT_NAME]
 matplotlib.rcParams['axes.unicode_minus']=False   
 
+
+def pil_fig_to_image(fig) -> Image.Image:
+    buf = io.BytesIO()
+    fig.savefig(buf)
+    buf.seek(0)
+    return Image.open(buf)
 
 # 绘制饼图
 def draw_pie(ax, recs, topk_user, topk_name, date):
@@ -40,8 +46,6 @@ def draw_pie(ax, recs, topk_user, topk_name, date):
     other_image_count = sum([user_image_count.get(user) for user in user_count.keys() if user not in topk_user])
     labels = [f'{topk_name[i]} ({topk_user_count[i]},{user_image_count.get(topk_user[i])})' for i in range(topk)] 
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
-
-    ax.text(-0.4, 0.98, f"{date} 今日消息总数：{len(recs)}", fontsize=12, transform=ax.transAxes)
     ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
 
 
@@ -115,8 +119,8 @@ def init_jieba():
     if not jieba_inited: reset_jieba()
 
 
-# 绘制词云图
-def draw_wordcloud(ax, recs, users, names):
+# 绘制词云图 返回前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例文本
+def draw_wordcloud(ax, recs, users, names) -> str:
     logger.info(f"开始绘制词云图")
     init_jieba()
 
@@ -213,24 +217,49 @@ def draw_wordcloud(ax, recs, users, names):
             else: text += " | "
             text += f"{name}({int(rate * 100)}%)"
         if i != len(topk_words) - 1: text += "\n"
-    ax.text(0.0, -0.18, text, fontsize=12, transform=ax.transAxes, color='#bbbbbb')
+    return text
 
 
 # 绘制所有图
 def draw_all(recs, interval, topk1, topk2, user, name, path, date):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
-    fig, ax = plt.subplots(figsize=(8, 15), nrows=3, ncols=1)
+
+    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
+    draw_pie(ax, recs, user[:topk1], name[:topk1], date)
+    pie_image = pil_fig_to_image(fig)
 
-    draw_pie(ax[0], recs, user[:topk1], name[:topk1], date)
-    draw_plot(ax[2], recs, interval, user[:topk2], name[:topk2])
-    draw_wordcloud(ax[1], recs, user, name)
+    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
+    fig.tight_layout()
+    draw_plot(ax, recs, interval, user[:topk2], name[:topk2])
+    plot_image = pil_fig_to_image(fig)
 
-    import os
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    plt.savefig(path)
-    plt.close()
+    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
+    fig.tight_layout()
+    word_rank_text = draw_wordcloud(ax, recs, user, name)
+    wordcloud_image = pil_fig_to_image(fig)
+
+    canvas = Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10)
+    vs = VSplit().set_sep(10).set_padding(10)
+    canvas.add_item(vs)
+
+    bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
+
+    title = TextBox(f"{date} 群聊消息统计 总消息数: {len(recs)}条", style=TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
+    title.set_bg(bg).set_padding(10).set_w(850)
+    vs.add_item(title)
+
+    vs.add_item(ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
+    vs.add_item(ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
+
+    wrt = TextBox(word_rank_text, style=TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT), line_count=3)
+    wrt.set_bg(bg).set_padding(10).set_w(850)
+    vs.add_item(wrt)
+
+    vs.add_item(ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
+
+    canvas.get_img().save(path)
     logger.info(f"绘制完成")
 
 

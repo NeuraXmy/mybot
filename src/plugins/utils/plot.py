@@ -4,6 +4,7 @@ from typing import Union, Tuple, List, Optional
 from PIL import Image, ImageFont, ImageDraw
 from PIL.ImageFont import ImageFont as Font
 from dataclasses import dataclass
+import os
 
 # =========================== 绘图 =========================== #
 
@@ -20,11 +21,20 @@ GREEN = (0, 255, 0, 255)
 BLUE = (0, 0, 255, 255)
 TRANSPARENT = (0, 0, 0, 0)
 
-DEFAULT_FONT_PATH = "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"
 
+FONT_DIR = "data/utils/fonts/"
+DEFAULT_FONT = "SourceHanSansCN-Regular"
+DEFAULT_BOLD_FONT = "SourceHanSansCN-Bold"
 
 def get_font(path: str, size: int) -> Font:
-    return ImageFont.truetype(path, size)
+    paths = [path]
+    paths.append(os.path.join(FONT_DIR, path))
+    paths.append(os.path.join(FONT_DIR, path + ".ttf"))
+    paths.append(os.path.join(FONT_DIR, path + ".otf"))
+    for path in paths:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    raise FileNotFoundError(f"Font file not found: {path}")
 
 def get_text_size(font: Font, text: str) -> Tuple[int, int]:
     bbox = font.getbbox(text)
@@ -108,6 +118,8 @@ class Painter:
     ):
         draw = ImageDraw.Draw(self.img)
         text_offset = get_text_offset(font, text)
+        text_offset = (text_offset[0] // 2, text_offset[1] // 2)
+        # text_offset = (0, 0)
         pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
         draw.text(pos, text, font=font, fill=fill, align=align)
         return self
@@ -120,7 +132,10 @@ class Painter:
     ) -> Image.Image:
         if size and size != sub_img.size:
             sub_img = sub_img.resize(size)
-        self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]), sub_img)
+        if sub_img.mode == 'RGBA':
+            self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]), sub_img)
+        else:
+            self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]))
         return self
 
     def rect(
@@ -270,6 +285,7 @@ class Widget:
         self.w = None
         self.h = None
         self.bg = None
+        self.offset = (0, 0)
 
         self._calc_w = None
         self._calc_h = None
@@ -290,8 +306,8 @@ class Widget:
             self.vmargin = margin
             self.hmargin = margin
         else:
-            self.vmargin = margin[0]
-            self.hmargin = margin[1]
+            self.hmargin = margin[0]
+            self.vmargin = margin[1]
         return self
 
     def set_padding(self, padding: Union[int, Tuple[int, int]]):
@@ -299,8 +315,8 @@ class Widget:
             self.vpadding = padding
             self.hpadding = padding
         else:
-            self.vpadding = padding[0]
-            self.hpadding = padding[1]
+            self.hpadding = padding[0]
+            self.vpadding = padding[1]
         return self
 
     def set_size(self, size: Tuple[int, int]):
@@ -315,6 +331,10 @@ class Widget:
     
     def set_h(self, h: int):
         self.h = h
+        return self
+
+    def set_offset(self, offset: Tuple[int, int]):
+        self.offset = offset
         return self
 
     def set_bg(self, bg: WidgetBg):
@@ -360,7 +380,7 @@ class Widget:
             import random
             color = (random.randint(0, 200), random.randint(0, 200), random.randint(0, 200), 255)
             p.rect((0, 0), (p.w, p.h), TRANSPARENT, stroke=color, stroke_width=2)
-            font = get_font(DEFAULT_FONT_PATH, 16)
+            font = get_font(DEFAULT_FONT, 16)
             s = f"{self.__class__.__name__}({p.w},{p.h})"
             s += f"self={self._get_self_size()}"
             s += f"content={self._get_content_size()}"
@@ -375,6 +395,7 @@ class Widget:
     def draw(self, p: Painter):
         assert p.size == self._get_self_size()
 
+        p.move_region(self.offset)
         p.shrink_region((self.hmargin, self.vmargin))
         self._draw_self(p)
 
@@ -383,7 +404,8 @@ class Widget:
         p.move_region((cx, cy)) 
         self._draw_content(p)
 
-        p.restore_region(3)
+        p.restore_region(4)
+  
         
 
 class Frame(Widget):
@@ -729,12 +751,12 @@ class Grid(Widget):
 
 @dataclass
 class TextStyle:
-    font: str = DEFAULT_FONT_PATH
+    font: str = DEFAULT_FONT
     size: int = 16
     color: Tuple[int, int, int, int] = BLACK
 
 
-class Text(Widget):
+class TextBox(Widget):
     def __init__(self, text: str = '', style: TextStyle = None, line_count=1, line_sep=2, wrap=True, overflow='shrink'):
         super().__init__()
         self.text = text
@@ -745,7 +767,7 @@ class Text(Widget):
         assert overflow in ('shrink', 'clip')
         self.overflow = overflow
 
-        self.set_padding(5)
+        self.set_padding(2)
         self.set_margin(0)
 
     def set_text(self, text: str):

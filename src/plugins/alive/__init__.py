@@ -101,7 +101,7 @@ async def alive_check():
 
 
 # 定时任务
-start_repeat_with_interval(CHECK_INTERVAL, alive_check, logger, "存活检测", start_offset=10, error_limit=999999)
+start_repeat_with_interval(CHECK_INTERVAL, alive_check, logger, "存活检测", start_offset=5, error_limit=999999)
 
 
 # 测试命令
