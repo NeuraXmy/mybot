@@ -3,8 +3,11 @@ from enum import Enum
 from typing import Union, Tuple, List, Optional
 from PIL import Image, ImageFont, ImageDraw
 from PIL.ImageFont import ImageFont as Font
+import threading
+import contextvars
 from dataclasses import dataclass
 import os
+import numpy as np
 
 # =========================== 绘图 =========================== #
 
@@ -21,10 +24,15 @@ GREEN = (0, 255, 0, 255)
 BLUE = (0, 0, 255, 255)
 TRANSPARENT = (0, 0, 0, 0)
 
-
 FONT_DIR = "data/utils/fonts/"
 DEFAULT_FONT = "SourceHanSansCN-Regular"
 DEFAULT_BOLD_FONT = "SourceHanSansCN-Bold"
+
+
+Color = Tuple[int, int, int, int]
+Position = Tuple[int, int]
+Size = Tuple[int, int]
+
 
 def get_font(path: str, size: int) -> Font:
     paths = [path]
@@ -36,11 +44,11 @@ def get_font(path: str, size: int) -> Font:
             return ImageFont.truetype(path, size)
     raise FileNotFoundError(f"Font file not found: {path}")
 
-def get_text_size(font: Font, text: str) -> Tuple[int, int]:
+def get_text_size(font: Font, text: str) -> Size:
     bbox = font.getbbox(text)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-def get_text_offset(font: Font, text: str) -> Tuple[int, int]:
+def get_text_offset(font: Font, text: str) -> Position:
     bbox = font.getbbox(text)
     return bbox[0], bbox[1]
 
@@ -59,6 +67,60 @@ def resize_keep_ratio(img: Image.Image, max_size: int, long_side=True) -> Image.
     return img.resize((int(w * ratio), int(h * ratio)))
 
 
+class Gradient:
+    def get_colors(self, size: Size) -> np.ndarray: 
+        # [W, H, 4]
+        raise NotImplementedError()
+
+    def get_img(self, size: Size, mask: Image.Image=None) -> Image.Image:
+        img = Image.fromarray(self.get_colors(size), 'RGBA')
+        if mask:
+            assert mask.size == size, "Mask size must match image size"
+            if mask.mode == 'RGBA':
+                mask = mask.split()[3]
+            else:
+                mask = mask.convert('L')
+            img.putalpha(mask)
+        return img
+
+class LinearGradient(Gradient):
+    def __init__(self, c1: Color, c2: Color, p1: Position, p2: Position):
+        self.c1 = c1
+        self.c2 = c2
+        self.p1 = p1
+        self.p2 = p2
+        assert p1 != p2, "p1 and p2 cannot be the same point"
+
+    def get_colors(self, size: Size) -> np.ndarray:
+        w, h = size
+        p1 = np.array(self.p1) * np.array((w, h))
+        p2 = np.array(self.p2) * np.array((w, h))
+        y_indices, x_indices = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        coords = np.stack((x_indices, y_indices), axis=-1)
+        dist = np.linalg.norm(coords - p1, axis=-1) / np.linalg.norm(p2 - p1)
+        dist = np.clip(dist, 0, 1)
+        colors = dist[:, :, np.newaxis] * np.array(self.c1) + (1 - dist)[:, :, np.newaxis] * np.array(self.c2)
+        return colors.astype(np.uint8)
+
+class RadialGradient(Gradient):
+    def __init__(self, c1: Color, c2: Color, center: Position, radius: float):
+        self.c1 = c1
+        self.c2 = c2
+        self.center = center
+        self.radius = radius
+
+    def get_colors(self, size: Size) -> np.ndarray:
+        w, h = size
+        center = np.array(self.center) * np.array((w, h))
+        y_indices, x_indices = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        coords = np.stack((x_indices, y_indices), axis=-1)
+        dist = np.linalg.norm(coords - center, axis=-1) / self.radius
+        dist = np.clip(dist, 0, 1)
+        colors = dist[:, :, np.newaxis] * np.array(self.c1) + (1 - dist)[:, :, np.newaxis] * np.array(self.c2)
+        return colors.astype(np.uint8)
+    
+        
+
 class Painter:
     def __init__(self, img: Image.Image):
         self.img = img
@@ -68,7 +130,7 @@ class Painter:
         self.h = img.size[1]
         self.region_stack = []
 
-    def set_region(self, pos: Tuple[int, int], size: Tuple[int, int]):
+    def set_region(self, pos: Position, size: Size):
         self.region_stack.append((self.offset, self.size))
         self.offset = pos
         self.size = size
@@ -76,17 +138,17 @@ class Painter:
         self.h = size[1]
         return self
 
-    def shrink_region(self, dlt: Tuple[int, int]):
+    def shrink_region(self, dlt: Position):
         pos = (self.offset[0] + dlt[0], self.offset[1] + dlt[1])
         size = (self.size[0] - dlt[0] * 2, self.size[1] - dlt[1] * 2)
         return self.set_region(pos, size)
 
-    def expand_region(self, dlt: Tuple[int, int]):
+    def expand_region(self, dlt: Position):
         pos = (self.offset[0] - dlt[0], self.offset[1] - dlt[1])
         size = (self.size[0] + dlt[0] * 2, self.size[1] + dlt[1] * 2)
         return self.set_region(pos, size)
 
-    def move_region(self, dlt: Tuple[int, int], size: Tuple[int, int] = None):
+    def move_region(self, dlt: Position, size: Size = None):
         offset = (self.offset[0] + dlt[0], self.offset[1] + dlt[1])
         size = size or self.size
         return self.set_region(offset, size)
@@ -111,9 +173,9 @@ class Painter:
     def text(
         self, 
         text: str, 
-        pos: Tuple[int, int], 
+        pos: Position, 
         font: Font,
-        fill: Tuple[int, int, int], 
+        fill: Color = BLACK,
         align: str = "left"
     ):
         draw = ImageDraw.Draw(self.img)
@@ -127,8 +189,8 @@ class Painter:
     def paste(
         self, 
         sub_img: Image.Image,
-        pos: Tuple[int, int], 
-        size: Tuple[int, int] = None
+        pos: Position, 
+        size: Size = None
     ) -> Image.Image:
         if size and size != sub_img.size:
             sub_img = sub_img.resize(size)
@@ -140,50 +202,77 @@ class Painter:
 
     def rect(
         self, 
-        pos: Tuple[int, int], 
-        size: Tuple[int, int], 
-        fill: Tuple[int, int, int, int], 
-        stroke: Tuple[int, int, int, int]=None, 
-        stroke_width: int=1
+        pos: Position, 
+        size: Size, 
+        fill: Union[Color, Gradient], 
+        stroke: Color=None, 
+        stroke_width: int=1,
     ):
+        if isinstance(fill, Gradient):
+            gradient = fill
+            fill = BLACK
+        else:
+            gradient = None
+
         pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
-        if fill[3] == 255:
+        if fill[3] == 255 and not gradient:
             draw = ImageDraw.Draw(self.img)
             draw.rectangle(pos, fill=fill)
-            return self
-        overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        if stroke:
-            draw.rectangle(pos, fill=TRANSPARENT, outline=stroke, width=stroke_width)
         else:
-            draw.rectangle(pos, fill=fill)
-        self.img = Image.alpha_composite(self.img, overlay)
+            overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            if stroke:
+                draw.rectangle(pos, fill=fill, outline=stroke, width=stroke_width)
+            else:
+                draw.rectangle(pos, fill=fill)
+
+            if gradient:
+                mask = overlay.crop((pos[0], pos[1], pos[2] + 1, pos[3] + 1))
+                gradient_img = gradient.get_img((size[0] + 1, size[1] + 1), mask)
+                overlay.paste(gradient_img, pos[:2], gradient_img)
+
+            self.img = Image.alpha_composite(self.img, overlay)
+
         return self
         
     def roundrect(
         self, 
-        pos: Tuple[int, int], 
-        size: Tuple[int, int], 
-        fill: Tuple[int, int, int, int], 
+        pos: Position, 
+        size: Size, 
+        fill: Union[Color, Gradient],
         radius: int, 
-        stroke: Tuple[int, int, int, int]=None, 
+        stroke: Color=None, 
         stroke_width: int=1,
         corners = (True, True, True, True),
     ):
+        if isinstance(fill, Gradient):
+            gradient = fill
+            fill = BLACK
+        else:
+            gradient = None
+
         pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
-        if fill[3] == 255:
+        if fill[3] == 255 and not gradient:
             draw = ImageDraw.Draw(self.img)
             draw.rounded_rectangle(pos, fill=fill, radius=radius)
             return self
-        overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        if stroke:
-            draw.rounded_rectangle(pos, fill=fill, radius=radius, outline=stroke, width=stroke_width, corners=corners)
         else:
-            draw.rounded_rectangle(pos, fill=fill, radius=radius, corners=corners)
-        self.img = Image.alpha_composite(self.img, overlay)
+            overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            if stroke:
+                draw.rounded_rectangle(pos, fill=fill, radius=radius, outline=stroke, width=stroke_width, corners=corners)
+            else:
+                draw.rounded_rectangle(pos, fill=fill, radius=radius, corners=corners)
+
+            if gradient:
+                mask = overlay.crop((pos[0], pos[1], pos[2] + 1, pos[3] + 1))
+                gradient_img = gradient.get_img((size[0] + 1, size[1] + 1), mask)
+                overlay.paste(gradient_img, pos[:2], gradient_img)
+
+            self.img = Image.alpha_composite(self.img, overlay)
+        
         return self
 
 
@@ -200,7 +289,7 @@ class WidgetBg:
         raise NotImplementedError()
 
 class FillBg(WidgetBg):
-    def __init__(self, fill: Tuple[int, int, int, int], stroke: Tuple[int, int, int, int]=None, stroke_width: int=1):
+    def __init__(self, fill: Color, stroke: Color=None, stroke_width: int=1):
         self.fill = fill
         self.stroke = stroke
         self.stroke_width = stroke_width
@@ -209,7 +298,7 @@ class FillBg(WidgetBg):
         p.rect((0, 0), p.size, self.fill, self.stroke, self.stroke_width)
 
 class RoundRectBg(WidgetBg):
-    def __init__(self, fill: Tuple[int, int, int, int], radius: int, stroke: Tuple[int, int, int, int]=None, stroke_width: int=1, corners = (True, True, True, True)):
+    def __init__(self, fill: Color, radius: int, stroke: Color=None, stroke_width: int=1, corners = (True, True, True, True)):
         self.fill = fill
         self.radius = radius
         self.stroke = stroke
@@ -273,6 +362,8 @@ class ImageBg(WidgetBg):
 
 
 class Widget:
+    _thread_local = contextvars.ContextVar('local', default=None)
+
     def __init__(self):
         self.parent: Optional[Widget] = None
 
@@ -290,6 +381,39 @@ class Widget:
         self._calc_w = None
         self._calc_h = None
 
+        if Widget.get_current_widget():
+            Widget.get_current_widget().add_item(self)
+
+    @classmethod
+    def get_current_widget_stack(cls) -> List[Widget]:
+        local = cls._thread_local.get()
+        if local is None: return None
+        return local.wstack
+
+    @classmethod
+    def get_current_widget(cls) -> Optional[Widget]:
+        stk = cls.get_current_widget_stack()
+        if stk is None: return None
+        return stk[-1]
+
+    def __enter__(self):
+        local = self._thread_local.get() 
+        if local is None:
+            local = threading.local()
+            local.wstack = []
+        local.wstack.append(self)
+        self._thread_local.set(local)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        local = self._thread_local.get()
+        assert local is not None and local.wstack[-1] == self
+        local.wstack.pop()
+        if not local.wstack:
+            self._thread_local.set(None)
+
+    def add_item(self, item: Widget):
+        raise NotImplementedError()
 
     def set_parent(self, parent: Widget):
         self.parent = parent
@@ -784,6 +908,7 @@ class TextBox(Widget):
     
     def set_line_sep(self, sep: int):
         self.line_sep = sep
+        return self
 
     def set_wrap(self, wrap: bool):
         self.wrap = wrap
@@ -877,18 +1002,23 @@ class TextBox(Widget):
     
 
 class ImageBox(Widget):
-    def __init__(self, image: Union[str, Image.Image], image_size_mode='original', size=None):
+    def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None):
         super().__init__()
         if isinstance(image, str):
             self.image = Image.open(image)
         else:
             self.image = image
 
-        assert image_size_mode in ('fit', 'fill', 'original')
-        self.image_size_mode = image_size_mode
-
         if size:
             self.set_size(size)
+
+        if image_size_mode is None:
+            if size[0] or size[1]:
+                self.set_image_size_mode('fit')
+            else:
+                self.set_image_size_mode('original')
+        else:
+            self.set_image_size_mode(image_size_mode)
         
         self.set_margin(0)
         self.set_padding(0)

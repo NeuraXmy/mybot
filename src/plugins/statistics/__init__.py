@@ -50,8 +50,11 @@ async def get_statistic(bot, group_id, date=None):
     # 获取topk的名字
     topk_name = []
     for user in topk_user:
-        name = truncate(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
-        topk_name.append(name)
+        try:
+            name = truncate(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
+            topk_name.append(name)
+        except:
+            topk_name.append(str(user))
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.png"
     await run_in_pool(draw_all, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
@@ -103,7 +106,13 @@ async def get_word_statistic(bot, group_id, days, word):
         dates.append(datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"))
     sorted_user_counts = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)
     topk_user = [str(user) for user, _ in sorted_user_counts[:STA_WORD_TOPK]]
-    topk_name = [await get_user_name(bot, group_id, user) for user in topk_user]
+    topk_name = []
+    for user in topk_user:
+        try:
+            name = await get_user_name(bot, group_id, user)
+            topk_name.append(name)
+        except:
+            topk_name.append(str(user))
     save_path = PLOT_PATH + f"plot_{group_id}_word_count.jpg"
     draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_counts, word, save_path)
     return await get_image_cq(save_path)

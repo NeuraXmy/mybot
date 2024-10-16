@@ -16,6 +16,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk card` 卡牌查询](#pjsk-card)
 - [`/pjsk card img` 卡面查询](#pjsk-card-img)
 - [`/pjsk diff board` 难度排行查询](#pjsk-diff-board)
+- [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
 
 ### 管理指令
 
@@ -221,6 +222,19 @@ Project Sekai（世界计划）日服游戏相关服务
     `/难度排行 ma 30` 查询 Master 30歌曲列表
     `/难度排行 ma 30 32` 查询 Master 30~32歌曲列表
 
+
+## `/pjsk reg time`
+```
+查询游戏账号注册时间
+需要上传抓包数据
+```
+- **指令别名**
+
+    `/注册时间`
+
+- **示例**
+
+    `/注册时间`
 
 --- 
 

@@ -1323,7 +1323,8 @@ class CmdHandler:
                 except Exception as e:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
-                        await context.asend_reply_msg(f"指令处理失败: {e}")
+                        et = type(e).__name__ if type(e).__name__!= "Exception" else ""
+                        await context.asend_reply_msg(f"指令处理失败: {et} {e}")
                         
             return func
         return decorator

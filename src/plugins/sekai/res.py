@@ -1,5 +1,6 @@
 import json
 from ..utils import *
+from threading import Lock
 
 config = get_config('sekai')
 logger = get_logger("Sekai")
@@ -122,7 +123,9 @@ stamps          = SekaiJsonRes("表情数据", "https://database.pjsekai.moe/sta
 cards           = SekaiJsonRes("卡牌数据", "https://database.pjsekai.moe/cards.json")
 card_supplies   = SekaiJsonRes("卡牌供给数据", "https://database.pjsekai.moe/cardSupplies.json")
 skills          = SekaiJsonRes("技能数据", "https://database.pjsekai.moe/skills.json")
-
+honors          = SekaiJsonRes("头衔数据", "https://database.pjsekai.moe/honors.json")
+honor_groups    = SekaiJsonRes("头衔组数据", "https://database.pjsekai.moe/honorGroups.json")
+bonds_honnors   = SekaiJsonRes("羁绊头衔数据", "https://database.pjsekai.moe/bondsHonors.json")
 
 # ================================ 图片资源 ================================ #
 
@@ -133,23 +136,18 @@ class ImageRes:
     def __init__(self, dir):
         self.dir = dir
         self.images = {}
-        for root, dirs, files in os.walk(dir):
-            for file in files:
-                if file.split(".")[-1] in IMAGE_EXT:
-                    path = os.path.join(root, file)
-                    rel_path = os.path.relpath(path, dir)
-                    self.images[rel_path] = None
-        logger.info(f"从图片资源目录\"{dir}\"获取{len(self.images)}个图片资源")
+        self.lock = Lock()
 
     def get(self, path) -> Image.Image:
         fullpath = pjoin(self.dir, path)
-        if path not in self.images:
+        if not osp.exists(fullpath):
             raise FileNotFoundError(f"图片资源{fullpath}不存在")
         try:
-            if self.images[path] is None:
-                self.images[path] = Image.open(fullpath)
-                self.images[path].load()       
-            return self.images[path]
+            with self.lock:
+                if self.images.get(path) is None:
+                    self.images[path] = Image.open(fullpath)
+                    self.images[path].load()       
+                return self.images[path]
         except:
             raise FileNotFoundError(f"读取图片资源{fullpath}失败")
 

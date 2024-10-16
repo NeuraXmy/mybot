@@ -37,12 +37,12 @@ stamp_text_retriever = get_text_retriever("stamp_text")
 VLIVE_START_NOTIFY_BEFORE_MINUTE = config['vlive_start_notify_before_minute']
 VLIVE_END_NOTIFY_BEFORE_MINUTE  = config['vlive_end_notify_before_minute']
 DIFF_NAMES = [
-    ("easy", "Easy", "EASY"), 
+    ("easy", "Easy", "EASY", "ez", "EZ"), 
     ("normal", "Normal", "NORMAL"), 
-    ("hard", "hd", "Hard", "HARD"), 
-    ("expert", "ex", "Expert", "EXPERT"), 
-    ("master", "ma", "Master", "MASTER"),
-    ("append", "apd", "Append", "APPEND"), 
+    ("hard", "hd", "Hard", "HARD", "HD"), 
+    ("expert", "ex", "Expert", "EXPERT", "EX"), 
+    ("master", "ma", "Ma", "MA", "Master", "MASTER", "Mas", "mas", "MAS"),
+    ("append", "apd", "Append", "APPEND", "APD", "Apd"), 
 ]
 CHARACTER_NICKNAMES = json.load(open("data/sekai/character_nicknames.json", "r", encoding="utf-8"))
 CARD_ATTR_NAMES = [
@@ -81,6 +81,11 @@ CARD_SKILL_NAMES = [
     ("judgment_up", "判", "判卡"),
 ]
 
+ASSET_DB_URLS = [
+    "https://storage.sekai.best/sekai-jp-assets/",
+    "https://asset3.pjsekai.moe/"
+]
+
 
 # ========================================= 绘图相关 ========================================= #
 
@@ -113,7 +118,7 @@ DIFF_COLORS = {
     "hard": (255, 170, 0, 255),
     "expert": (238, 68, 102, 255),
     "master": (187, 51, 238, 255),
-    "append": (255, 131, 197, 255),
+    "append": LinearGradient((182, 144, 247, 255), (243, 132, 220, 255), (1.0, 1.0), (0.0, 0.0)),
 }
 
 def random_bg(chara_id=None):
@@ -126,8 +131,10 @@ def random_bg(chara_id=None):
         bg = random.choice(GROUP_BGS[group])
     return ImageBg(bg)
 
-def roundrect_bg():
-    return RoundRectBg(REGION_COLOR, REGION_RADIUS)
+def roundrect_bg(fill=REGION_COLOR, radius=REGION_RADIUS, alpha=None):
+    if alpha is not None:
+        fill = (*fill[:3], alpha)
+    return RoundRectBg(fill, radius)
 
 
 # ========================================= 工具函数 ========================================= #
@@ -136,6 +143,29 @@ def roundrect_bg():
 def res_path(path):
     return osp.join("data/sekai/res", path)
 
+# 统一获取解包资源
+async def get_asset(path: str, cache=True, allow_error=False) -> Image.Image:
+    cache_path = res_path(pjoin('assets', path))
+    try:
+        if not cache: raise
+        return Image.open(cache_path)
+    except:
+        pass
+    for db_url in ASSET_DB_URLS:
+        try:
+            url = db_url + path
+            img = await download_image(url)
+            if cache:
+                create_parent_folder(cache_path)
+                img.save(cache_path)
+            return img
+        except Exception as e:
+            if not allow_error:
+                logger.print_exc(f"从\"{url}\"下载资源失败")
+    if not allow_error:
+        raise Exception(f"获取资源\"{path}\"失败")
+    return None
+    
 # 从角色昵称获取角色id
 def get_cid_by_nickname(nickname):
     for item in CHARACTER_NICKNAMES:
@@ -184,27 +214,6 @@ def get_music_diff_info(mid, music_diffs):
         ret['note_count'][d] = diff['totalNoteCount']
         if d == 'append': ret['has_append'] = True
     return ret
-
-# 获取歌曲封面url
-def get_music_cover_url(mid, musics):
-    MUSIC_COVER_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/music/jacket/{assetbundleName}_rip/{assetbundleName}.webp"
-    music = find_by(musics, "id", mid)
-    if music is None: return None
-    url = MUSIC_COVER_IMG_URL.format(assetbundleName=music["assetbundleName"])
-    return url
-
-# 获取歌曲封面图片
-async def get_music_cover_image(mid):
-    cache_path = res_path(f"music_cover/{mid}.png")
-    create_parent_folder(cache_path)
-    try:
-        return Image.open(cache_path)
-    except:
-        url = get_music_cover_url(mid, await res.musics.get())
-        if not url: raise Exception(f"曲目{mid}不存在")
-        img = await download_image(url)
-        img.save(cache_path)
-        return img
 
 # 更新曲名语义库
 @res.SekaiJsonRes.updated_hook("曲名语义库更新")
@@ -411,64 +420,88 @@ def has_after_training(card):
 # 获取卡牌缩略图
 async def get_card_thumbnail(cid, after_training):
     image_type = "after_training" if after_training else "normal"
-    cache_dir = res_path(f"card/thumb/{cid}_{image_type}.png")
-    create_parent_folder(cache_dir)
-    try:
-        return Image.open(cache_dir)
-    except:
-        logger.info(f"下载卡面缩略图: {cid} {image_type}")
-        card = find_by(await res.cards.get(), "id", cid)
-        if not card: raise Exception(f"找不到ID为{cid}的卡牌")
-        url = f"https://storage.sekai.best/sekai-jp-assets/thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.webp"
-        img = await download_image(url)
-        img = img.convert('RGBA')
-        img.save(cache_dir)
-        return img
+    card = find_by(await res.cards.get(), "id", cid)
+    if not card: raise Exception(f"找不到ID为{cid}的卡牌") 
+    return await get_asset(f"thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.png")
 
 # 获取角色卡牌完整缩略图
-async def get_card_full_thumbnail(card, after_training):
+async def get_card_full_thumbnail(card, after_training, pcard=None):
     cid = card['id']
     image_type = "after_training" if after_training else "normal"
-    cache_dir = res_path(f"card/full_thumb/{cid}_{image_type}.png")
+    cache_dir = res_path(f"card_full_thumb/{cid}_{image_type}.png")
     try:
+        if pcard: raise
         return Image.open(cache_dir)
     except:
-        img = await get_card_thumbnail(cid, after_training)
-        def draw(img: Image.Image, card):
-            attr = card['attr']
-            rare = card['cardRarityType']
-            frame_img = res.misc_images.get(f"cardframe_{rare}.png")
-            attr_img = res.misc_images.get(f"attr_{attr}.png")
-            if rare == "rarity_birthday":
-                rare_img = res.misc_images.get(f"rare_birthday.png")
-                rare_num = 1
-            else:
-                rare_img = res.misc_images.get(f"rare_star_{image_type}.png") 
-                rare_num = int(rare.split("_")[1])
+        pass
+    img = await get_card_thumbnail(cid, after_training)
+    def draw(img: Image.Image, card):
+        attr = card['attr']
+        rare = card['cardRarityType']
+        frame_img = res.misc_images.get(f"card/frame_{rare}.png")
+        attr_img = res.misc_images.get(f"card/attr_{attr}.png")
+        if rare == "rarity_birthday":
+            rare_img = res.misc_images.get(f"card/rare_birthday.png")
+            rare_num = 1
+        else:
+            rare_img = res.misc_images.get(f"card/rare_star_{image_type}.png") 
+            rare_num = int(rare.split("_")[1])
 
-            img_w, img_h = img.size
-            # 绘制边框
-            frame_img = frame_img.resize((img_w, img_h))
-            img.paste(frame_img, (0, 0), frame_img)
-            # 左上角绘制属性
-            attr_img = attr_img.resize((int(img_w * 0.25), int(img_h * 0.25)))
-            img.paste(attr_img, (0, 0), attr_img)
-            # 左下角绘制稀有度
-            offset = 6
-            rare_img = rare_img.resize((int(img_w * 0.17), int(img_h * 0.17)))
-            rare_w, rare_h = rare_img.size
-            for i in range(rare_num):
-                img.paste(rare_img, (offset + rare_w * i, img_h - rare_h - offset), rare_img)
-            return img
-        img = await run_in_pool(draw, img, card)
-        create_parent_folder(cache_dir)
-        img.save(cache_dir)
+        img_w, img_h = img.size
+        # 如果是profile卡片则绘制等级
+        if pcard:
+            level = pcard['level']
+            draw = ImageDraw.Draw(img)
+            draw.rectangle((0, img_h - 24, img_w, img_h), fill=(70, 70, 100, 255))
+            draw.text((6, img_h - 31), f"Lv.{level}", font=get_font(DEFAULT_BOLD_FONT, 20), fill=WHITE)
+        # 绘制边框
+        frame_img = frame_img.resize((img_w, img_h))
+        img.paste(frame_img, (0, 0), frame_img)
+        # 绘制特训等级
+        if pcard:
+            rank = pcard['masterRank']
+            if rank:
+                rank_img = res.misc_images.get(f"card/train_rank_{rank}.png")
+                rank_img = rank_img.resize((int(img_w * 0.3), int(img_h * 0.3)))
+                rank_img_w, rank_img_h = rank_img.size
+                img.paste(rank_img, (img_w - rank_img_w, img_h - rank_img_h), rank_img)
+        # 左上角绘制属性
+        attr_img = attr_img.resize((int(img_w * 0.22), int(img_h * 0.25)))
+        img.paste(attr_img, (1, 0), attr_img)
+        # 左下角绘制稀有度
+        hoffset, voffset = 6, 6 if not pcard else 24
+        scale = 0.17 if not pcard else 0.15
+        rare_img = rare_img.resize((int(img_w * scale), int(img_h * scale)))
+        rare_w, rare_h = rare_img.size
+        for i in range(rare_num):
+            img.paste(rare_img, (hoffset + rare_w * i, img_h - rare_h - voffset), rare_img)
+        mask = Image.new('L', (img_w, img_h), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle((0, 0, img_w, img_h), radius=10, fill=255)
+        img.putalpha(mask)
         return img
+    img = await run_in_pool(draw, img, card)
+    create_parent_folder(cache_dir)
+    img.save(cache_dir)
+    return img
 
 # 合成卡牌列表图片
 async def compose_card_list_image(chara_id, cards, qid):
+    box_card_ids = None
+    if qid:
+        profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
+        if profile:
+            box_card_ids = set([int(item['cardId']) for item in profile['userCards']])
+
     async def get_thumb_nothrow(card):
         try: 
+            if qid:
+                if int(card['id']) not in box_card_ids: 
+                    return None
+                pcard = find_by(profile['userCards'], "cardId", card['id'])
+                after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
+                img = await get_card_full_thumbnail(card, after_training, pcard)
+                return img, None
             normal = await get_card_full_thumbnail(card, False)
             after = await get_card_full_thumbnail(card, True) if has_after_training(card) else None
             return normal, after
@@ -480,70 +513,48 @@ async def compose_card_list_image(chara_id, cards, qid):
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
 
 
-    canvas = Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING)
-    vs0 = VSplit().set_sep(16).set_content_align('lt').set_item_align('lt')
-    canvas.add_item(vs0)
+    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_sep(16).set_content_align('lt').set_item_align('lt'):
+            if qid:
+                await get_detailed_profile_card(profile, pmsg)
 
-    box_card_ids = None
-    if qid:
-        profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
-        vs0.add_item(await get_detailed_profile_card(profile, pmsg))
-        if profile:
-            box_card_ids = set([int(item['cardId']) for item in profile['userCards']])
+            with Grid(col_count=3).set_bg(roundrect_bg()).set_padding(16):
+                for i, (card, (normal, after)) in enumerate(card_and_thumbs):
+                    if box_card_ids and int(card['id']) not in box_card_ids: 
+                        continue
 
-    grid = Grid(col_count=3).set_bg(roundrect_bg()).set_padding(16)
-    vs0.add_item(grid)
+                    bg = RoundRectBg(fill=(255, 255, 255, 150), radius=REGION_RADIUS)
+                    if card["supply_show_name"]: 
+                        bg.fill = (255, 250, 220, 150)
+                    with Frame().set_content_align('rb').set_bg(bg):
+                        skill_type_img = res.misc_images.get(f"skill_{card['skill_type']}.png")
+                        ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8)
 
-    for i, (card, (normal, after)) in enumerate(card_and_thumbs):
-        if box_card_ids and int(card['id']) not in box_card_ids: 
-            continue
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8):
+                            GW = 300
+                            with HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16):
+                                if after is not None:
+                                    ImageBox(normal, size=(100, 100), image_size_mode='fill')
+                                    ImageBox(after,  size=(100, 100), image_size_mode='fill')
+                                else:
+                                    ImageBox(normal, size=(100, 100), image_size_mode='fill')
 
-        bg = RoundRectBg(fill=(255, 255, 255, 150), radius=REGION_RADIUS)
-        if card["supply_show_name"]: 
-            bg.fill = (255, 250, 220, 150)
-        f = Frame().set_content_align('rb').set_bg(bg)
-        grid.add_item(f)
+                            name_text = card['prefix']
+                            TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
 
-        skill_type_img = res.misc_images.get(f"skill_{card['skill_type']}.png")
-        f.add_item(ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8))
-
-        vs = VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8)
-        f.add_item(vs)
-
-        GW = 300
-        hs = HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16)
-        if after is not None:
-            hs.add_item(ImageBox(normal, size=(100, 100), image_size_mode='fill'))
-            hs.add_item(ImageBox(after,  size=(100, 100), image_size_mode='fill'))
-        else:
-            hs.add_item(ImageBox(normal, size=(100, 100), image_size_mode='fill'))
-        vs.add_item(hs)
-
-        name_text = card['prefix']
-        vs.add_item(TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c'))
-
-        id_text = f"ID:{card['id']}"
-        if card["supply_show_name"]:
-            id_text += f"【{card['supply_show_name']}】"
-        vs.add_item(TextBox(id_text, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c'))
+                            id_text = f"ID:{card['id']}"
+                            if card["supply_show_name"]:
+                                id_text += f"【{card['supply_show_name']}】"
+                            TextBox(id_text, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
 
     return await run_in_pool(canvas.get_img)
 
 # 获取卡面图片
 async def get_card_image(cid, after_training):
     image_type = "after_training" if after_training else "normal"
-    cache_dir = res_path(f"card/image/{cid}_{image_type}.png")
-    create_parent_folder(cache_dir)
-    try:
-        return Image.open(cache_dir)
-    except:
-        logger.info(f"下载卡面图片: {cid} {image_type}")
-        card = find_by(await res.cards.get(), "id", cid)
-        if not card: raise Exception(f"找不到ID为{cid}的卡牌")
-        url = f"https://storage.sekai.best/sekai-jp-assets/character/member/{card['assetbundleName']}_rip/card_{image_type}.webp"
-        img = await download_image(url)
-        img.save(cache_dir)
-        return img
+    card = find_by(await res.cards.get(), "id", cid)
+    if not card: raise Exception(f"找不到ID为{cid}的卡牌") 
+    return await get_asset(f"character/member/{card['assetbundleName']}_rip/card_{image_type}.png")
 
 # 获取玩家基本信息
 async def get_basic_profile(uid):
@@ -626,27 +637,19 @@ async def get_player_avatar_info(detail_profile):
 
 # 获取玩家详细信息的简单卡片
 async def get_detailed_profile_card(profile, msg) -> Frame:
-    f = Frame().set_bg(roundrect_bg()).set_padding(16)
-
-    hs = HSplit().set_content_align('c').set_item_align('c').set_sep(16)
-    f.add_item(hs)
-
-    if profile:
-        avatar_info = await get_player_avatar_info(profile)
-        hs.add_item(ImageBox(avatar_info['avatar_img'], size=(80, 80), image_size_mode='fill'))
-
-        vs = VSplit().set_content_align('c').set_item_align('l').set_sep(5)
-        hs.add_item(vs)
-
-        game_data = profile['user']['userGamedata']
-        update_time = datetime.fromtimestamp(profile['updatedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
-
-        vs.add_item(TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)))
-        vs.add_item(TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)))
-        vs.add_item(TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)))
-
-    if msg:
-        vs.add_item(TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=16, color=RED)))
+    with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
+        with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
+            if profile:
+                avatar_info = await get_player_avatar_info(profile)
+                ImageBox(avatar_info['avatar_img'], size=(80, 80), image_size_mode='fill')
+                with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
+                    game_data = profile['user']['userGamedata']
+                    update_time = datetime.fromtimestamp(profile['updatedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+            if msg:
+                TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=16, color=RED))
     return f
 
 # 获取用户绑定的游戏id
@@ -657,38 +660,187 @@ def get_user_bind_uid(user_id, check_bind=True):
         raise Exception(f"请使用 /绑定 ID 绑定游戏账号")
     return bind_list.get(user_id, None)
 
+# 合成完整头衔图片
+async def compose_full_honor_image(profile_honor, is_main):
+    if profile_honor is None:
+        ms = 'm' if is_main else 's'
+        img = res.misc_images.get(f'honor/empty_honor_{ms}.png')
+        padding = 3
+        bg = Image.new('RGBA', (img.size[0] + padding * 2, img.size[1] + padding * 2), (0, 0, 0, 0))
+        bg.paste(img, (padding, padding), img)
+        return bg
+    hid = profile_honor['honorId']
+    htype = profile_honor.get('profileHonorType', 'normal')
+    hwid = profile_honor.get('bondsHonorWordId', 0)
+    hlv = profile_honor.get('honorLevel', 0)
+    ms = "main" if is_main else "sub"
+
+    def add_frame(img: Image.Image, rarity):
+        if rarity == 'low':
+            frame = res.misc_images.get(f'honor/frame_degree_{ms[0]}_1.png')
+        elif rarity == 'middle':
+            frame = res.misc_images.get(f'honor/frame_degree_{ms[0]}_2.png')
+        elif rarity == 'high':
+            frame = res.misc_images.get(f'honor/frame_degree_{ms[0]}_3.png')
+        else:
+            frame = res.misc_images.get(f'honor/frame_degree_{ms[0]}_4.png')
+        img.paste(frame, (8, 0) if rarity == 'low' else (0, 0), frame)
+    
+    def add_lv_star(img: Image.Image, lv):
+        if lv > 10: lv = lv - 10
+        lv_img = res.misc_images.get('honor/icon_degreeLv.png')
+        lv6_img = res.misc_images.get('honor/icon_degreeLv6.png')
+        for i in range(0, min(lv, 5)):
+            img.paste(lv_img, (50 + 16 * i, 61), lv_img)
+        for i in range(5, lv):
+            img.paste(lv6_img, (50 + 16 * (i - 5), 61), lv6_img)
+
+    def get_bond_bg(c1, c2, is_main, swap):
+        if swap: c1, c2 = c2, c1
+        suffix = '_sub' if not is_main else ''
+        img1 = res.misc_images.get(f'honor/bonds/{c1}{suffix}.png')
+        img2 = res.misc_images.get(f'honor/bonds/{c2}{suffix}.png')
+        x = 190 if is_main else 90
+        img2 = img2.crop((x, 0, 380, 80))
+        img1.paste(img2, (x, 0))
+        return img1
+  
+    honors = await res.honors.get()
+    honor_groups = await res.honor_groups.get()
+    if htype == 'normal':
+        # 普通牌子
+        honor = find_by(honors, 'id', hid)
+        asset_name = honor['assetbundleName']
+        group_id = honor['groupId']
+        rarity = honor['honorRarity']
+
+        group = find_by(honor_groups, 'id', group_id)
+        bg_asset_name = group.get('backgroundAssetbundleName', None)
+        gtype = group['honorType']
+
+        dir_name, file_name = 'honor', f'rank_{ms}.png'
+        if gtype == 'rank_match':
+            dir_name, file_name = 'rank_live/honor', f"{ms}.png"
+        
+        img = await get_asset(f"{dir_name}/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
+        rank_img = await get_asset(f"{dir_name}/{asset_name}_rip/{file_name}", allow_error=True)
+
+        add_frame(img, rarity)
+        if rank_img:
+            img.paste(rank_img, (190, 0) if is_main else (34, 42), rank_img)
+
+        if gtype == 'character' or gtype == 'achievement':
+            add_lv_star(img, hlv)
+        return img
+    
+    elif htype == 'bonds':
+        # 羁绊牌子
+        bhonor = find_by(await res.bonds_honnors.get(), 'id', hid)
+        cid1 = bhonor['gameCharacterUnitId1']
+        cid2 = bhonor['gameCharacterUnitId2']
+        rarity = bhonor['honorRarity']
+        rev = profile_honor['bondsHonorViewType'] == 'reverse'
+
+        img = get_bond_bg(cid1, cid2, is_main, rev)
+        c1_img = res.misc_images.get(f"honor/chara/chr_sd_{cid1:02d}_01/chr_sd_{cid1:02d}_01.png")
+        c2_img = res.misc_images.get(f"honor/chara/chr_sd_{cid2:02d}_01/chr_sd_{cid2:02d}_01.png")
+        if rev: c1_img, c2_img = c2_img, c1_img
+        if not is_main:
+            c1_img = c1_img.resize((120, 102))
+            c2_img = c2_img.resize((120, 102))
+            img.paste(c1_img, (-5, -20), c1_img)
+            img.paste(c2_img, (65, -20), c2_img)
+        else:
+            img.paste(c1_img, (0, -40), c1_img)
+            img.paste(c2_img, (220, -40), c2_img)
+        _, _, _, mask = res.misc_images.get(f"honor/mask_degree_{ms}.png").split()
+        img.putalpha(mask)
+
+        add_frame(img, rarity)
+
+        if is_main:
+            wordbundlename = f"honorname_{cid1:02d}{cid2:02d}_{(hwid%100):02d}_01"
+            word_img = await get_asset(f"bonds_honor/word/{wordbundlename}_rip/{wordbundlename}.png")
+            img.paste(word_img, (int(190-(word_img.size[0]/2)), int(40-(word_img.size[1]/2))), word_img)
+
+        add_lv_star(img, hlv)
+        return img
+
+    raise NotImplementedError()
+        
 # 合成名片图片
 async def compose_profile_image(basic_profile):
-    imgs = {}
     decks = basic_profile['userDeck']
-    cards = [find_by(basic_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
-    for card in cards:
-        card['after_training'] = card['defaultImage'] == "special_training" and card['specialTrainingStatus'] == "done"
-    imgs['avatar'] = await get_card_thumbnail(cards[0]['cardId'], cards[0]['after_training'])
-        
-    # def compose(basic_profile, imgs):
-    #     img_w, img_h = 800, 720
-    #     p = Painter(Image.new('RGBA', (img_w, img_h)))
-    #     # 背景
-    #     p.bg_img(res.misc_images.get("bg_25.png"))
-    #     # 背景区域
-    #     p.roundrect((20, 20), (755, 675), REGION_COLOR, REGION_RADIUS)
-    #     # 头像
-    #     p.paste(imgs['avatar'], (54, 49), (120, 120))
-    #     # 昵称
-    #     name = basic_profile['user']['name']
-    #     p.text(name, (191, 49), font=get_font(FONT_PATH, 36), fill=BLACK)
-    #     # id
-    #     p.text(f"ID: {basic_profile['user']['userId']}", (191, 100), font=get_font(FONT_PATH, 16), fill=BLACK)
+    pcards = [find_by(basic_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
+    for pcard in pcards:
+        pcard['after_training'] = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
+    avatar_img = await get_card_thumbnail(pcards[0]['cardId'], pcards[0]['after_training'])
+    chara_id = find_by(await res.cards.get(), 'id', pcards[0]['cardId'])['characterId']
+    
+    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            ## 第一部分
+            with VSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_sep(32).set_padding(32):
+                # 名片
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(32).set_padding((32, 0)):
+                    ImageBox(avatar_img, size=(128, 128), image_size_mode='fill')
+                    with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
+                        game_data = basic_profile['user']
+                        TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
+                        TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
+                        with Frame():
+                            ImageBox(res.misc_images.get("lv_rank_bg.png"), size=(180, None))
+                            TextBox(f"{game_data['rank']}", TextStyle(font=DEFAULT_FONT, size=30, color=WHITE)).set_offset((110, 0))
+    
+                # 推特
+                with Frame().set_content_align('l').set_w(400):
+                    tw_id = basic_profile['userProfile']['twitterId']
+                    tw_id_box = TextBox('X @' + tw_id, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=1)
+                    tw_id_box.set_wrap(False).set_bg(roundrect_bg(fill=WHITE)).set_line_sep(2).set_padding(15).set_w(300)
 
-    #     return p.get()
+                # 留言
+                user_word = basic_profile['userProfile']['word']
+                user_word_box = TextBox(user_word, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=3)
+                user_word_box.set_wrap(True).set_bg(roundrect_bg(fill=WHITE)).set_line_sep(2).set_padding(16).set_w(400)
 
-    # return await run_in_pool(compose, basic_profile, imgs)
-        
+                # 头衔
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding((16, 0)):
+                    honors = basic_profile["userProfileHonors"]
+                    try: 
+                        honor1_img = await compose_full_honor_image(find_by(honors, 'seq', 1), True)
+                        ImageBox(honor1_img, size=(None, 48))
+                    except: logger.print_exc("合成头衔图片1失败")
+                    try: 
+                        honor2_img = await compose_full_honor_image(find_by(honors, 'seq', 2), False)
+                        ImageBox(honor2_img, size=(None, 48))
+                    except: logger.print_exc("合成头衔图片2失败")
+                    try: 
+                        honor3_img = await compose_full_honor_image(find_by(honors, 'seq', 3), False)
+                        ImageBox(honor3_img, size=(None, 48))
+                    except: logger.print_exc("合成头衔图片3失败")
+
+                # 卡组
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding((16, 0)):
+                    cards = [find_by(await res.cards.get(), 'id', pcard['cardId']) for pcard in pcards]
+                    card_imgs = [
+                        await get_card_full_thumbnail(card, pcard['after_training'], pcard)
+                        for card, pcard 
+                        in zip(cards, pcards)
+                    ]
+                    for i in range(len(card_imgs)):
+                        ImageBox(card_imgs[i], size=(80, 80), image_size_mode='fill')
+
+
+    return await run_in_pool(canvas.get_img)
+    
 # 合成难度排行图片
 async def compose_diff_board_image(diff, lv_musics, qid):
     async def get_cover_nothrow(mid):
-        try: return await get_music_cover_image(mid)
+        try: 
+            musics = await res.musics.get()
+            music = find_by(musics, 'id', mid)
+            asset_name = music['assetbundleName']
+            return await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
         except: return None
     for i in range(len(lv_musics)):
         lv, musics = lv_musics[i]
@@ -704,38 +856,26 @@ async def compose_diff_board_image(diff, lv_musics, qid):
         chara_id = avatar_info['chara_id']
     else:
         chara_id = None
-    canvas = Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING)
 
-    vs0 = VSplit().set_content_align('lt').set_item_align('lt').set_sep(16)
-    canvas.add_item(vs0)
+    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            if profile:
+                await get_detailed_profile_card(profile, pmsg)
 
-    if profile:
-        vs0.add_item(await get_detailed_profile_card(profile, pmsg))
+            with VSplit().set_bg(roundrect_bg()).set_padding(16).set_sep(16):
+                lv_musics.sort(key=lambda x: x[0], reverse=False)
+                for lv, musics in lv_musics:
+                    if not musics: continue
+                    musics.sort(key=lambda x: x['releasedAt'], reverse=False)
 
-    vs = VSplit().set_bg(roundrect_bg()).set_padding(16).set_sep(16)
-    vs0.add_item(vs)
-
-    lv_musics.sort(key=lambda x: x[0], reverse=False)
-
-    for lv, musics in lv_musics:
-        if not musics: continue
-        musics.sort(key=lambda x: x['releasedAt'], reverse=False)
-
-        vs2 = VSplit().set_bg(roundrect_bg()).set_padding(8).set_item_align('lt').set_sep(8)
-        vs.add_item(vs2)
-
-        lv_text = TextBox(f"{diff.upper()} {lv}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=WHITE))
-        lv_text.set_padding((10, 5)).set_bg(RoundRectBg(fill=DIFF_COLORS[diff], radius=10))
-        vs2.add_item(lv_text)
-        
-        grid = Grid(col_count=10).set_sep(5)
-        vs2.add_item(grid)
-        for i in range(len(musics)):
-            cover_f = Frame()
-            grid.add_item(cover_f)
-
-            
-            cover_f.add_item(ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill'))
+                    with VSplit().set_bg(roundrect_bg()).set_padding(8).set_item_align('lt').set_sep(8):
+                        lv_text = TextBox(f"{diff.upper()} {lv}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=WHITE))
+                        lv_text.set_padding((10, 5)).set_bg(RoundRectBg(fill=DIFF_COLORS[diff], radius=5))
+                        
+                        with Grid(col_count=10).set_sep(5):
+                            for i in range(len(musics)):
+                                with Frame():
+                                    ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill')
 
     return await run_in_pool(canvas.get_img)
 
@@ -1139,6 +1279,7 @@ pjsk_bind.check_cdrate(cd).check_wblist(gbl)
 @pjsk_bind.handle()
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
+    assert args.isdigit(), "请输入正确游戏ID"
     # 查询
     if not args:
         uid = get_user_bind_uid(ctx.user_id, check_bind=False)
@@ -1181,7 +1322,18 @@ async def _(ctx: HandlerContext):
     res_profile = await get_basic_profile(uid)
     logger.info(f"绘制名片 uid={uid}")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_profile_image(res_profile)))
-        
+
+
+# 查询注册时间
+pjsk_reg_time = CmdHandler(["/pjsk reg time", "/pjsk_reg_time", "/注册时间"], logger)
+pjsk_reg_time.check_cdrate(cd).check_wblist(gbl)
+@pjsk_reg_time.handle()
+async def _(ctx: HandlerContext):
+    profile, pmsg = await get_detailed_profile(ctx.user_id, raise_exc=True)
+    fst_card = find_by(profile['userCards'], 'cardId', 1)
+    reg_time = datetime.fromtimestamp(fst_card['createdAt'] / 1000).strftime('%Y-%m-%d')
+    user_name = profile['user']['userGamedata']['name']
+    return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time}")
 
 # ========================================= 定时任务 ========================================= #
 
@@ -1275,8 +1427,15 @@ async def new_music_notify():
 
         msg = f"【PJSK新曲上线】\n"
         msg += f"{music['composer']} - {music['title']}\n"
-        cover_image_url = get_music_cover_url(mid, musics)
-        msg += f"{await get_image_cq(cover_image_url, allow_error=True, logger=logger)}\n"
+
+        try:
+            asset_name = music['assetbundleName']
+            cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
+            cover_img_cq = await get_image_cq(cover_img, allow_error=False, logger=logger)
+        except:
+            cover_img_cq = "[加载封面失败]"
+
+        msg += cover_img_cq + "\n"
         
         info = get_music_diff_info(mid, music_diffs)
         lv = info['level']

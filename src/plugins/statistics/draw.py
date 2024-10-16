@@ -48,7 +48,6 @@ def draw_pie(ax, recs, topk_user, topk_name, date):
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
     ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
 
-
 # 绘制折线图
 def draw_plot(ax, recs, interval, topk_user, topk_name):
     logger.log(f"开始绘制折线图")
@@ -85,8 +84,6 @@ def draw_plot(ax, recs, interval, topk_user, topk_name):
     plt.yticks(fontsize=8)
     plt.legend(fontsize=8)
 
-
-
 last_userwords = []
 jieba_inited = False
 
@@ -118,9 +115,8 @@ def init_jieba():
     global jieba_inited
     if not jieba_inited: reset_jieba()
 
-
-# 绘制词云图 返回前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例文本
-def draw_wordcloud(ax, recs, users, names) -> str:
+# 绘制词云图 返回图片和前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例文本
+def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
     logger.info(f"开始绘制词云图")
     init_jieba()
 
@@ -193,10 +189,9 @@ def draw_wordcloud(ax, recs, users, names) -> str:
     )
 
     wc.generate_from_frequencies(all_words)
-    ax.imshow(wc)
-    ax.axis('off')
+    img = wc.to_image()
 
-    # 左下角写出前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例
+    # 前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例
     text = ""
     for i in range(len(topk_words)):
         word = topk_words[i]
@@ -217,7 +212,8 @@ def draw_wordcloud(ax, recs, users, names) -> str:
             else: text += " | "
             text += f"{name}({int(rate * 100)}%)"
         if i != len(topk_words) - 1: text += "\n"
-    return text
+
+    return img, text
 
 
 # 绘制所有图
@@ -235,29 +231,24 @@ def draw_all(recs, interval, topk1, topk2, user, name, path, date):
     draw_plot(ax, recs, interval, user[:topk2], name[:topk2])
     plot_image = pil_fig_to_image(fig)
 
-    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
-    fig.tight_layout()
-    word_rank_text = draw_wordcloud(ax, recs, user, name)
-    wordcloud_image = pil_fig_to_image(fig)
+    wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
 
-    canvas = Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10)
-    vs = VSplit().set_sep(10).set_padding(10)
-    canvas.add_item(vs)
+    with Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10) as canvas:
+        with VSplit().set_sep(10).set_padding(10):
+            bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
 
-    bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
+            title = TextBox(f"{date} 群聊消息统计 总消息数: {len(recs)}条")
+            title.set_bg(bg).set_padding(10).set_w(850)
+            title.set_style(TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
 
-    title = TextBox(f"{date} 群聊消息统计 总消息数: {len(recs)}条", style=TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
-    title.set_bg(bg).set_padding(10).set_w(850)
-    vs.add_item(title)
+            ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_w(850)
+            ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(32).set_w(850)
 
-    vs.add_item(ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
-    vs.add_item(ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
+            wrt = TextBox(word_rank_text, line_count=3)
+            wrt.set_bg(bg).set_padding(16).set_w(850)
+            wrt.set_style(TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT))
 
-    wrt = TextBox(word_rank_text, style=TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT), line_count=3)
-    wrt.set_bg(bg).set_padding(10).set_w(850)
-    vs.add_item(wrt)
-
-    vs.add_item(ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850))
+            ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
 
     canvas.get_img().save(path)
     logger.info(f"绘制完成")
