@@ -11,7 +11,7 @@ import json
 from ..utils import *
 import numpy as np
 from ..llm import get_text_retriever
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from . import res
 from datetime import datetime
 import random
@@ -37,10 +37,10 @@ stamp_text_retriever = get_text_retriever("stamp_text")
 VLIVE_START_NOTIFY_BEFORE_MINUTE = config['vlive_start_notify_before_minute']
 VLIVE_END_NOTIFY_BEFORE_MINUTE  = config['vlive_end_notify_before_minute']
 DIFF_NAMES = [
-    ("easy", "Easy", "EASY", "ez", "EZ"), 
+    ("easy", "Easy", "EASY", "ez", "EZ"),
     ("normal", "Normal", "NORMAL"), 
     ("hard", "hd", "Hard", "HARD", "HD"), 
-    ("expert", "ex", "Expert", "EXPERT", "EX"), 
+    ("expert", "ex", "Expert", "EXPERT", "EX", "Exp", "EXP", "exp"), 
     ("master", "ma", "Ma", "MA", "Master", "MASTER", "Mas", "mas", "MAS"),
     ("append", "apd", "Append", "APPEND", "APD", "Apd"), 
 ]
@@ -80,6 +80,17 @@ CARD_SKILL_NAMES = [
     ("score_up", "分", "分卡"),
     ("judgment_up", "判", "判卡"),
 ]
+HONOR_DIFF_SCORE_MAP = {
+    3009: ("easy", "fullCombo"),
+    3010: ("normal", "fullCombo"),
+    3011: ("hard", "fullCombo"),
+    3012: ("expert", "fullCombo"),
+    3013: ("master", "fullCombo"),
+    3014: ("master", "allPerfect"),
+    4700: ("append", "fullCombo"),
+    4701: ("append", "allPerfect"),
+}
+
 
 ASSET_DB_URLS = [
     "https://storage.sekai.best/sekai-jp-assets/",
@@ -96,21 +107,45 @@ REGION_COLOR = (255, 255, 255, 150)
 REGION_RADIUS = 10
 
 COMMON_BGS = [
-    res.misc_images.get("bg/bg_area_1.png"),
-    res.misc_images.get("bg/bg_area_2.png"),
-    res.misc_images.get("bg/bg_area_3.png"),
-    res.misc_images.get("bg/bg_area_4.png"),
-    res.misc_images.get("bg/bg_area_11.png"),
-    res.misc_images.get("bg/bg_area_12.png"),
-    res.misc_images.get("bg/bg_area_13.png"),
+    "bg/bg_area_1.png",
+    "bg/bg_area_2.png",
+    "bg/bg_area_3.png",
+    "bg/bg_area_4.png",
+    "bg/bg_area_11.png",
+    "bg/bg_area_12.png",
+    "bg/bg_area_13.png",
 ]
 GROUP_BGS = {
-    "ln": [res.misc_images.get("bg/bg_area_5.png"), res.misc_images.get("bg/bg_area_17.png")],
-    "mmj": [res.misc_images.get("bg/bg_area_7.png"), res.misc_images.get("bg/bg_area_18.png")],
-    "vbs": [res.misc_images.get("bg/bg_area_8.png"), res.misc_images.get("bg/bg_area_19.png")],
-    "ws": [res.misc_images.get("bg/bg_area_9.png"), res.misc_images.get("bg/bg_area_20.png")],
-    "25": [res.misc_images.get("bg/bg_area_10.png"), res.misc_images.get("bg/bg_area_21.png")],
+    "ln": ["bg/bg_area_5.png", "bg/bg_area_17.png"],
+    "mmj": ["bg/bg_area_7.png", "bg/bg_area_18.png"],
+    "vbs": ["bg/bg_area_8.png", "bg/bg_area_19.png"],
+    "ws": ["bg/bg_area_9.png", "bg/bg_area_20.png"],
+    "25": ["bg/bg_area_10.png", "bg/bg_area_21.png"],
 }
+blured_bg = {}
+
+def random_bg(chara_id=None, blur=True):
+    if chara_id is None:
+        bg = random.choice(COMMON_BGS)
+    else:
+        group = get_group_by_cid(chara_id)
+        if group not in GROUP_BGS:
+            group = random.choice(list(GROUP_BGS.keys()))
+        bg = random.choice(GROUP_BGS[group])
+    if blur:
+        if bg not in blured_bg:
+            bg_img = res.misc_images.get(bg)
+            blured_bg[bg] = bg_img.filter(ImageFilter.GaussianBlur(radius=3))
+        bg_img = blured_bg[bg]
+    else:
+        bg_img = res.misc_images.get(bg)
+    return ImageBg(bg_img)
+
+def roundrect_bg(fill=REGION_COLOR, radius=REGION_RADIUS, alpha=None):
+    if alpha is not None:
+        fill = (*fill[:3], alpha)
+    return RoundRectBg(fill, radius)
+
 
 DIFF_COLORS = {
     "easy": (102, 221, 17, 255),
@@ -120,21 +155,6 @@ DIFF_COLORS = {
     "master": (187, 51, 238, 255),
     "append": LinearGradient((182, 144, 247, 255), (243, 132, 220, 255), (1.0, 1.0), (0.0, 0.0)),
 }
-
-def random_bg(chara_id=None):
-    if chara_id is None:
-        return ImageBg(random.choice(COMMON_BGS))
-    else:
-        group = get_group_by_cid(chara_id)
-        if group not in GROUP_BGS:
-            group = random.choice(list(GROUP_BGS.keys()))
-        bg = random.choice(GROUP_BGS[group])
-    return ImageBg(bg)
-
-def roundrect_bg(fill=REGION_COLOR, radius=REGION_RADIUS, alpha=None):
-    if alpha is not None:
-        fill = (*fill[:3], alpha)
-    return RoundRectBg(fill, radius)
 
 
 # ========================================= 工具函数 ========================================= #
@@ -161,9 +181,11 @@ async def get_asset(path: str, cache=True, allow_error=False) -> Image.Image:
             return img
         except Exception as e:
             if not allow_error:
-                logger.print_exc(f"从\"{url}\"下载资源失败")
+                logger.warning(f"从\"{url}\"下载资源失败")
     if not allow_error:
         raise Exception(f"获取资源\"{path}\"失败")
+    else:
+        logger.warning(f"获取资源\"{path}\"失败")
     return None
     
 # 从角色昵称获取角色id
@@ -558,11 +580,23 @@ async def get_card_image(cid, after_training):
 
 # 获取玩家基本信息
 async def get_basic_profile(uid):
-    url = f"http://api.unipjsk.com/api/user/{uid}/profile"
-    profile = await download_json(url)
-    if not profile:
-        raise Exception(f"找不到ID为{uid}的玩家")
-    return profile
+    cache_path = f"data/sekai/basic_profile_cache/{uid}.json"
+    try:
+        url = f"http://api.unipjsk.com/api/user/{uid}/profile"
+        profile = await download_json(url)
+        if not profile:
+            raise Exception(f"找不到ID为{uid}的玩家")
+        create_parent_folder(cache_path)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(profile, f, ensure_ascii=False, indent=4)
+        return profile
+    except Exception as e:
+        if os.path.exists(cache_path):
+            with open(cache_path, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+            return profile
+        raise e
+    
 
 # 获取玩家详细信息 -> profile, msg
 async def get_detailed_profile(qid, raise_exc=False):
@@ -661,7 +695,8 @@ def get_user_bind_uid(user_id, check_bind=True):
     return bind_list.get(user_id, None)
 
 # 合成完整头衔图片
-async def compose_full_honor_image(profile_honor, is_main):
+async def compose_full_honor_image(profile_honor, is_main, profile=None):
+    logger.info(f"合成头衔 profile_honor={profile_honor}, is_main={is_main}")
     if profile_honor is None:
         ms = 'm' if is_main else 's'
         img = res.misc_images.get(f'honor/empty_honor_{ms}.png')
@@ -695,6 +730,19 @@ async def compose_full_honor_image(profile_honor, is_main):
         for i in range(5, lv):
             img.paste(lv6_img, (50 + 16 * (i - 5), 61), lv6_img)
 
+    def add_fcap_lv(img: Image.Image, profile):
+        try:
+            diff_count = profile['userMusicDifficultyClearCount']
+            diff, score = HONOR_DIFF_SCORE_MAP[hid]
+            lv = str(find_by(diff_count, 'musicDifficultyType', diff)[score])
+        except:
+            lv = "?"
+        font = get_font(path=DEFAULT_BOLD_FONT, size=22)
+        text_w, _ = get_text_size(font, lv)
+        offset = 215 if is_main else 37
+        draw = ImageDraw.Draw(img)
+        draw.text((offset + 50 - text_w // 2, 46), lv, font=font, fill=WHITE)
+
     def get_bond_bg(c1, c2, is_main, swap):
         if swap: c1, c2 = c2, c1
         suffix = '_sub' if not is_main else ''
@@ -710,13 +758,19 @@ async def compose_full_honor_image(profile_honor, is_main):
     if htype == 'normal':
         # 普通牌子
         honor = find_by(honors, 'id', hid)
-        asset_name = honor['assetbundleName']
         group_id = honor['groupId']
-        rarity = honor['honorRarity']
+        try:
+            level_honor = find_by(honor['levels'], 'level', hlv)
+            asset_name = level_honor['assetbundleName']
+            rarity = level_honor['honorRarity']
+        except:
+            asset_name = honor['assetbundleName']
+            rarity = honor['honorRarity']
 
         group = find_by(honor_groups, 'id', group_id)
         bg_asset_name = group.get('backgroundAssetbundleName', None)
         gtype = group['honorType']
+        gname = group['name']
 
         dir_name, file_name = 'honor', f'rank_{ms}.png'
         if gtype == 'rank_match':
@@ -727,9 +781,19 @@ async def compose_full_honor_image(profile_honor, is_main):
 
         add_frame(img, rarity)
         if rank_img:
-            img.paste(rank_img, (190, 0) if is_main else (34, 42), rank_img)
+            if gtype == 'rank_match':
+                img.paste(rank_img, (190, 0) if is_main else (17, 42), rank_img)
+            elif "event" in asset_name:
+                img.paste(rank_img, (0, 0) if is_main else (0, 0), rank_img)
+            else:
+                img.paste(rank_img, (190, 0) if is_main else (34, 42), rank_img)
 
-        if gtype == 'character' or gtype == 'achievement':
+        if hid in HONOR_DIFF_SCORE_MAP.keys():
+            scroll_img = await get_asset(f"{dir_name}/{asset_name}_rip/scroll.png", allow_error=True)
+            if scroll_img:
+                img.paste(scroll_img, (215, 3) if is_main else (37, 3), scroll_img)
+            add_fcap_lv(img, profile)
+        elif gtype == 'character' or gtype == 'achievement':
             add_lv_star(img, hlv)
         return img
     
@@ -778,9 +842,9 @@ async def compose_profile_image(basic_profile):
     chara_id = find_by(await res.cards.get(), 'id', pcards[0]['cardId'])['characterId']
     
     with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
-        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
-            ## 第一部分
-            with VSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_sep(32).set_padding(32):
+        with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            ## 左侧
+            with VSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_sep(32).set_padding((32, 35)):
                 # 名片
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(32).set_padding((32, 0)):
                     ImageBox(avatar_img, size=(128, 128), image_size_mode='fill')
@@ -793,34 +857,36 @@ async def compose_profile_image(basic_profile):
                             TextBox(f"{game_data['rank']}", TextStyle(font=DEFAULT_FONT, size=30, color=WHITE)).set_offset((110, 0))
     
                 # 推特
-                with Frame().set_content_align('l').set_w(400):
+                with Frame().set_content_align('l').set_w(450):
                     tw_id = basic_profile['userProfile']['twitterId']
-                    tw_id_box = TextBox('X @' + tw_id, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=1)
-                    tw_id_box.set_wrap(False).set_bg(roundrect_bg(fill=WHITE)).set_line_sep(2).set_padding(15).set_w(300)
+                    tw_id_box = TextBox('        @ ' + tw_id, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=1)
+                    tw_id_box.set_wrap(False).set_bg(roundrect_bg()).set_line_sep(2).set_padding(10).set_w(300).set_content_align('l')
+                    x_icon = res.misc_images.get("x_icon.png").resize((24, 24)).convert('RGBA')
+                    ImageBox(x_icon, image_size_mode='original').set_offset((16, 0))
 
                 # 留言
                 user_word = basic_profile['userProfile']['word']
                 user_word_box = TextBox(user_word, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=3)
-                user_word_box.set_wrap(True).set_bg(roundrect_bg(fill=WHITE)).set_line_sep(2).set_padding(16).set_w(400)
+                user_word_box.set_wrap(True).set_bg(roundrect_bg()).set_line_sep(2).set_padding((18, 16)).set_w(450)
 
                 # 头衔
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding((16, 0)):
                     honors = basic_profile["userProfileHonors"]
                     try: 
-                        honor1_img = await compose_full_honor_image(find_by(honors, 'seq', 1), True)
+                        honor1_img = await compose_full_honor_image(find_by(honors, 'seq', 1), True, basic_profile)
                         ImageBox(honor1_img, size=(None, 48))
                     except: logger.print_exc("合成头衔图片1失败")
                     try: 
-                        honor2_img = await compose_full_honor_image(find_by(honors, 'seq', 2), False)
+                        honor2_img = await compose_full_honor_image(find_by(honors, 'seq', 2), False, basic_profile)
                         ImageBox(honor2_img, size=(None, 48))
                     except: logger.print_exc("合成头衔图片2失败")
                     try: 
-                        honor3_img = await compose_full_honor_image(find_by(honors, 'seq', 3), False)
+                        honor3_img = await compose_full_honor_image(find_by(honors, 'seq', 3), False, basic_profile)
                         ImageBox(honor3_img, size=(None, 48))
                     except: logger.print_exc("合成头衔图片3失败")
 
                 # 卡组
-                with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding((16, 0)):
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(6).set_padding((16, 0)):
                     cards = [find_by(await res.cards.get(), 'id', pcard['cardId']) for pcard in pcards]
                     card_imgs = [
                         await get_card_full_thumbnail(card, pcard['after_training'], pcard)
@@ -828,10 +894,78 @@ async def compose_profile_image(basic_profile):
                         in zip(cards, pcards)
                     ]
                     for i in range(len(card_imgs)):
-                        ImageBox(card_imgs[i], size=(80, 80), image_size_mode='fill')
+                        ImageBox(card_imgs[i], size=(90, 90), image_size_mode='fill')
 
+            ## 右侧
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(16):
+                # 打歌情况
+                hs, vs, gw, gh = 8, 12, 90, 25
+                with HSplit().set_content_align('c').set_item_align('t').set_sep(vs).set_bg(roundrect_bg()).set_padding(32):
+                    with VSplit().set_sep(vs):
+                        Spacer(gh, gh)
+                        ImageBox(res.misc_images.get(f"icon_clear.png"), size=(gh, gh))
+                        ImageBox(res.misc_images.get(f"icon_fc.png"), size=(gh, gh))
+                        ImageBox(res.misc_images.get(f"icon_ap.png"), size=(gh, gh))
+                    with Grid(col_count=6).set_sep(hsep=hs, vsep=vs):
+                        for diff, color in DIFF_COLORS.items():
+                            t = TextBox(diff.upper(), TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=WHITE))
+                            t.set_bg(RoundRectBg(fill=color, radius=3)).set_size((gw, gh)).set_content_align('c')
+                        diff_count = basic_profile['userMusicDifficultyClearCount']
+                        scores = ['liveClear', 'fullCombo', 'allPerfect']
+                        for i, score in enumerate(scores):
+                            for j, diff in enumerate(DIFF_COLORS.keys()):
+                                bg_color = (255, 255, 255, 100) if j % 2 == 0 else (255, 255, 255, 50)
+                                count = find_by(diff_count, 'musicDifficultyType', diff)[score]
+                                t = TextBox(str(count), TextStyle(font=DEFAULT_FONT, size=20, color=(40, 40, 40, 255)))
+                                t.set_size((gw, gh)).set_content_align('c').set_bg(RoundRectBg(fill=bg_color, radius=3))
+                
+                with Frame().set_content_align('rb'):
+                    hs, vs, gw, gh = 8, 7, 96, 48
+                    # 角色等级
+                    with Grid(col_count=6).set_sep(hsep=hs, vsep=vs).set_bg(roundrect_bg()).set_padding(32):
+                        chara_list = [
+                            "miku", "rin", "len", "luka", "meiko", "kaito", 
+                            "ick", "saki", "hnm", "shiho", None, None,
+                            "mnr", "hrk", "airi", "szk", None, None,
+                            "khn", "an", "akt", "toya", None, None,
+                            "tks", "emu", "nene", "rui", None, None,
+                            "knd", "mfy", "ena", "mzk", None, None,
+                        ]
+                        for chara in chara_list:
+                            if chara is None:
+                                Spacer(gw, gh)
+                                continue
+                            cid = int(get_cid_by_nickname(chara))
+                            rank = find_by(basic_profile['userCharacters'], 'characterId', cid)['characterRank']
+                            with Frame().set_size((gw, gh)):
+                                chara_img = res.misc_images.get(f'chara_rank_icon/{chara}.png')
+                                ImageBox(chara_img, size=(gw, gh), use_alphablend=True)
+                                t = TextBox(str(rank), TextStyle(font=DEFAULT_FONT, size=20, color=(40, 40, 40, 255)))
+                                t.set_size((48, 48)).set_content_align('c').set_offset((42, 4))
+                    
+                    # 挑战Live等级
+                    solo_live_result = basic_profile['userChallengeLiveSoloResult']
+                    cid, score = solo_live_result['characterId'], solo_live_result['highScore']
+                    stages = find_by(basic_profile['userChallengeLiveSoloStages'], 'characterId', cid, mode='all')
+                    stage_rank = max([stage['rank'] for stage in stages])
+                    
+                    with VSplit().set_content_align('c').set_item_align('c').set_padding((32, 64)).set_sep(12):
+                        t = TextBox(f"CHANLLENGE LIVE", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
+                        t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
+                        with Frame():
+                            chara_img = res.misc_images.get(f'chara_rank_icon/{get_nickname_by_cid(cid)}.png')
+                            ImageBox(chara_img, size=(100, 50), use_alphablend=True)
+                            t = TextBox(str(stage_rank), TextStyle(font=DEFAULT_FONT, size=22, color=(40, 40, 40, 255)))
+                            t.set_size((50, 50)).set_content_align('c').set_offset((40, 5))
+                        t = TextBox(f"SCORE {score}", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
+                        t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
 
-    return await run_in_pool(canvas.get_img)
+                    
+
+    img = await run_in_pool(canvas.get_img)
+    scale = 1.5
+    img = img.resize((int(img.size[0]*scale), int(img.size[1]*scale)))
+    return img
     
 # 合成难度排行图片
 async def compose_diff_board_image(diff, lv_musics, qid):
@@ -1318,7 +1452,11 @@ pjsk_info = CmdHandler(["/pjsk info", "/pjsk_info", "/个人信息", "/名片"],
 pjsk_info.check_cdrate(cd).check_wblist(gbl)
 @pjsk_info.handle()
 async def _(ctx: HandlerContext):
-    uid = get_user_bind_uid(ctx.user_id)
+    args = ctx.get_args().strip()
+    try:
+        uid = int(args)
+    except:
+        uid = get_user_bind_uid(ctx.user_id)
     res_profile = await get_basic_profile(uid)
     logger.info(f"绘制名片 uid={uid}")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_profile_image(res_profile)))

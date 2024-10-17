@@ -27,7 +27,7 @@ TRANSPARENT = (0, 0, 0, 0)
 FONT_DIR = "data/utils/fonts/"
 DEFAULT_FONT = "SourceHanSansCN-Regular"
 DEFAULT_BOLD_FONT = "SourceHanSansCN-Bold"
-
+DEFAULT_HEAVY_FONT = "SourceHanSansCN-Heavy"
 
 Color = Tuple[int, int, int, int]
 Position = Tuple[int, int]
@@ -198,6 +198,20 @@ class Painter:
             self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]), sub_img)
         else:
             self.img.paste(sub_img, (pos[0] + self.offset[0], pos[1] + self.offset[1]))
+        return self
+
+    def paste_with_alphablend(
+        self, 
+        sub_img: Image.Image,
+        pos: Position, 
+        size: Size = None
+    ) -> Image.Image:
+        if size and size != sub_img.size:
+            sub_img = sub_img.resize(size)
+        pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
+        overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+        overlay.paste(sub_img, pos)
+        self.img = Image.alpha_composite(self.img, overlay)
         return self
 
     def rect(
@@ -475,7 +489,7 @@ class Widget:
             content_w_limit = self.w - self.hpadding * 2 if self.w is not None else content_w
             content_h_limit = self.h - self.vpadding * 2 if self.h is not None else content_h
             if content_w > content_w_limit or content_h > content_h_limit:
-                raise ValueError('Content size is too large')
+                raise ValueError(f'Content size is too large with ({content_w}, {content_h}) > ({content_w_limit}, {content_h_limit})')
             self._calc_w = content_w_limit + self.hmargin * 2 + self.hpadding * 2
             self._calc_h = content_h_limit + self.vmargin * 2 + self.vpadding * 2
         return (self._calc_w, self._calc_h)
@@ -1002,7 +1016,7 @@ class TextBox(Widget):
     
 
 class ImageBox(Widget):
-    def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None):
+    def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None, use_alphablend=False):
         super().__init__()
         if isinstance(image, str):
             self.image = Image.open(image)
@@ -1013,7 +1027,7 @@ class ImageBox(Widget):
             self.set_size(size)
 
         if image_size_mode is None:
-            if size[0] or size[1]:
+            if size and (size[0] or size[1]):
                 self.set_image_size_mode('fit')
             else:
                 self.set_image_size_mode('original')
@@ -1022,6 +1036,12 @@ class ImageBox(Widget):
         
         self.set_margin(0)
         self.set_padding(0)
+
+        self.set_use_alphablend(use_alphablend)
+
+    def set_use_alphablend(self, use_alphablend):
+        self.use_alphablend = use_alphablend
+        return self
 
     def set_image(self, image: Union[str, Image.Image]):
         if isinstance(image, str):
@@ -1057,7 +1077,10 @@ class ImageBox(Widget):
     
     def _draw_content(self, p: Painter):
         w, h = self._get_content_size()
-        p.paste(self.image, (0, 0), (w, h))
+        if self.use_alphablend:
+            p.paste_with_alphablend(self.image, (0, 0), (w, h))
+        else:
+            p.paste(self.image, (0, 0), (w, h))
 
 
 class Spacer(Widget):
