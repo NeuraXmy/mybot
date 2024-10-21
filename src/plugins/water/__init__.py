@@ -78,13 +78,27 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if len(recs) <= 1:
         res = "没有水果"
     else:
-        recs = sorted(recs, key=lambda x: x['time'])
-        fst, lst = recs[0], recs[-2]
-        res = f"水果总数：{len(recs) - 1}\n"
-        res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
-        res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})"
+        recs = sorted(recs, key=lambda x: x['time'])[:-1]
+        fst, lst = recs[0], recs[-1]
+        
+        user_count = {}
+        for rec in recs:
+            uid = rec['user_id']
+            if uid not in user_count:
+                user_count[uid] = (0, rec['nickname'])
+            cnt = user_count[uid][0]
+            user_count[uid] = (cnt+1, rec['nickname'])
+        TOP_K = 5
+        top_users = sorted(user_count.items(), key=lambda x: x[1][0], reverse=True)[:TOP_K]
 
-    return await send_reply_msg(add, event.message_id, res)
+        res = f"水果总数：{len(recs)}\n"
+        res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
+        res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})\n"
+        res += f"水果比例：\n"
+        for uid, (cnt, nickname) in top_users:
+            res += f"{nickname}({uid})：{cnt/len(recs)*100:.2f}%\n"
+
+    return await send_reply_msg(add, event.message_id, res.strip())
 
 
 query_phash = on_command("/phash", priority=5, block=False)

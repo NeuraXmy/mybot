@@ -265,14 +265,27 @@ async def get_chart_image(mid, diff):
     mid = int(mid)
     cache_dir = res_path(f"chart/{mid:04d}_{diff}.png")
     create_parent_folder(cache_dir)
+    chart_urls = [
+        "https://sekai-charts.unipjsk.com/{mid}/{diff}.svg",
+        "https://asset3.pjsekai.moe/music/music_score/{mid:04d}_01/{diff}.svg",
+    ]
     if not osp.exists(cache_dir):
-        url = f"https://asset3.pjsekai.moe/music/music_score/{mid:04d}_01/{diff}.svg"
-        logger.info(f"下载谱面: {url}")
-        if url.endswith(".svg"):
-            image = await download_and_convert_svg(url)
-        else:
-            image = await download_image(url)
-        image.save(cache_dir)
+        ok = False
+        for url in chart_urls:
+            try:
+                url = url.format(mid=mid, diff=diff)
+                logger.info(f"下载谱面: {url}")
+                if url.endswith(".svg"):
+                    image = await download_and_convert_svg(url)
+                else:
+                    image = await download_image(url)
+                image.save(cache_dir)
+                ok = True
+                break
+            except:
+                logger.warning(f"下载谱面失败: {url}")
+        if not ok:
+            raise Exception(f"获取谱面失败: {mid} {diff}")
     return await get_image_cq(cache_dir)
 
 # 更新表情文本语义库
@@ -1088,32 +1101,57 @@ pjsk_chart.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: HandlerContext):
     query = ctx.get_args().strip()
     if not query:
-        return await ctx.asend_reply_msg("请输入要查询的谱面名")
+        return await ctx.asend_reply_msg("请输入要查询的谱面名或ID")
+
     diff, query = extract_diff_suffix(query)
-    logger.info(f"搜索谱面: {query} diff={diff}")
+    try: mid = int(query)
+    except: mid = None
+
     musics = await res.musics.get()
     music_cn_title = await res.music_cn_titles.get()
-    res_musics, scores = await query_music_by_text(musics, query)
-    res_musics = unique_by(res_musics, "id")
-    if len(res_musics) == 0: 
-        return await ctx.asend_reply_msg("没有找到相关曲目")
-    
-    msg = ""
-    try:
-        mid = res_musics[0]["id"]
-        title = res_musics[0]["title"]
-        cn_title = music_cn_title.get(str(mid))
-        msg += await get_chart_image(mid, diff)
-    except Exception as e:
-        return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
+
+    if not mid:
+        logger.info(f"搜索谱面: {query} diff={diff}")
+        res_musics, scores = await query_music_by_text(musics, query)
+        res_musics = unique_by(res_musics, "id")
+        if len(res_musics) == 0: 
+            return await ctx.asend_reply_msg("没有找到相关曲目")
         
-    if cn_title:
-        msg += f"{title} ({cn_title}) 难度{diff}\n"
+        msg = ""
+        try:
+            mid = res_musics[0]["id"]
+            title = res_musics[0]["title"]
+            cn_title = music_cn_title.get(str(mid))
+            msg += await get_chart_image(mid, diff)
+        except Exception as e:
+            return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
+            
+        if cn_title:
+            msg += f"{title} ({cn_title}) 难度{diff}\n"
+        else:
+            msg += f"{title} 难度{diff}\n"
+        if len(res_musics) > 1:
+            msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
+        return await ctx.asend_reply_msg(msg.strip())
+
     else:
-        msg += f"{title} 难度{diff}\n"
-    if len(res_musics) > 1:
-        msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
-    return await ctx.asend_reply_msg(msg.strip())
+        logger.info(f"查询谱面: {mid} diff={diff}")
+        msg = ""
+        try:
+            music = find_by(musics, "id", mid)
+            title, cn_title = "???", None
+            if music:
+                title = music["title"]
+                cn_title = music_cn_title.get(str(mid))
+            msg += await get_chart_image(mid, diff)
+        except Exception as e:
+            return await ctx.asend_reply_msg(f"获取指定曲目{mid}难度{diff}的谱面失败: {e}")
+        
+        if cn_title:
+            msg += f"{title} ({cn_title}) 难度{diff}\n"
+        else:
+            msg += f"{title} 难度{diff}\n"
+        return await ctx.asend_reply_msg(msg.strip())
 
 
 # 物量查询
