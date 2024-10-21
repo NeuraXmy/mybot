@@ -37,27 +37,58 @@ async def update_member_info(group_id=None):
 join = on_notice()
 @join.handle()
 async def _(bot: Bot, event: NoticeEvent):
-    
     if event.notice_type == 'group_increase':
         if event.group_id in gbl.get(): return
         if event.user_id == bot.self_id: return
-        logger.info(f'{event.user_id} 加入 {event.group_id}')
-        await send_msg(join, f"[CQ:at,qq={event.user_id}] 加入群聊")
+        group_id, user_id = event.group_id, event.user_id
+        logger.info(f'{user_id} 加入 {group_id}')
+
+        msg = "[CQ:at,qq={user_id}] 加入群聊"
+        welcome_infos = file_db.get(f'welcome_infos', {})
+        if group_id in welcome_infos:
+            msg += f"\n{welcome_infos[group_id]}"
+
+        await send_group_msg_by_bot(bot, group_id, msg)
         await asyncio.sleep(3)
         return await update_member_info(event.group_id)
 
     if event.notice_type == 'group_decrease':
         if event.group_id in gbl.get(): return
         if event.user_id == bot.self_id: return
-        logger.info(f'{event.user_id} 离开 {event.group_id}')
-        members = file_db.get(f'{event.group_id}_members', {})
-        name = members.get(str(event.user_id), '')
-        await send_msg(join, f"{name}({event.user_id}) 退出群聊")
+        group_id, user_id = event.group_id, event.user_id
+        logger.info(f'{user_id} 离开 {group_id}')
+
+        members = file_db.get(f'{group_id}_members', {})
+        name = members.get(str(user_id), '')
+
+        await send_group_msg_by_bot(bot, group_id, f"{name}({user_id}) 退出群聊")
         await asyncio.sleep(3)
-        return await update_member_info(event.group_id)
+        return await update_member_info(group_id)
 
 
 # 定时更新
 GROUP_INFO_UPDATE_INTERVAL = config['group_info_update_interval'] * 60
 start_repeat_with_interval(GROUP_INFO_UPDATE_INTERVAL, update_member_info, logger, 
                            '群成员信息更新', start_offset=10)
+
+
+# 设置入群欢迎信息
+welcome_info = CmdHandler(["/welcome info", "/入群信息"], logger)
+welcome_info.check_wblist(gbl).check_superuser()
+@welcome_info.handle()
+async def _(ctx: HandlerContext):
+    text = ctx.get_args().strip()
+    group_id = ctx.group_id
+    if not text:
+        welcome_infos = file_db.get(f'welcome_infos', {})
+        del welcome_infos[group_id]
+        file_db.set(f'welcome_infos', welcome_infos)
+        return await ctx.asend_reply_msg(f"入群欢迎信息已清除")
+
+    welcome_infos = file_db.get(f'welcome_infos', {})
+    welcome_infos[group_id] = text
+    file_db.set(f'welcome_infos', welcome_infos)
+    await ctx.asend_reply_msg(f"已设置入群欢迎信息")
+
+
+
