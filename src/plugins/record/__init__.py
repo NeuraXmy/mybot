@@ -149,12 +149,12 @@ async def _(ctx: HandlerContext):
     cur_name = None
     for rec in recs:
         name = rec['nickname']
-        time = rec['time'].strftime("%Y-%m-%d %H:%M:%S")
+        time = rec['time'].strftime("%Y-%m-%d")
         if name != cur_name:
             cur_name = name
             nicknames.append((time, name))
 
-    msg = f"{user_id}用过的群名片:\n"
+    msg = f"{user_id} 用过的群名片:\n"
     nicknames = nicknames[-50:]
     for time, name in nicknames:
         msg += f"({time}) {name}\n"

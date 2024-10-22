@@ -1013,7 +1013,7 @@ async def compose_diff_board_image(diff, lv_musics, qid):
                 lv_musics.sort(key=lambda x: x[0], reverse=False)
                 for lv, musics in lv_musics:
                     if not musics: continue
-                    musics.sort(key=lambda x: x['releasedAt'], reverse=False)
+                    musics.sort(key=lambda x: x['publishedAt'], reverse=False)
 
                     with VSplit().set_bg(roundrect_bg()).set_padding(8).set_item_align('lt').set_sep(8):
                         lv_text = TextBox(f"{diff.upper()} {lv}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=WHITE))
@@ -1109,11 +1109,17 @@ async def _(ctx: HandlerContext):
 
     musics = await res.musics.get()
     music_cn_title = await res.music_cn_titles.get()
+    music_diffs = await res.music_diffs.get()
 
     if not mid:
         logger.info(f"搜索谱面: {query} diff={diff}")
-        res_musics, scores = await query_music_by_text(musics, query)
+        res_musics, scores = await query_music_by_text(musics, query, 20)
         res_musics = unique_by(res_musics, "id")
+
+        diff_infos = [get_music_diff_info(m['id'], music_diffs) for m in res_musics]
+        res_musics = [m for m, d in zip(res_musics, diff_infos) if diff in d['level']]
+        res_musics = res_musics[:4]
+
         if len(res_musics) == 0: 
             return await ctx.asend_reply_msg("没有找到相关曲目")
         
@@ -1127,11 +1133,11 @@ async def _(ctx: HandlerContext):
             return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
             
         if cn_title:
-            msg += f"{title} ({cn_title}) 难度{diff}\n"
+            msg += f"【{mid}】{title} ({cn_title}) 难度{diff}\n"
         else:
-            msg += f"{title} 难度{diff}\n"
+            msg += f"【{mid}】{title} 难度{diff}\n"
         if len(res_musics) > 1:
-            msg += "候选曲目: " + " | ".join([m["title"] for m in res_musics[1:]])
+            msg += "候选曲目: " + " | ".join([f'【{m["id"]}】{m["title"]}' for m in res_musics[1:]])
         return await ctx.asend_reply_msg(msg.strip())
 
     else:
@@ -1148,9 +1154,9 @@ async def _(ctx: HandlerContext):
             return await ctx.asend_reply_msg(f"获取指定曲目{mid}难度{diff}的谱面失败: {e}")
         
         if cn_title:
-            msg += f"{title} ({cn_title}) 难度{diff}\n"
+            msg += f"【{mid}】{title} ({cn_title}) 难度{diff}\n"
         else:
-            msg += f"{title} 难度{diff}\n"
+            msg += f"【{mid}】{title} 难度{diff}\n"
         return await ctx.asend_reply_msg(msg.strip())
 
 

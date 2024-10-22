@@ -80,14 +80,14 @@ Project Sekai（世界计划）日服游戏相关服务
 ```
 订阅/取消订阅当前群聊的提醒，当提醒发送时会@所有订阅成员
 使用 sub 进行订阅， unsub 进行取消订阅
-可以订阅的项目有: live 虚拟Live提醒 song 新曲上线提醒
+可以订阅的项目有: live 虚拟Live提醒 music 新曲上线提醒
 ```
 
 - **示例**
 
     `/pjsk sub live` 订阅虚拟Live提醒
 
-    `/pjsk unsub song` 取消订阅新曲上线提醒
+    `/pjsk unsub music` 取消订阅新曲上线提醒
 
 
 ## `/pjsk stamp`
@@ -188,31 +188,6 @@ Project Sekai（世界计划）日服游戏相关服务
     `/查卡面 123` 查询 ID 为 123 的卡面信息
 
 
---- 
-
-
-## `/pjsk_notify_{提醒类型}_{on|off}`
-
-```
-开关当前群聊的提醒
-```
-
-- **示例**
-
-    `/pjsk_notify_live_on` 开启虚拟Live提醒
-
-    `/pjsk_notify_song_off` 关闭新曲上线提醒
-
-
-## `/pjsk update`
-
-```
-手动更新数据
-```
-
-- **示例**
-
-    `/pjsk update`
 
 
 ## `/pjsk diff board`
@@ -243,6 +218,33 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/注册时间`
+
+--- 
+
+
+## `/pjsk_notify_{提醒类型}_{on|off}`
+
+```
+开关当前群聊的提醒
+```
+
+- **示例**
+
+    `/pjsk_notify_live_on` 开启虚拟Live提醒
+
+    `/pjsk_notify_song_off` 关闭新曲上线提醒
+
+
+## `/pjsk update`
+
+```
+手动更新数据
+```
+
+- **示例**
+
+    `/pjsk update`
+
 
 --- 
 
