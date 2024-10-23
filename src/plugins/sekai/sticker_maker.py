@@ -347,7 +347,7 @@ def make_sticker(
     :return: Sticker图像
     """
 
-    path = f"data/pjsk/maker/images/{id:06d}.png"
+    path = f"data/sekai/maker/images/{id:06d}.png"
     if not os.path.exists(path):
         return None
 

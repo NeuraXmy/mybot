@@ -19,7 +19,7 @@ gbl = get_group_black_list(file_db, logger, 'imgexp')
 
 DOWNLOAD_MAXSIZE = 1024 * 1024 * 10
 GIF_MAX_FPS = 10
-GIF_MAX_SIZE = 256
+GIF_MAX_SIZE = 512
 
 search = on_command('/search', priority=0, block=False)
 @search.handle()

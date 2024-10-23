@@ -1309,7 +1309,7 @@ async def _(ctx: HandlerContext):
 
         msg = f"{await get_stamp_image_cq(res_stamps[0]['id'])}候选表情:"
         for i, stamp in enumerate(res_stamps[1:]):
-            msg += f"\n【{sid}】{stamp['name'].split('：')[-1]}"
+            msg += f"\n【{stamp['id']}】{stamp['name'].split('：')[-1]}"
         return await ctx.asend_reply_msg(msg)
 
     # 制作表情
