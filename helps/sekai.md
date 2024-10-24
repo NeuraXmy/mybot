@@ -11,6 +11,9 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
 - [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
 - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
+- [`/pjsk song` 歌曲查询](#pjsk-song)
+- [`/pjsk alias` 歌曲别名查询](#pjsk-alias)
+- [`/pjsk alias add` 添加歌曲别名](#pjsk-alias-set)
 - [`/pjsk chart` 谱面查询](#pjsk-chart)
 - [`/pjsk note num` 物量查询](#pjsk-note-num)
 - [`/pjsk card` 卡牌查询](#pjsk-card)
@@ -22,6 +25,7 @@ Project Sekai（世界计划）日服游戏相关服务
 
 - [`/pjsk_notify_{提醒类型}_{on|off}` 开关提醒](#pjsk_notify_提醒类型_onoff)
 - [`/pjsk update` 手动更新数据](#pjsk-update)
+- [`/pjsk alias del` 删除歌曲别名](#pjsk-alias-del)
 
 ---
 
@@ -109,12 +113,50 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/pjsk stamp 123 再见` 用 123 号表情进行制作，文本为再见
 
-    
+
+## `/pjsk song`
+
+```
+按照曲名或ID获取歌曲
+```
+
+- **指令别名**
+
+    `/查曲`
+
+- **示例**
+
+    `/pjsk song 112` 查询 ID 为 112 的歌曲
+
+    `/pjsk song 热风` 查询标题为热风的歌曲信息
+
+
+## `/pjsk alias`
+
+```
+按照歌曲ID查询歌曲别名
+```
+
+- **示例**
+
+    `/pjsk alias 112` 
+
+
+## `/pjsk alias add`
+
+```
+添加歌曲别名
+```
+
+- **示例**
+
+    `/pjsk alias add 123 别名1 别名2...`
+
     
 ## `/pjsk chart`
 
 ```
-按照曲名或ID获取谱面预览，推荐使用日服或台服全名进行搜索
+按照曲名或ID获取谱面预览
 查询特定难度可以加上难度全称或者缩写，例如 master 或者 ma
 ```
 
@@ -204,6 +246,7 @@ Project Sekai（世界计划）日服游戏相关服务
     `/难度排行 ma` 查询 Master 难度歌曲列表
     `/难度排行 ma 30` 查询 Master 30歌曲列表
     `/难度排行 ma 30 32` 查询 Master 30~32歌曲列表
+    `/难度排行 ma 31 id` 查询 Master 31歌曲列表，并显示歌曲ID
 
 
 ## `/pjsk reg time`
@@ -244,6 +287,17 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/pjsk update`
+
+
+## `/pjsk alias del`
+
+```
+删除歌曲别名
+```
+
+- **示例**
+
+    `/pjsk alias del 123 别名1 别名2...`
 
 
 --- 

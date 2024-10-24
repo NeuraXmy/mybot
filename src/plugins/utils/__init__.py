@@ -1249,7 +1249,7 @@ class HandlerContext:
 
 
 class CmdHandler:
-    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=False, only_to_me=False):
+    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False):
         if isinstance(commands, str):
             commands = [commands]
         self.commands = commands

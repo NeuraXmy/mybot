@@ -33,6 +33,7 @@ subs = {
 
 music_name_retriever = get_text_retriever("music_name")
 stamp_text_retriever = get_text_retriever("stamp_text")
+music_alias_db = get_file_db("data/sekai/music_alias.json", logger)
 
 VLIVE_START_NOTIFY_BEFORE_MINUTE = config['vlive_start_notify_before_minute']
 VLIVE_END_NOTIFY_BEFORE_MINUTE  = config['vlive_end_notify_before_minute']
@@ -236,6 +237,17 @@ def get_music_diff_info(mid, music_diffs):
         ret['note_count'][d] = diff['totalNoteCount']
         if d == 'append': ret['has_append'] = True
     return ret
+
+# 检查歌曲是否有某个难度
+async def check_music_has_diff(mid, diff):
+    music_diffs = await res.music_diffs.get()
+    info = get_music_diff_info(mid, music_diffs)
+    return diff in info['level']
+
+# 获取中文曲名
+async def get_music_cn_title(mid):
+    music_cn_titles = await res.music_cn_titles.get()
+    return music_cn_titles.get(str(mid), None)
 
 # 更新曲名语义库
 @res.SekaiJsonRes.updated_hook("曲名语义库更新")
@@ -610,7 +622,6 @@ async def get_basic_profile(uid):
             return profile
         raise e
     
-
 # 获取玩家详细信息 -> profile, msg
 async def get_detailed_profile(qid, raise_exc=False):
     cache_path = None
@@ -981,7 +992,7 @@ async def compose_profile_image(basic_profile):
     return img
     
 # 合成难度排行图片
-async def compose_diff_board_image(diff, lv_musics, qid):
+async def compose_diff_board_image(diff, lv_musics, qid, show_id):
     async def get_cover_nothrow(mid):
         try: 
             musics = await res.musics.get()
@@ -1021,10 +1032,109 @@ async def compose_diff_board_image(diff, lv_musics, qid):
                         
                         with Grid(col_count=10).set_sep(5):
                             for i in range(len(musics)):
-                                with Frame():
+                                with VSplit().set_sep(2):
                                     ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill')
+                                    if show_id:
+                                        TextBox(f"{musics[i]['id']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)).set_w(64)
+                                
 
     return await run_in_pool(canvas.get_img)
+
+# 查询曲目
+async def search_music(
+    query, 
+    use_id=True, 
+    use_alias=True, 
+    use_emb=True, 
+    max_num=4,
+    search_num=None,
+    diff=None,
+):
+    logger.info(f"查询曲目: \"{query}\" use_id={use_id} use_alias={use_alias} use_emb={use_emb} max_num={max_num} search_num={search_num} diff={diff}")
+    query = query.strip()
+    musics = await res.musics.get()
+
+    ret_musics = []
+    search_type = None
+    msg = None
+
+    # id匹配
+    if not search_type and use_id:
+        try: mid = int(query)
+        except: mid = None
+        if mid:
+            music = find_by(musics, 'id', mid)
+            search_type = "id"
+            if music:
+                if diff and not await check_music_has_diff(mid, diff):
+                    msg = f"ID为{mid}的曲目没有{diff}难度"
+                else:
+                    ret_musics.append(music)
+            else:
+                msg = f"找不到id为{mid}的曲目"
+
+    # 别名匹配
+    if not search_type and use_alias:
+        music_alias = music_alias_db.get('alias', {})
+        alias_to_mid = {}
+        for i, alias_list in music_alias.items():
+            for alias in alias_list:
+                alias_to_mid[alias] = int(i)
+        if query in alias_to_mid:
+            search_type = "alias"
+            music = find_by(musics, 'id', alias_to_mid[query])
+            if diff and not await check_music_has_diff(alias_to_mid[query], diff):
+                msg = f"别名为{query}的曲目没有{diff}难度"
+            else:
+                ret_musics.append(music)
+
+    # 语义匹配
+    if not search_type and use_emb:
+        search_type = "emb"
+        if not query:
+            msg = "搜索文本为空"
+        else:
+            if not search_num:
+                search_num = max_num * 5
+            logger.info(f"搜索曲名: {query}")
+            res_musics, scores = await query_music_by_text(musics, query, search_num)
+            res_musics = unique_by(res_musics, "id")
+            res_musics = [m for m in res_musics if diff is None or (await check_music_has_diff(int(m['id']), diff))]
+            res_musics = res_musics[:max_num]
+            if len(res_musics) == 0:
+                msg = "没有找到相关曲目"
+            ret_musics.extend(res_musics)
+    
+    music = ret_musics[0] if len(ret_musics) > 0 else None
+    candidates = ret_musics[1:] if len(ret_musics) > 1 else []
+    candidate_msg = "" if not candidates else "候选曲目: " + " | ".join([f'【{m["id"]}】{m["title"]}' for m in candidates])
+    
+    if music:
+        logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} id={music['id']} len(candidates)={len(candidates)}")
+    else:
+        logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} msg={msg}")
+
+    return {
+        "music": music,
+        "candidates": candidates,
+        "candidate_msg": candidate_msg,
+        "search_type": search_type,
+        "msg": msg,
+    }
+    
+# 获取禁止的歌曲别名
+def get_banned_music_alias():
+    path = "data/sekai/alias_ban_list.txt"
+    banned_alias = set()
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    banned_alias.add(line)
+    for names in DIFF_NAMES:
+        banned_alias.update(names)
+    return banned_alias
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -1102,62 +1212,26 @@ async def _(ctx: HandlerContext):
     query = ctx.get_args().strip()
     if not query:
         return await ctx.asend_reply_msg("请输入要查询的谱面名或ID")
-
     diff, query = extract_diff_suffix(query)
-    try: mid = int(query)
-    except: mid = None
+    search_ret = await search_music(query, max_num=4, diff=diff)
+    music, search_type, candidate_msg, search_msg = \
+        search_ret['music'], search_ret['search_type'], search_ret['candidate_msg'], search_ret['msg']
+    if not music:
+        raise Exception(search_msg)
 
-    musics = await res.musics.get()
-    music_cn_title = await res.music_cn_titles.get()
-    music_diffs = await res.music_diffs.get()
+    mid = music["id"]
+    title = music["title"]
+    cn_title = await get_music_cn_title(mid)
+    cn_title = f"({cn_title})" if cn_title else "" 
 
-    if not mid:
-        logger.info(f"搜索谱面: {query} diff={diff}")
-        res_musics, scores = await query_music_by_text(musics, query, 20)
-        res_musics = unique_by(res_musics, "id")
-
-        diff_infos = [get_music_diff_info(m['id'], music_diffs) for m in res_musics]
-        res_musics = [m for m, d in zip(res_musics, diff_infos) if diff in d['level']]
-        res_musics = res_musics[:4]
-
-        if len(res_musics) == 0: 
-            return await ctx.asend_reply_msg("没有找到相关曲目")
+    msg = ""
+    try:
+        msg += await get_chart_image(mid, diff)
+    except Exception as e:
+        return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
         
-        msg = ""
-        try:
-            mid = res_musics[0]["id"]
-            title = res_musics[0]["title"]
-            cn_title = music_cn_title.get(str(mid))
-            msg += await get_chart_image(mid, diff)
-        except Exception as e:
-            return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
-            
-        if cn_title:
-            msg += f"【{mid}】{title} ({cn_title}) 难度{diff}\n"
-        else:
-            msg += f"【{mid}】{title} 难度{diff}\n"
-        if len(res_musics) > 1:
-            msg += "候选曲目: " + " | ".join([f'【{m["id"]}】{m["title"]}' for m in res_musics[1:]])
-        return await ctx.asend_reply_msg(msg.strip())
-
-    else:
-        logger.info(f"查询谱面: {mid} diff={diff}")
-        msg = ""
-        try:
-            music = find_by(musics, "id", mid)
-            title, cn_title = "???", None
-            if music:
-                title = music["title"]
-                cn_title = music_cn_title.get(str(mid))
-            msg += await get_chart_image(mid, diff)
-        except Exception as e:
-            return await ctx.asend_reply_msg(f"获取指定曲目{mid}难度{diff}的谱面失败: {e}")
-        
-        if cn_title:
-            msg += f"【{mid}】{title} ({cn_title}) 难度{diff}\n"
-        else:
-            msg += f"【{mid}】{title} 难度{diff}\n"
-        return await ctx.asend_reply_msg(msg.strip())
+    msg += f"【{mid}】{title} {cn_title} 难度{diff}\n" + candidate_msg
+    return await ctx.asend_reply_msg(msg.strip())
 
 
 # 物量查询
@@ -1196,7 +1270,11 @@ pjsk_diff_board.check_cdrate(cd).check_wblist(gbl)
 @pjsk_diff_board.handle()
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
+    show_id = False
     try:
+        if 'id' in args:
+            args = args.replace('id', '')
+            show_id = True
         diff, args = extract_diff(args)
         assert diff
     except:
@@ -1237,7 +1315,7 @@ async def _(ctx: HandlerContext):
 
     lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
 
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(diff, lv_musics, ctx.user_id)))
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(diff, lv_musics, ctx.user_id, show_id)))
 
 
 # 表情查询/制作
@@ -1332,7 +1410,7 @@ async def _(ctx: HandlerContext):
             text_pos = "mu",
             line_spacing = 0,
             text_x_offset = 0,
-            text_y_offset = 0,
+            text_y_offset = 20,
             disable_different_font_size = False
         )
         if result_image is None:
@@ -1516,6 +1594,194 @@ async def _(ctx: HandlerContext):
     reg_time = datetime.fromtimestamp(fst_card['createdAt'] / 1000).strftime('%Y-%m-%d')
     user_name = profile['user']['userGamedata']['name']
     return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time}")
+
+
+# 查曲
+pjsk_song = CmdHandler(["/pjsk song", "/pjsk_song", "/pjsk music", "/pjsk_music", "/查曲"], logger)
+pjsk_song.check_cdrate(cd).check_wblist(gbl)
+@pjsk_song.handle()
+async def _(ctx: HandlerContext):
+    query = ctx.get_args().strip()
+    if not query:
+        return await ctx.asend_reply_msg("请输入要查询的歌曲名或ID")
+    search_ret = await search_music(query, max_num=4)
+    music, search_type, candidate_msg, search_msg = \
+        search_ret['music'], search_ret['search_type'], search_ret['candidate_msg'], search_ret['msg']
+    if not music:
+        raise Exception(search_msg)
+    
+    mid = music["id"]
+    msg = ""
+
+    asset_name = music['assetbundleName']
+    cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
+    msg += await get_image_cq(cover_img, allow_error=False, logger=logger)
+
+    title = music["title"]
+    cn_title = await get_music_cn_title(mid)
+    cn_title = f"({cn_title})" if cn_title else ""
+    msg += f"【{mid}】{title} {cn_title}\n"
+    
+    msg += f"Composer: {music['composer']}\n"
+    msg += f"发布日期: {datetime.fromtimestamp(music['publishedAt'] / 1000).strftime('%Y-%m-%d')}\n"
+
+    diff_info = get_music_diff_info(mid, await res.music_diffs.get())
+    easy_lv = diff_info['level'].get('easy', '-')
+    normal_lv = diff_info['level'].get('normal', '-')
+    hard_lv = diff_info['level'].get('hard', '-')
+    expert_lv = diff_info['level'].get('expert', '-')
+    master_lv = diff_info['level'].get('master', '-')
+    append_lv = diff_info['level'].get('append', '-')
+    easy_count = diff_info['note_count'].get('easy', '-')
+    normal_count = diff_info['note_count'].get('normal', '-')
+    hard_count = diff_info['note_count'].get('hard', '-')
+    expert_count = diff_info['note_count'].get('expert', '-')
+    master_count = diff_info['note_count'].get('master', '-')
+    append_count = diff_info['note_count'].get('append', '-')
+
+    msg += f"等级: {easy_lv}/{normal_lv}/{hard_lv}/{expert_lv}/{master_lv}"
+    if diff_info['has_append']:
+        msg += f"/{append_lv}"
+    msg += f"\n"
+
+    msg += f"物量: {easy_count}/{normal_count}/{hard_count}/{expert_count}/{master_count}"
+    if diff_info['has_append']:
+        msg += f"/{append_count}"
+    msg += f"\n"
+
+    msg += candidate_msg
+
+    return await ctx.asend_reply_msg(msg.strip())
+
+
+# 设置歌曲别名
+pjsk_alias_set = CmdHandler(["/pjsk alias add", "/pjsk_alias_add", "/pjskalias add", "/pjskalias_add"], logger, priority=100)
+pjsk_alias_set.check_cdrate(cd).check_wblist(gbl)
+@pjsk_alias_set.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    musics = await res.musics.get()
+    music_alias = music_alias_db.get('alias', {})
+
+    try:
+        mid, aliases = args.split(maxsplit=1)
+        music = find_by(musics, "id", int(mid))
+        title = music["title"]
+        assert music is not None
+        assert aliases
+
+        aliases = aliases.split()
+        assert aliases
+    except:
+        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias set 歌曲ID 别名1 别名2...")
+
+    alias_to_music = {}
+    for i, alias_list in music_alias.items():
+        for alias in alias_list:
+            alias_to_music[alias] = find_by(musics, "id", int(i))
+
+    banned_alias = get_banned_music_alias()
+
+    ok_aliases     = []
+    failed_aliases = []
+    for alias in aliases:
+        if alias in banned_alias:
+            failed_aliases.append((alias, "该别名无法使用"))
+            continue
+    
+        if alias in alias_to_music:
+            m = alias_to_music[alias]
+            mid = m["id"]
+            title = m["title"]
+            failed_aliases.append((alias, f"已经是【{mid}】{title} 的别名"))
+            continue
+        
+        ok_aliases.append(alias)
+        if str(music["id"]) not in music_alias:
+            music_alias[str(music["id"])] = []
+        music_alias[str(music["id"])].append(alias)
+        alias_to_music[alias] = music
+        logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 为歌曲 {mid} 设置了别名 {alias}")
+
+    msg = f"为【{mid}】{title} 设置别名"
+    if ok_aliases:
+        music_alias_db.set('alias', music_alias)
+        msg += " " + " | ".join(ok_aliases) + " 成功"
+    else:
+        msg += "，以下别名设置失败:\n"
+        for alias, reason in failed_aliases:
+            msg += f"{alias}: {reason}\n"
+
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
+
+
+# 查看歌曲别名
+pjsk_alias = CmdHandler(["/pjsk alias", "/pjsk_alias", "/pjskalias", "/pjskalias"], logger, priority=101)
+pjsk_alias.check_cdrate(cd).check_wblist(gbl)
+@pjsk_alias.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    musics = await res.musics.get()
+    try:
+        music = find_by(musics, "id", int(args))
+        assert music is not None
+    except:
+        return await ctx.asend_reply_msg("请输入正确的歌曲ID")
+
+    music_alias = music_alias_db.get('alias', {})
+    aliases = music_alias.get(str(music["id"]), [])
+    if not aliases:
+        return await ctx.asend_reply_msg(f"【{music['id']}】{music['title']} 还没有别名")
+
+    msg = f"【{music['id']}】{music['title']} 的别名:\n"
+    msg += " | ".join(aliases)
+
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
+
+
+# 删除歌曲别名
+pjsk_alias_del = CmdHandler(["/pjsk alias del", "/pjsk_alias_del", "/pjskalias del", "/pjskalias_del"], logger, priority=102)
+pjsk_alias_del.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_alias_del.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    musics = await res.musics.get()
+    music_alias = music_alias_db.get('alias', {})
+
+    try:
+        mid, aliases = args.split(maxsplit=1)
+        music = find_by(musics, "id", int(mid))
+        title = music["title"]
+        assert music is not None
+        assert aliases
+
+        aliases = aliases.split()
+        assert aliases
+    except:
+        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias del 歌曲ID 别名1 别名2...")
+
+    current_aliases = music_alias.get(str(music["id"]), [])
+    ok_aliases     = []
+    failed_aliases = []
+    for alias in aliases:
+        if alias not in current_aliases:
+            failed_aliases.append((alias, "不是这首歌的别名"))
+            continue
+        current_aliases.remove(alias)
+        ok_aliases.append(alias)
+    
+    msg = f"为【{mid}】{title} 删除别名"
+    if ok_aliases:
+        music_alias[str(music["id"])] = current_aliases
+        music_alias_db.set('alias', music_alias)
+        msg += " " + " | ".join(ok_aliases) + " 成功"
+    else:
+        msg += "，以下别名删除失败:\n"
+        for alias, reason in failed_aliases:
+            msg += f"{alias}: {reason}\n"
+    
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
+
 
 # ========================================= 定时任务 ========================================= #
 
