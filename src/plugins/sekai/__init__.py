@@ -1670,7 +1670,8 @@ async def _(ctx: HandlerContext):
         assert music is not None
         assert aliases
 
-        aliases = aliases.split()
+        aliases = aliases.replace("，", ",")
+        aliases = aliases.split(",")
         assert aliases
     except:
         return await ctx.asend_reply_msg("使用方式:\n/pjsk alias set 歌曲ID 别名1 别名2...")

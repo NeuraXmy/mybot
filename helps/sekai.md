@@ -145,12 +145,12 @@ Project Sekai（世界计划）日服游戏相关服务
 ## `/pjsk alias add`
 
 ```
-添加歌曲别名
+添加歌曲别名，多个别名逗号分割
 ```
 
 - **示例**
 
-    `/pjsk alias add 123 别名1 别名2...`
+    `/pjsk alias add 123 别名1，别名2...`
 
     
 ## `/pjsk chart`
