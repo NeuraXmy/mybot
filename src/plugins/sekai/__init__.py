@@ -157,6 +157,7 @@ DIFF_COLORS = {
     "append": LinearGradient((182, 144, 247, 255), (243, 132, 220, 255), (1.0, 1.0), (0.0, 0.0)),
 }
 
+alias_add_history = {}
 
 # ========================================= 工具函数 ========================================= #
 
@@ -1060,8 +1061,11 @@ async def search_music(
 
     # id匹配
     if not search_type and use_id:
-        try: mid = int(query)
-        except: mid = None
+        try: 
+            assert "id" in query
+            mid = int(query.replace("id", ""))
+        except: 
+            mid = None
         if mid:
             music = find_by(musics, 'id', mid)
             search_type = "id"
@@ -1707,9 +1711,15 @@ async def _(ctx: HandlerContext):
     msg = f"为【{mid}】{title} 设置别名"
     if ok_aliases:
         music_alias_db.set('alias', music_alias)
-        msg += " " + " | ".join(ok_aliases) + " 成功"
+        msg += " | ".join(ok_aliases)
+        
+        hists = alias_add_history.get(ctx.user_id, [])
+        hists.append((mid, ok_aliases))
+        hists = hists[-10:]
+        alias_add_history[ctx.user_id] = hists
+
     else:
-        msg += "，以下别名设置失败:\n"
+        msg += "\n以下别名设置失败:\n"
         for alias, reason in failed_aliases:
             msg += f"{alias}: {reason}\n"
 
@@ -1756,7 +1766,8 @@ async def _(ctx: HandlerContext):
         assert music is not None
         assert aliases
 
-        aliases = aliases.split()
+        aliases = aliases.replace("，", ",")
+        aliases = aliases.split(",")
         assert aliases
     except:
         return await ctx.asend_reply_msg("使用方式:\n/pjsk alias del 歌曲ID 别名1 别名2...")
@@ -1775,13 +1786,57 @@ async def _(ctx: HandlerContext):
     if ok_aliases:
         music_alias[str(music["id"])] = current_aliases
         music_alias_db.set('alias', music_alias)
-        msg += " " + " | ".join(ok_aliases) + " 成功"
+        msg += " | ".join(ok_aliases)
     else:
-        msg += "，以下别名删除失败:\n"
+        msg += "以下别名删除失败:\n"
         for alias, reason in failed_aliases:
             msg += f"{alias}: {reason}\n"
     
     return await ctx.asend_fold_msg_adaptive(msg.strip())
+
+
+# 取消上次别名添加
+pjsk_alias_cancel = CmdHandler(["/pjsk alias cancel", "/pjsk_alias_cancel", "/pjskalias cancel", "/pjskalias_cancel"], logger, priority=103)
+pjsk_alias_cancel.check_cdrate(cd).check_wblist(gbl)
+@pjsk_alias_cancel.handle()
+async def _(ctx: HandlerContext):
+    hists = alias_add_history.get(ctx.user_id, [])
+    if not hists:
+        return await ctx.asend_reply_msg("没有别名添加记录")
+    
+    mid, aliases = hists[-1]
+    all_music_alias = music_alias_db.get('alias', {})
+    this_music_alias = all_music_alias.get(str(mid), [])
+
+    ok_aliases     = []
+    failed_aliases = []
+
+    for alias in aliases:
+        if alias not in this_music_alias:
+            failed_aliases.append((alias, "已经不是这首歌的别名"))
+            continue
+        ok_aliases.append(alias)
+        this_music_alias.remove(alias)
+        logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 取消了歌曲 {mid} 的别名 {alias}")
+    
+
+    msg = f"取消歌曲【{mid}】的别名添加"
+    if ok_aliases:
+        all_music_alias[str(mid)] = this_music_alias
+        music_alias_db.set('alias', all_music_alias)
+
+        msg += " | ".join(ok_aliases)
+
+        hists.pop()
+        alias_add_history[ctx.user_id] = hists
+
+    else:
+        msg += "以下别名取消失败:\n"
+        for alias, reason in failed_aliases:
+            msg += f"{alias}: {reason}\n"
+
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
+
 
 
 # ========================================= 定时任务 ========================================= #

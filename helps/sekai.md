@@ -14,6 +14,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk song` 歌曲查询](#pjsk-song)
 - [`/pjsk alias` 歌曲别名查询](#pjsk-alias)
 - [`/pjsk alias add` 添加歌曲别名](#pjsk-alias-set)
+- [`/pjsk alias cancel` 取消上次别名添加](#pjsk-alias-cancel)
 - [`/pjsk chart` 谱面查询](#pjsk-chart)
 - [`/pjsk note num` 物量查询](#pjsk-note-num)
 - [`/pjsk card` 卡牌查询](#pjsk-card)
@@ -126,7 +127,7 @@ Project Sekai（世界计划）日服游戏相关服务
 
 - **示例**
 
-    `/pjsk song 112` 查询 ID 为 112 的歌曲
+    `/pjsk song id112` 查询 ID 为 112 的歌曲
 
     `/pjsk song 热风` 查询标题为热风的歌曲信息
 
@@ -152,11 +153,22 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/pjsk alias add 123 别名1，别名2...`
 
+
+## `/pjsk alias cancel`
+
+```
+取消自己的上次别名添加
+```
+
+- **示例**
+
+    `/pjsk alias cancel`
+
     
 ## `/pjsk chart`
 
 ```
-按照曲名或ID获取谱面预览
+按照曲名或歌曲ID获取谱面预览
 查询特定难度可以加上难度全称或者缩写，例如 master 或者 ma
 ```
 
@@ -166,12 +178,11 @@ Project Sekai（世界计划）日服游戏相关服务
 
 - **示例**
 
-    `/谱面查询 123` 查询 ID 为 123 的谱面预览
+    `/谱面查询 id123` 查询 ID 为 123 的谱面预览
 
     `/谱面查询 热风` 查询热风的 Master 谱面
 
     `/谱面查询 热风 apd` 查询热风的 Append 谱面
-
 
 
 
