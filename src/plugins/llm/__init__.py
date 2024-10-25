@@ -136,6 +136,7 @@ def get_rest_quota():
 
 CHAT_MODELS = json.load(open("data/llm/models.json"))
 CHAT_MAX_TOKENS = config['chat_max_tokens']
+QUERY_LIMIT_PER_SECOND = 5
 
 def get_model_by_name(name):
     for model in CHAT_MODELS:
@@ -163,7 +164,22 @@ async def get_image_b64(image_path):
     img.save(tmp_save_dir, "JPEG")
     with open(tmp_save_dir, "rb") as f:
         return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
-    
+
+
+current_sec_timestamp = 0
+current_query_count = 0
+
+def check_query_limit():
+    sec_timestamp = int(datetime.now().timestamp())
+    global current_sec_timestamp, current_query_count
+    if sec_timestamp != current_sec_timestamp:
+        current_sec_timestamp = sec_timestamp
+        current_query_count = 0
+    if current_query_count >= QUERY_LIMIT_PER_SECOND:
+        raise Exception(f"LLM请求过于频繁，请稍后再试")
+    current_query_count += 1
+
+
 # 会话类型
 class ChatSession:
     def __init__(self, system_prompt=None):
@@ -224,6 +240,8 @@ class ChatSession:
     async def get_response(self, model_name, usage, group_id=None, user_id=None):
         logger.info(f"会话{self.id}请求回复, 使用模型: {model_name}")
 
+        check_query_limit()
+
         model = get_model_by_name(model_name)
         if not model:
             closest_name = get_closest_modelname(model_name)
@@ -278,6 +296,9 @@ TEXT_EMBEDDING_MODEL = config['text_embedding_model']
 # 获取文本嵌入
 async def get_text_embedding(text, usage, group_id=None, user_id=None):
     logger.info(f"获取文本嵌入: {text}")
+
+    check_query_limit()
+
     text = text.replace("\n", " ")
 
     response = await get_client().embeddings.create(

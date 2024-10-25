@@ -10,7 +10,7 @@ import aiohttp
 import json
 from ..utils import *
 import numpy as np
-from ..llm import get_text_retriever
+from ..llm import get_text_retriever, ChatSession
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from . import res
 from datetime import datetime
@@ -266,7 +266,7 @@ async def update_music_name_embs():
             await music_name_retriever.set_emb(f"{mid} cn_title", cn_title, only_add=True)
 
 # 根据曲名语义查询歌曲
-async def query_music_by_text(musics, text, limit=5):
+async def query_music_by_emb(musics, text, limit=5):
     query_result = await music_name_retriever.find(text, limit)
     ids = [int(item[0].split()[0]) for item in query_result]
     result_musics = [find_by(musics, "id", mid) for mid in ids]
@@ -1101,7 +1101,7 @@ async def search_music(
             if not search_num:
                 search_num = max_num * 5
             logger.info(f"搜索曲名: {query}")
-            res_musics, scores = await query_music_by_text(musics, query, search_num)
+            res_musics, scores = await query_music_by_emb(musics, query, search_num)
             res_musics = unique_by(res_musics, "id")
             res_musics = [m for m in res_musics if diff is None or (await check_music_has_diff(int(m['id']), diff))]
             res_musics = res_musics[:max_num]
