@@ -287,7 +287,10 @@ async def _(bot: Bot, event: MessageEvent):
     
     additional_info = f"{model_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if (rest_quota := get_rest_quota()) > 0:
-        additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
+        if total_cost >= 0.0001 or total_cost == 0.0:
+            additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
+        else:
+            additional_info += f" | <0.0001/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
 
     final_text = tools_additional_info + res_text + additional_info

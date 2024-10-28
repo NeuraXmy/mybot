@@ -1140,6 +1140,55 @@ def get_banned_music_alias():
         banned_alias.update(names)
     return banned_alias
 
+# 获取歌曲详细信息字符串
+async def get_music_detail_str(music):
+    mid = music["id"]
+    msg = ""
+
+    try:
+        asset_name = music['assetbundleName']
+        cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
+        msg += await get_image_cq(cover_img, allow_error=False, logger=logger)
+    except Exception as e:
+        logger.print_exc(f"获取{mid}的封面失败")
+        msg += "[封面加载失败]\n"
+
+    title = music["title"]
+    cn_title = await get_music_cn_title(mid)
+    cn_title = f"({cn_title})" if cn_title else ""
+    msg += f"【{mid}】{title} {cn_title}\n"
+    
+    msg += f"作曲: {music['composer']}\n"
+    msg += f"作词: {music['lyricist']}\n"
+    msg += f"编曲: {music['arranger']}\n"
+    msg += f"发布时间: {datetime.fromtimestamp(music['publishedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    diff_info = get_music_diff_info(mid, await res.music_diffs.get())
+    easy_lv = diff_info['level'].get('easy', '-')
+    normal_lv = diff_info['level'].get('normal', '-')
+    hard_lv = diff_info['level'].get('hard', '-')
+    expert_lv = diff_info['level'].get('expert', '-')
+    master_lv = diff_info['level'].get('master', '-')
+    append_lv = diff_info['level'].get('append', '-')
+    easy_count = diff_info['note_count'].get('easy', '-')
+    normal_count = diff_info['note_count'].get('normal', '-')
+    hard_count = diff_info['note_count'].get('hard', '-')
+    expert_count = diff_info['note_count'].get('expert', '-')
+    master_count = diff_info['note_count'].get('master', '-')
+    append_count = diff_info['note_count'].get('append', '-')
+
+    msg += f"等级: {easy_lv}/{normal_lv}/{hard_lv}/{expert_lv}/{master_lv}"
+    if diff_info['has_append']:
+        msg += f"/APD{append_lv}"
+    msg += f"\n"
+
+    msg += f"物量: {easy_count}/{normal_count}/{hard_count}/{expert_count}/{master_count}"
+    if diff_info['has_append']:
+        msg += f"/{append_count}"
+    msg += f"\n"
+
+    return msg
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -1614,45 +1663,7 @@ async def _(ctx: HandlerContext):
     if not music:
         raise Exception(search_msg)
     
-    mid = music["id"]
-    msg = ""
-
-    asset_name = music['assetbundleName']
-    cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
-    msg += await get_image_cq(cover_img, allow_error=False, logger=logger)
-
-    title = music["title"]
-    cn_title = await get_music_cn_title(mid)
-    cn_title = f"({cn_title})" if cn_title else ""
-    msg += f"【{mid}】{title} {cn_title}\n"
-    
-    msg += f"Composer: {music['composer']}\n"
-    msg += f"发布日期: {datetime.fromtimestamp(music['publishedAt'] / 1000).strftime('%Y-%m-%d')}\n"
-
-    diff_info = get_music_diff_info(mid, await res.music_diffs.get())
-    easy_lv = diff_info['level'].get('easy', '-')
-    normal_lv = diff_info['level'].get('normal', '-')
-    hard_lv = diff_info['level'].get('hard', '-')
-    expert_lv = diff_info['level'].get('expert', '-')
-    master_lv = diff_info['level'].get('master', '-')
-    append_lv = diff_info['level'].get('append', '-')
-    easy_count = diff_info['note_count'].get('easy', '-')
-    normal_count = diff_info['note_count'].get('normal', '-')
-    hard_count = diff_info['note_count'].get('hard', '-')
-    expert_count = diff_info['note_count'].get('expert', '-')
-    master_count = diff_info['note_count'].get('master', '-')
-    append_count = diff_info['note_count'].get('append', '-')
-
-    msg += f"等级: {easy_lv}/{normal_lv}/{hard_lv}/{expert_lv}/{master_lv}"
-    if diff_info['has_append']:
-        msg += f"/{append_lv}"
-    msg += f"\n"
-
-    msg += f"物量: {easy_count}/{normal_count}/{hard_count}/{expert_count}/{master_count}"
-    if diff_info['has_append']:
-        msg += f"/{append_count}"
-    msg += f"\n"
-
+    msg = await get_music_detail_str(music)
     msg += candidate_msg
 
     return await ctx.asend_reply_msg(msg.strip())
@@ -1930,24 +1941,7 @@ async def new_music_notify():
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
         msg = f"【PJSK新曲上线】\n"
-        msg += f"{music['composer']} - {music['title']}\n"
-
-        try:
-            asset_name = music['assetbundleName']
-            cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
-            cover_img_cq = await get_image_cq(cover_img, allow_error=False, logger=logger)
-        except:
-            cover_img_cq = "[加载封面失败]"
-
-        msg += cover_img_cq + "\n"
-        
-        info = get_music_diff_info(mid, music_diffs)
-        lv = info['level']
-        msg += f"{lv['easy']}/{lv['normal']}/{lv['hard']}/{lv['expert']}/{lv['master']}"
-        if info['has_append']:
-            msg += f"/APD{lv['append']}"
-        
-        msg += f"\n发布时间: {publish_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        msg += await get_music_detail_str(music)    
 
         for group_id in music_notify_gwl.get():
             if not gbl.check_id(group_id): continue
