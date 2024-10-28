@@ -445,7 +445,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # text = "\n" + art.to_ascii(columns=ASCII_ART_WIDTH, monochrome=True)
         text = ""
 
-    user_name = await get_user_name(bot, event.group_id, event.user_id)
+    user_name = await get_group_member_name(bot, event.group_id, event.user_id)
     msg = f'[{user_name}] {text}'
 
     try:
@@ -498,7 +498,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     server = get_server(event.group_id)
     msg = '管理员列表:\n'
     for user_id in server.admin:
-        user_name = await get_user_name(bot, event.group_id, int(user_id))
+        user_name = await get_group_member_name(bot, event.group_id, int(user_id))
         msg += f'{user_name}({user_id})\n'
     return await send_msg(get_admin, msg.strip())
 

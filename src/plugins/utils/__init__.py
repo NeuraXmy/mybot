@@ -379,7 +379,7 @@ def get_file_db(path, logger) -> FileDB:
 
 
 # 是否是群聊消息
-def is_group(event):
+def is_group_msg(event):
     return hasattr(event, 'group_id')
 
 
@@ -444,8 +444,8 @@ def get_avatar_url(user_id):
     return f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
 
 
-# 获取用户名 如果有群名片则返回群名片 否则返回昵称
-async def get_user_name(bot, group_id, user_id):
+# 获取群聊中的用户名 如果有群名片则返回群名片 否则返回昵称
+async def get_group_member_name(bot, group_id, user_id):
     info = await bot.call_api('get_group_member_info', **{'group_id': int(group_id), 'user_id': int(user_id)})
     if 'card' in info and info['card']:
         return info['card']
@@ -566,7 +566,7 @@ async def send_group_fold_msg(bot, group_id, contents):
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
 async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
-    if is_group(event) and len(message) > threshold:
+    if is_group_msg(event) and len(message) > threshold:
         return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
     if need_reply:
         return await send_reply_msg(handler, event.message_id, message)
@@ -922,7 +922,7 @@ class GroupWhiteList:
         return group_id in white_list
 
     def check(self, event, allow_private=False, allow_super=False):
-        if is_group(event):
+        if is_group_msg(event):
             if allow_super and check_superuser(event, self.superuser): 
                 self.logger.debug(f'白名单{self.white_list_name}检查: 允许超级用户{event.user_id}')
                 return True
@@ -1020,7 +1020,7 @@ class GroupBlackList:
         return group_id not in black_list
     
     def check(self, event, allow_private=False, allow_super=False):
-        if is_group(event):
+        if is_group_msg(event):
             if allow_super and check_superuser(event, self.superuser): 
                 self.logger.debug(f'黑名单{self.black_list_name}检查: 允许超级用户{event.user_id}')
                 return True
@@ -1288,9 +1288,9 @@ class CmdHandler:
             @self.handler.handle()
             async def func(bot: Bot, event: MessageEvent):
                 # 权限检查
-                if self.private_group_check == "group" and not is_group(event):
+                if self.private_group_check == "group" and not is_group_msg(event):
                     return
-                if self.private_group_check == "private" and is_group(event):
+                if self.private_group_check == "private" and is_group_msg(event):
                     return
                 if self.superuser_check and not check_superuser(event, **self.superuser_check):
                     return
@@ -1317,7 +1317,7 @@ class CmdHandler:
 
                 context.message_id = event.message_id
                 context.user_id = event.user_id
-                if is_group(event):
+                if is_group_msg(event):
                     context.group_id = event.group_id
 
                 try:

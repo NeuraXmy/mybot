@@ -39,9 +39,10 @@ message_pool = {}
 # 记录新消息
 @record_hook
 async def record_new_message(bot, event):
+    if not is_group_msg(event): return
     msg_obj = await get_msg_obj(bot, event.message_id)
     group_id = event.group_id
-    user_name = await get_user_name(bot, group_id, event.user_id)
+    user_name = await get_group_member_name(bot, group_id, event.user_id)
 
     for cid, group_msgs in message_pool.items():
         # print(f"add msg {event.message_id} of group {group_id} to {cid}")

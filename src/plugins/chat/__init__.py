@@ -36,7 +36,7 @@ async def use_tool(handle, session, type, data, event):
         logger.info(f"使用python工具, data: {data}")
 
         notify_msg = f"正在执行python代码:\n\n{data}"
-        if is_group(event):
+        if is_group_msg(event):
             await send_group_fold_msg(get_bot(), event.group_id, [notify_msg])
         else:
             await handle.send(notify_msg)
@@ -72,7 +72,7 @@ def get_private_model_name(user_id):
 
 # 获取某个event的模型名
 def get_model_name(event):
-    if is_group(event):
+    if is_group_msg(event):
         return get_group_model_name(event.group_id)
     else:
         return get_private_model_name(event.user_id)
@@ -93,7 +93,7 @@ def change_private_model_name(user_id, model_name):
 
 # 根据event修改模型名
 def change_model_name(event, model_name):
-    if is_group(event):
+    if is_group_msg(event):
         change_group_model_name(event.group_id, model_name)
     else:
         change_private_model_name(event.user_id, model_name)
@@ -136,7 +136,7 @@ async def _(bot: Bot, event: MessageEvent):
         if not gwl.check(event, allow_private=True, allow_super=True): return
 
         # 群组内，或者自己对自己的私聊，只有at机器人的消息才会被回复
-        if is_group(event) or check_self(event):
+        if is_group_msg(event) or check_self(event):
             has_at = False
             if "at" in query_cqs:
                 for cq in query_cqs["at"]:
@@ -161,7 +161,7 @@ async def _(bot: Bot, event: MessageEvent):
 
         # 获取对话的模型名
         if "model:" in query_text:
-            if is_group(event) and not check_superuser(event): 
+            if is_group_msg(event) and not check_superuser(event): 
                 return await send_reply_msg(chat_request, event.message_id, "非超级用户不允许自定义模型")
             model_name = query_text.split("model:")[1].strip().split(" ")[0]
             try:
@@ -251,7 +251,7 @@ async def _(bot: Bot, event: MessageEvent):
             res = await session.get_response(
                 model_name=model_name,
                 usage="chat", 
-                group_id=(event.group_id if is_group(event) else None),
+                group_id=(event.group_id if is_group_msg(event) else None),
                 user_id=event.user_id,
             )
             res_text = res["result"]
@@ -310,7 +310,7 @@ change_model = on_command("/chat_model", block=False, priority=0)
 @change_model.handle()
 async def _(bot: Bot, event: MessageEvent):
     if not gwl.check(event, allow_private=True, allow_super=True): return
-    if is_group(event) and not check_superuser(event): return
+    if is_group_msg(event) and not check_superuser(event): return
     if not (await chat_cd.check(event)): return
     try:
         model_name = event.get_plaintext().replace("/chat_model", "").strip()
@@ -349,7 +349,7 @@ async def _(bot: Bot, event: MessageEvent):
         audio_file_path = await tts(
             text=text, 
             usage="tts", 
-            group_id=event.group_id if is_group(event) else None, 
+            group_id=event.group_id if is_group_msg(event) else None, 
             user_id=event.user_id
         )
 

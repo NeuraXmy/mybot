@@ -30,7 +30,7 @@ async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg(
         logger.info(f"运行代码: {code}")
         res = await run(code)
         logger.info(f"运行结果: {res}")
-        name = await get_user_name(bot, event.group_id, event.user_id)
+        name = await get_group_member_name(bot, event.group_id, event.user_id)
         return await send_fold_msg_adaptive(bot, runcode, event, res)
 
     except Exception as e:

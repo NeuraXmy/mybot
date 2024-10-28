@@ -354,13 +354,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 if len(ok_users) > 0:
                     resp += "添加订阅成功: "
                     for user in ok_users:
-                        resp += await get_user_name(bot, group_id, user) + " "
+                        resp += await get_group_member_name(bot, group_id, user) + " "
                     resp += "\n"
                 
                 if len(already_users) > 0:
                     resp += "已订阅: "
                     for user in already_users:
-                        resp += await get_user_name(bot, group_id, user) + " "
+                        resp += await get_group_member_name(bot, group_id, user) + " "
                     resp += "\n"
 
                 logger.info(f"为 {users} 订阅任务 {group_id}_{task_id} 成功: 添加订阅成功 {ok_users} 已订阅 {already_users}")
@@ -415,13 +415,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 if len(ok_users) > 0:
                     resp += "取消订阅成功: "
                     for user in ok_users:
-                        resp += await get_user_name(bot, group_id, user) + " "
+                        resp += await get_group_member_name(bot, group_id, user) + " "
                     resp += "\n"
                 
                 if len(already_users) > 0:
                     resp += "未订阅: "
                     for user in already_users:
-                        resp += await get_user_name(bot, group_id, user) + " "
+                        resp += await get_group_member_name(bot, group_id, user) + " "
                     resp += "\n"
 
                 logger.info(f"为 {users} 取消订阅任务 {group_id}_{task_id} 成功: 取消订阅成功 {ok_users} 未订阅 {already_users}")
@@ -484,7 +484,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
             if task['id'] == task_id:
                 resp = f"任务 {task_id} 的订阅者:\n"
                 for user in task['sub_users']:
-                    resp += f"{await get_user_name(bot, group_id, user)}({user})\n"
+                    resp += f"{await get_group_member_name(bot, group_id, user)}({user})\n"
                 return await send_reply_msg(cron_sublist, event.message_id, resp.strip())
                 
         logger.info(f"任务 {group_id}_{task_id} 不存在")

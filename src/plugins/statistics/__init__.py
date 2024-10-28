@@ -51,7 +51,7 @@ async def get_statistic(bot, group_id, date=None):
     topk_name = []
     for user in topk_user:
         try:
-            name = truncate(await get_user_name(bot, group_id, user), NAME_LEN_LIMIT)
+            name = truncate(await get_group_member_name(bot, group_id, user), NAME_LEN_LIMIT)
             topk_name.append(name)
         except:
             topk_name.append(str(user))
@@ -109,7 +109,7 @@ async def get_word_statistic(bot, group_id, days, word):
     topk_name = []
     for user in topk_user:
         try:
-            name = await get_user_name(bot, group_id, user)
+            name = await get_group_member_name(bot, group_id, user)
             topk_name.append(name)
         except:
             topk_name.append(str(user))

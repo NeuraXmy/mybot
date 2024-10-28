@@ -45,10 +45,18 @@ async def record_message(bot, event):
     img_ids = extract_image_id(msg)
 
     user_id = event.user_id
-    group_id = event.group_id
-    user_name = await get_user_name(bot, group_id, user_id)
+    is_group = is_group_msg(event)
 
-    if check_self_reply(event):
+    if is_group:
+        group_id = event.group_id
+        user_name = await get_group_member_name(bot, group_id, user_id)
+    else:
+        group_id = 0
+        user_name = (await get_stranger_info(bot, user_id)).get('nickname', '')
+
+    if not is_group:
+        logger.info(f"记录 {user_id} 发送的私聊消息 {msg_id}: {str(msg)}")
+    elif check_self_reply(event):
         logger.info(f"记录自身在 {group_id} 中触发的回复 {msg_id}: {str(msg)}")
     elif check_self(event):
         logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg)}")
@@ -101,10 +109,11 @@ async def record_message(bot, event):
 # 记录消息
 add = on_message(block=False, priority=-10000)
 @add.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
+async def _(bot: Bot, event: MessageEvent):
+    if not gbl.check(event, allow_private=True): return
     await record_message(bot, event)
     
+
 
 # 检查消息
 check = on_command("/check", block=False)
