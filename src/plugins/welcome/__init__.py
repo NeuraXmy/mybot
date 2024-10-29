@@ -20,50 +20,76 @@ async def update_member_info(group_id=None):
         groups = await get_group_list(bot)
 
     for group in groups:
-        group_id = group['group_id']
-        if group_id in gbl.get(): return
-        members = await get_group_users(bot, group_id)
-        id_names = {}
-        for info in members:
-            if info['card'] != "":
-                id_names[str(info['user_id'])] = info['card']
-            else:
-                id_names[str(info['user_id'])] = info['nickname']
-        file_db.set(f'{group_id}_members', id_names)
-        logger.debug(f'群 {group_id} 成员信息更新完毕')
+        try:
+            group_id = group['group_id']
+            if group_id in gbl.get(): return
+            members = await get_group_users(bot, group_id)
+            id_names = {}
+            for info in members:
+                if info['card'] != "":
+                    id_names[str(info['user_id'])] = info['card']
+                else:
+                    id_names[str(info['user_id'])] = info['nickname']
+            file_db.set(f'{group_id}_members', id_names)
+            logger.debug(f'群 {group_id} 成员信息更新完毕')
+
+        except Exception as e:
+            logger.print_exc(f"更新群 {group_id} 成员信息失败")
 
 
-# 加退群通知
+# 处理加群
+async def handle_increase(group_id, user_id, sub_type):
+    bot = get_bot()
+    if group_id in gbl.get(): return
+    if user_id == bot.self_id: return
+    group_id, user_id = group_id, user_id
+    logger.info(f'{user_id} 加入 {group_id}')
+
+    try:
+        name = await get_group_member_name(bot, group_id, user_id)
+        name = f"{name}({user_id})"
+    except:
+        name = str(user_id)
+
+    if sub_type == 'approve':
+        msg = f"{name} 加入群聊"
+    elif sub_type == 'invite':
+        msg = f"{name} 被邀请进入群聊"
+    else:
+        msg = f"{name} 加入群聊"
+
+    welcome_infos = file_db.get(f'welcome_infos', {})
+    if group_id in welcome_infos:
+        msg += f"\n{welcome_infos[group_id]}"
+
+    await send_group_msg_by_bot(bot, group_id, msg)
+    await asyncio.sleep(3)
+    return await update_member_info(group_id)
+
+# 处理退群
+async def handle_decrease(group_id, user_id, sub_type):
+    bot = get_bot()
+    if group_id in gbl.get(): return
+    if user_id == bot.self_id: return
+    group_id, user_id = group_id, user_id
+    logger.info(f'{user_id} 离开 {group_id}')
+
+    members = file_db.get(f'{group_id}_members', {})
+    name = members.get(str(user_id), '')
+
+    await send_group_msg_by_bot(bot, group_id, f"{name}({user_id}) 退出群聊")
+    await asyncio.sleep(3)
+    return await update_member_info(group_id)
+
+
+# 加退群通知事件
 join = on_notice()
 @join.handle()
 async def _(bot: Bot, event: NoticeEvent):
     if event.notice_type == 'group_increase':
-        if event.group_id in gbl.get(): return
-        if event.user_id == bot.self_id: return
-        group_id, user_id = event.group_id, event.user_id
-        logger.info(f'{user_id} 加入 {group_id}')
-
-        msg = "[CQ:at,qq={user_id}] 加入群聊"
-        welcome_infos = file_db.get(f'welcome_infos', {})
-        if group_id in welcome_infos:
-            msg += f"\n{welcome_infos[group_id]}"
-
-        await send_group_msg_by_bot(bot, group_id, msg)
-        await asyncio.sleep(3)
-        return await update_member_info(event.group_id)
-
+        return await handle_increase(event.group_id, event.user_id, event.sub_type)
     if event.notice_type == 'group_decrease':
-        if event.group_id in gbl.get(): return
-        if event.user_id == bot.self_id: return
-        group_id, user_id = event.group_id, event.user_id
-        logger.info(f'{user_id} 离开 {group_id}')
-
-        members = file_db.get(f'{group_id}_members', {})
-        name = members.get(str(user_id), '')
-
-        await send_group_msg_by_bot(bot, group_id, f"{name}({user_id}) 退出群聊")
-        await asyncio.sleep(3)
-        return await update_member_info(group_id)
+        return await handle_decrease(event.group_id, event.user_id, event.sub_type)
 
 
 # 定时更新

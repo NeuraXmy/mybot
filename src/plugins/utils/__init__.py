@@ -529,7 +529,7 @@ async def get_reply_msg_obj(bot, msg):
 
 # 记录自身对指令的回复消息id集合
 self_reply_msg_ids = set()
-def add_reply_msg(msg):
+def record_self_reply_msg(msg):
     try:
         global self_reply_msg_ids
         self_reply_msg_ids.add(int(msg["message_id"]))
@@ -540,15 +540,15 @@ def add_reply_msg(msg):
 
 # 发送消息
 async def send_msg(handler, message):
-    return add_reply_msg(await handler.send(OutMessage(message)))
+    return record_self_reply_msg(await handler.send(OutMessage(message)))
 
 # 发送回复消息
 async def send_reply_msg(handler, reply_id, message):
-    return add_reply_msg(await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}')))
+    return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}')))
 
 # 发送at消息
 async def send_at_msg(handler, user_id, message):
-    return add_reply_msg(await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}')))
+    return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}')))
 
 # 发送群聊折叠消息 其中contents是text的列表
 async def send_group_fold_msg(bot, group_id, contents):
@@ -562,7 +562,7 @@ async def send_group_fold_msg(bot, group_id, contents):
     } for content in contents]
     ret = await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
     ret['message_id'] = int(ret['message_id']) - 1
-    return add_reply_msg(ret)
+    return record_self_reply_msg(ret)
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
 async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
@@ -574,11 +574,11 @@ async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, ne
 
 # 在event外发送群聊消息
 async def send_group_msg_by_bot(bot, group_id, message):
-    return add_reply_msg(await bot.send_group_msg(group_id=int(group_id), message=message))
+    return record_self_reply_msg(await bot.send_group_msg(group_id=int(group_id), message=message))
 
 # 在event外发送私聊消息
 async def send_private_msg_by_bot(bot, user_id, message):
-    return add_reply_msg(await bot.send_private_msg(user_id=int(user_id), message=message))
+    return record_self_reply_msg(await bot.send_private_msg(user_id=int(user_id), message=message))
 
 
 # 是否是动图
