@@ -21,6 +21,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk card img` 卡面查询](#pjsk-card-img)
 - [`/pjsk diff board` 难度排行查询](#pjsk-diff-board)
 - [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
+- [`/pjsk box` box查询](#pjsk-box)
 
 ### 管理指令
 
@@ -272,6 +273,28 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/注册时间`
+
+
+## `/pjsk box`
+
+```
+查询自己的卡牌box信息，需要绑定并上传抓包数据
+支持用星级、属性、技能类型、限定类型、时间过滤
+星级示例：四星 4星 生日
+属性示例：粉花 粉 花 
+技能类型示例：奶 奶卡
+限定类型示例：限定 期间限定 fes限 非限
+时间示例：今年 去年 2024
+```
+
+- **示例**
+
+    `/pjsk box` 查询所有卡牌
+
+    `/pjsk box 四星 粉花 奶卡 限定 今年` 查询今年的四星粉花奶卡限定卡牌
+
+    `/pjsk box box` 仅查询自己有的卡牌
+
 
 --- 
 

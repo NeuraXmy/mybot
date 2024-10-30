@@ -529,8 +529,9 @@ async def get_card_full_thumbnail(card, after_training, pcard=None):
         img.putalpha(mask)
         return img
     img = await run_in_pool(draw, img, card)
-    create_parent_folder(cache_dir)
-    img.save(cache_dir)
+    if not pcard:
+        create_parent_folder(cache_dir)
+        img.save(cache_dir)
     return img
 
 # 合成卡牌列表图片
@@ -1188,6 +1189,67 @@ async def get_music_detail_str(music):
     msg += f"\n"
 
     return msg
+
+# 合成box图片
+async def compose_box_image(qid, cards, show_id, show_box):
+    profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
+    avatar_info = await get_player_avatar_info(profile)
+    avatar_chara_id = avatar_info['chara_id']
+    # user cards
+    user_cards = profile['userCards']
+    # collect card imgs
+    async def get_card_full_thumbnail_nothrow(card):
+        try: return await get_card_full_thumbnail(card, card['cardRarityType'] in ['rarity_3', 'rarity_4'])
+        except: return None
+    card_imgs = await asyncio.gather(*[get_card_full_thumbnail_nothrow(card) for card in cards])
+    # collect chara cards
+    chara_cards = {}
+    for card, img in zip(cards, card_imgs):
+        if not img: continue
+        chara_id = card['characterId']
+        if chara_id not in chara_cards:
+            chara_cards[chara_id] = []
+        card['img'] = img
+        card['has'] = find_by(user_cards, 'cardId', card['id']) is not None
+        if show_box and not card['has']:
+            continue
+        chara_cards[chara_id].append(card)
+    # sort by chara id and rarity
+    chara_cards = list(chara_cards.items())
+    chara_cards.sort(key=lambda x: x[0])
+    for i in range(len(chara_cards)):
+        chara_cards[i][1].sort(key=lambda x: x['archivePublishedAt'])
+
+    with Canvas(bg=random_bg(avatar_chara_id)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            await get_detailed_profile_card(profile, pmsg)
+            with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(7):
+                for chara_id, cards in chara_cards:
+                    # chara card list
+                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
+                        sz = 64
+                        # icon
+                        chara_name = get_nickname_by_cid(chara_id)
+                        ImageBox(res.misc_images.get(f"chara_icon/{chara_name}.png"), size=(sz, sz))
+                        Spacer(w=sz, h=8)
+                        # cards
+                        for card in cards:
+                            with Frame().set_content_align('rt'):
+                                ImageBox(card['img'], size=(sz, sz))
+
+                                supply_name = card['supply_show_name']
+                                if supply_name in ['期间限定', 'WL限定', '联动限定']:
+                                    ImageBox(res.misc_images.get(f"card/term_limited.png"), size=(int(sz*0.75), None))
+                                elif supply_name in ['Fes限定', '新Fes限定']:
+                                    ImageBox(res.misc_images.get(f"card/fes_limited.png"), size=(int(sz*0.75), None))
+
+                                if not card['has']:
+                                    Spacer(w=sz, h=sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+
+                            if show_id:
+                                TextBox(f"{card['id']}", TextStyle(font=DEFAULT_FONT, size=12, color=BLACK)).set_w(sz)
+
+    return await run_in_pool(canvas.get_img)
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -1848,6 +1910,55 @@ async def _(ctx: HandlerContext):
 
     return await ctx.asend_fold_msg_adaptive(msg.strip())
 
+
+# 查询box
+pjsk_box = CmdHandler(["/pjsk box", "/pjsk_box", "/pjskbox"], logger)
+pjsk_box.check_cdrate(cd).check_wblist(gbl)
+@pjsk_box.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    cards = await res.cards.get()
+    supplies = await res.card_supplies.get()
+    skills = await res.skills.get()
+
+    show_id = False
+    if 'id' in args:
+        show_id = True
+    show_box = False
+    if 'box' in args:
+        show_box = True
+    rare, args = extract_card_rare(args)
+    attr, args = extract_card_attr(args)
+    supply, args = extract_card_supply(args)
+    skill, args = extract_card_skill(args)
+    year, args = extract_year(args)
+
+    res_cards = []
+    for card in cards:
+        if rare and card["cardRarityType"] != rare: continue
+        if attr and card["attr"] != attr: continue
+
+        supply_type = find_by(supplies, "id", card["cardSupplyId"])["cardSupplyType"]
+        card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
+        if supply:
+            search_supplies = []
+            if supply == "all_limited":
+                search_supplies = CARD_SUPPLIES_SHOW_NAMES.keys()
+            elif supply == "not_limited":
+                search_supplies = ["normal"]
+            else:
+                search_supplies = [supply]
+            if supply_type not in search_supplies: continue
+
+        skill_type = find_by(skills, "id", card["skillId"])["descriptionSpriteName"]
+        card["skill_type"] = skill_type
+        if skill and skill_type != skill: continue
+
+        if year and datetime.fromtimestamp(card["releaseAt"] / 1000).year != int(year): continue
+
+        res_cards.append(card)
+    
+    await ctx.asend_reply_msg(await get_image_cq(await compose_box_image(ctx.user_id, res_cards, show_id, show_box)))
 
 
 # ========================================= 定时任务 ========================================= #
