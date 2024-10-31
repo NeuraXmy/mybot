@@ -118,9 +118,11 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 
     `/img resize 0.5x` 缩小到50%
 
-    `/img resize 100x100` 调整到100x100
-
     `/img resize 100` 保持宽高比缩放到长边为100
+
+    `/img resize 2x 0.5x` 宽放大2倍，高缩小50%
+
+    `/img resize 100 100` 调整到长宽为 100x100
 
 
 ## `/img gray`

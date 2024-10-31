@@ -316,25 +316,40 @@ async def handle(bot: Bot, event: MessageEvent):
 
     args = event.get_plaintext().replace("/img resize", "").strip()
     try:
-        if args.endswith("x"):
-            width = int(width * float(args[:-1]))
-            height = int(height * float(args[:-1]))
-        else:
-            t = args.split("x")
-            if len(t) == 1:
-                t = int(t[0])
+        args = args.split()
+        assert len(args) in (1, 2)
+
+        if len(args) == 1:
+            arg = args[0]
+            if arg.endswith("x"):
+                scale = float(arg[:-1])
+                width  = int(width  * scale)
+                height = int(height * scale)
+            else:
+                t = int(arg)
                 if width > height:
                     height = int(height / width * t)
                     width = t
                 else:
                     width = int(width / height * t)
                     height = t
+
+        elif len(args) == 2:
+            aw, ah = args
+            if aw.endswith("x"):
+                width = int(width * float(aw[:-1]))
             else:
-                width = int(t[0])
-                height = int(t[1])
+                width = int(aw)
+            
+            if ah.endswith("x"):
+                height = int(height * float(ah[:-1]))
+            else:
+                height = int(ah)
+
         assert width > 0 and height > 0
+
     except:
-        return await send_reply_msg(resize, event.message_id, "请输入缩放参数(格式参考: 2x, 512, 512x512)")
+        return await send_reply_msg(resize, event.message_id, "请输入缩放参数(格式参考:\n/img resize 512\n/img resize 2.0x\n/img resize 256 512\n/img resize 0.5x 2.0x")
     
     try:
         def trans(img):
