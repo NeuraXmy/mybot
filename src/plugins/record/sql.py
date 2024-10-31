@@ -62,15 +62,6 @@ def get_conn(group_id):
                 img_id TEXT
             )
         """)
-        # 创建图片phash表 (ID, 图片表ID, 图片URL, phash)
-        cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {PHASH_TABLE_NAME.format(group_id)} (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                record_id INTEGER,
-                url TEXT,
-                phash TEXT
-            )
-        """)
                        
         conn.commit()
         logger.debug(f"首次连接 {group_id} 群组 创建表")
@@ -445,63 +436,3 @@ def img_next_id(group_id):
         return 1
     else:
         return rows[0][0] + 1
-
-
-
-# 插入到图片phash表
-def phash_insert(group_id, record_id, url, phash=None):
-    conn = get_conn(group_id)
-    cursor = conn.cursor()
-    insert_query = f'''
-        INSERT INTO {PHASH_TABLE_NAME.format(group_id)} (record_id, url, phash)
-        VALUES (?, ?, ?)
-    '''
-    cursor.execute(insert_query, (record_id, url, phash))
-    logger.debug(f"插入图片 {url} 到 {PHASH_TABLE_NAME.format(group_id)} 表")
-
-# 图片phash表row转换为返回值
-def phash_row_to_ret(row):
-    return {
-        "id": row[0],
-        "record_id": row[1],
-        "url": row[2],
-        "phash": row[3]
-    }
-
-# 获取图片phash表中的所有记录
-def phash_all(group_id):
-    conn = get_conn(group_id)
-    cursor = conn.cursor()
-    query = f'''
-        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
-    '''
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
-    return [phash_row_to_ret(row) for row in rows]
-
-# 按record_id获取图片phash表中的记录
-def phash_record_id(group_id, record_id):
-    conn = get_conn(group_id)
-    cursor = conn.cursor()
-    query = f'''
-        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
-        WHERE record_id = ?
-    '''
-    cursor.execute(query, (record_id,))
-    rows = cursor.fetchall()
-    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中的 record_id {record_id} 的消息 {len(rows)} 条")
-    return [phash_row_to_ret(row) for row in rows]
-
-# 按phash值查找所有匹配的记录
-def phash_match(group_id, phash):
-    conn = get_conn(group_id)
-    cursor = conn.cursor()
-    query = f'''
-        SELECT * FROM {PHASH_TABLE_NAME.format(group_id)}
-        WHERE phash = ?
-    '''
-    cursor.execute(query, (phash,))
-    rows = cursor.fetchall()
-    logger.debug(f"获取 {PHASH_TABLE_NAME.format(group_id)} 表中 phash {phash} 的消息 {len(rows)} 条")
-    return [phash_row_to_ret(row) for row in rows]

@@ -715,7 +715,7 @@ def repeat_with_interval(interval_secs: int, name: str, logger: Logger, every_ou
 
 # 开始执行某个异步任务
 def start_async_task(func, logger, name, start_offset=5):   
-    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset))
+    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset), misfire_grace_time=60)
     async def _():
         try:
             logger.info(f'开始异步执行 {name} 任务', flush=True)
