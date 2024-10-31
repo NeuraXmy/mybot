@@ -296,7 +296,7 @@ async def check_expired_tasks():
                 except Exception as e:
                     logger.print_exc(f"检查过期任务 {group_id}_{task['id']} 失败: {e}")
 
-start_repeat_with_interval(60, check_expired_tasks, logger, "定期检查过期任务")
+start_repeat_with_interval(60, check_expired_tasks, logger, "定期检查过期任务", start_offset=60)
 
 
 # 列出cron任务
