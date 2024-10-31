@@ -668,7 +668,7 @@ async def get_detailed_profile(qid, raise_exc=False):
             with open(cache_path, "r", encoding="utf-8") as f:
                 profile = json.load(f)
             logger.info(f"从缓存获取{qid}抓包数据")
-            return profile, str(e) + "(使用缓存数据)"
+            return profile, str(e) + "(使用先前的缓存数据)"
         else:
             logger.info(f"未找到{qid}的缓存抓包数据")
 
@@ -709,7 +709,7 @@ async def get_detailed_profile_card(profile, msg) -> Frame:
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if msg:
-                TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=16, color=RED))
+                TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
     return f
 
 # 获取用户绑定的游戏id
@@ -970,21 +970,22 @@ async def compose_profile_image(basic_profile):
                                 t.set_size((48, 48)).set_content_align('c').set_offset((42, 4))
                     
                     # 挑战Live等级
-                    solo_live_result = basic_profile['userChallengeLiveSoloResult']
-                    cid, score = solo_live_result['characterId'], solo_live_result['highScore']
-                    stages = find_by(basic_profile['userChallengeLiveSoloStages'], 'characterId', cid, mode='all')
-                    stage_rank = max([stage['rank'] for stage in stages])
-                    
-                    with VSplit().set_content_align('c').set_item_align('c').set_padding((32, 64)).set_sep(12):
-                        t = TextBox(f"CHANLLENGE LIVE", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
-                        t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
-                        with Frame():
-                            chara_img = res.misc_images.get(f'chara_rank_icon/{get_nickname_by_cid(cid)}.png')
-                            ImageBox(chara_img, size=(100, 50), use_alphablend=True)
-                            t = TextBox(str(stage_rank), TextStyle(font=DEFAULT_FONT, size=22, color=(40, 40, 40, 255)))
-                            t.set_size((50, 50)).set_content_align('c').set_offset((40, 5))
-                        t = TextBox(f"SCORE {score}", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
-                        t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
+                    if 'userChallengeLiveSoloResult' in basic_profile:
+                        solo_live_result = basic_profile['userChallengeLiveSoloResult']
+                        cid, score = solo_live_result['characterId'], solo_live_result['highScore']
+                        stages = find_by(basic_profile['userChallengeLiveSoloStages'], 'characterId', cid, mode='all')
+                        stage_rank = max([stage['rank'] for stage in stages])
+                        
+                        with VSplit().set_content_align('c').set_item_align('c').set_padding((32, 64)).set_sep(12):
+                            t = TextBox(f"CHANLLENGE LIVE", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
+                            t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
+                            with Frame():
+                                chara_img = res.misc_images.get(f'chara_rank_icon/{get_nickname_by_cid(cid)}.png')
+                                ImageBox(chara_img, size=(100, 50), use_alphablend=True)
+                                t = TextBox(str(stage_rank), TextStyle(font=DEFAULT_FONT, size=22, color=(40, 40, 40, 255)))
+                                t.set_size((50, 50)).set_content_align('c').set_offset((40, 5))
+                            t = TextBox(f"SCORE {score}", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
+                            t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
 
                     
 

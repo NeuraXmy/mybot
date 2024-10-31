@@ -156,14 +156,24 @@ def get_all_modelname():
 
 session_id_top = 0
 
+
+# 转化PIL图片为base64
+def get_image_b64(image: Image.Image):
+    tmp_path = f"data/chat/tmp/{rand_filename('jpg')}"
+    os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
+    try:
+        image.save(tmp_path, "JPEG")
+        with open(tmp_path, "rb") as f:
+            return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 # 下载并编码图片为base64
-async def get_image_b64(image_path):
+async def download_image_to_b64(image_path):
     img = (await download_image(image_path)).convert('RGB')
-    tmp_save_dir = "data/chat/tmp/chatimg.jpg"
-    os.makedirs(os.path.dirname(tmp_save_dir), exist_ok=True)
-    img.save(tmp_save_dir, "JPEG")
-    with open(tmp_save_dir, "rb") as f:
-        return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+    return get_image_b64(img)
 
 
 current_sec_timestamp = 0

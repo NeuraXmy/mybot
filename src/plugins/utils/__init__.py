@@ -378,6 +378,38 @@ def get_file_db(path, logger) -> FileDB:
     return _file_dbs[path]
 
 
+# 计时器
+class Timer:
+    def __init__(self, name: str = None, logger: Logger = None):
+        self.name = name
+        self.logger = logger
+        self.start_time = None
+        self.end_time = None
+
+    def get(self) -> float:
+        if self.start_time is None:
+            raise Exception("Timer not started")
+        if self.end_time is None:
+            return (datetime.now() - self.start_time).total_seconds()
+        else:
+            return (self.end_time - self.start_time).total_seconds()
+
+    def start(self):
+        self.start_time = datetime.now()
+    
+    def end(self):
+        self.end_time = datetime.now()
+        if self.logger:
+            self.logger.info(f"{self.name} 耗时 {self.get():.2f}秒")
+
+    def __enter__(self):
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb): 
+        self.end()
+
+
 # 是否是群聊消息
 def is_group_msg(event):
     return hasattr(event, 'group_id')
@@ -1159,8 +1191,11 @@ class MessageArgumentParser(ArgumentParser):
 from concurrent.futures import ThreadPoolExecutor
 pool_executor = ThreadPoolExecutor()
 
-async def run_in_pool(func, *args):
-    return await asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
+async def run_in_pool(func, *args, pool=None):
+    if pool is None:
+        global pool_executor
+        pool = pool_executor
+    return await asyncio.get_event_loop().run_in_executor(pool, func, *args)
 
 def run_in_pool_nowait(func, *args):
     return asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
@@ -1231,6 +1266,9 @@ class HandlerContext:
 
     def aget_msg_obj(self):
         return get_msg_obj(self.bot, self.message_id)
+    
+    async def aget_reply_msg(self):
+        return await get_reply_msg(self.bot, await self.aget_msg())
 
     # -------------------------- 消息发送 -------------------------- # 
 

@@ -3,8 +3,9 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, get_image_b64, tts, get_rest_quota, check_modelname, get_all_modelname
+from ..llm import ChatSession, download_image_to_b64, tts, get_rest_quota, check_modelname, get_all_modelname
 from ..utils import *
+from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
 import openai
 
@@ -14,6 +15,8 @@ logger = get_logger("Chat")
 file_db = get_file_db("data/chat/db.json", logger)
 chat_cd = ColdDown(file_db, logger, config['chat_cd'], cold_down_name="chat_cd")
 tts_cd = ColdDown(file_db, logger, config['tts_cd'], cold_down_name="tts_cd")
+img_trans_cd = ColdDown(file_db, logger, config['img_trans_cd'], cold_down_name="img_trans_cd")
+img_trans_rate = RateLimit(file_db, logger, 5, period_type='day', rate_limit_name="img_trans_rate")
 gwl = get_group_white_list(file_db, logger, 'chat')
 
 DEFAULT_PRIVATE_MODEL_NAME = config['default_private_model_name']
@@ -231,15 +234,15 @@ async def _(bot: Bot, event: MessageEvent):
                             session.append_user_content(forward_msg_text, forward_imgs)
                 # 回复普通内容
                 elif len(reply_imgs) > 0 or reply_text.strip() != "":
-                    reply_imgs = [await get_image_b64(img) for img in reply_imgs]
+                    reply_imgs = [await download_image_to_b64(img) for img in reply_imgs]
                     if str(reply_uid) == str(bot.self_id):
-                        session.append_bot_content(reply_text, reply_imgs)
+                        session.append_bot_content(reply_text)
                     else:
                         session.append_user_content(reply_text, reply_imgs)
         else:
             session = ChatSession(system_prompt)
 
-        query_imgs = [await get_image_b64(img) for img in query_imgs]
+        query_imgs = [await download_image_to_b64(img) for img in query_imgs]
         session.append_user_content(query_text, query_imgs)
 
         total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
@@ -362,3 +365,49 @@ async def _(bot: Bot, event: MessageEvent):
     finally:
         if audio_file_path and os.path.exists(audio_file_path):
             os.remove(audio_file_path)
+
+
+
+translator = Translator()
+
+# 翻译图片
+translate_img = CmdHandler(["/trans", "/translate", "/翻译"], logger)
+translate_img.check_cdrate(img_trans_cd).check_cdrate(img_trans_rate).check_wblist(gwl)
+@translate_img.handle()
+async def _(ctx: HandlerContext):
+    try:
+        reply_msg = await ctx.aget_reply_msg()
+        assert reply_msg is not None
+        cqs = extract_cq_code(reply_msg)
+        img_url = cqs['image'][0]['url']
+    except:
+        raise Exception("请回复一张图片")
+    
+    args = ctx.get_args().strip()
+    if args and args not in translator.langs:
+        raise Exception(f"支持语言:{translator.langs}, 指定语言仅影响文本检测，不影响翻译")
+    lang = args if args else None
+    
+    try:
+        img = await download_image(img_url)
+    except Exception as e:
+        raise Exception(f"下载图片失败: {e}")
+    
+    try:
+        if not translator.model_loaded:
+            logger.info("加载翻译模型")
+            translator.load_model()
+
+        # await ctx.asend_reply_msg(f"翻译任务已提交，预计2分钟内完成")
+        res: TranslationResult = await translator.translate(ctx, img, lang=lang)
+
+        msg = await get_image_cq(res.img)
+        msg += f"{res.total_time:.1f}s {res.total_cost:.4f}$" + " | "
+        msg += f"检测 {res.ocr_time:.1f}s" + " | "
+        msg += f"合并 {res.merge_time:.1f}s {res.merge_cost:.4f}$" + " | "
+        msg += f"翻译 {res.trans_time:.1f}s {res.trans_cost:.4f}$"
+
+        await ctx.asend_reply_msg(msg.strip())
+
+    except Exception as e:
+        raise Exception(f"翻译失败: {e}")
