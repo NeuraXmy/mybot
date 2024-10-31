@@ -34,7 +34,8 @@ def get_conn(group_id):
                 msg_id INTEGER,
                 user_id INTEGER,
                 nickname TEXT,
-                time INTEGER
+                time INTEGER,
+                img_unique TEXT
             )
         """)           
         conn.commit()
@@ -43,16 +44,16 @@ def get_conn(group_id):
 
 
 # 插入一条phash数据
-def insert_phash(group_id, phash, msg_id, user_id, nickname, time):
+def insert_phash(group_id, phash, msg_id, user_id, nickname, time, img_unique):
     time = time.timestamp()
     conn = get_conn(group_id)
     cursor = conn.cursor()
     cursor.execute(f"""
-        INSERT INTO {TABLE_NAME.format(group_id)} (phash, msg_id, user_id, nickname, time)
-        VALUES (?,?,?,?,?)
-        """, (phash, msg_id, user_id, nickname, time))
+        INSERT INTO {TABLE_NAME.format(group_id)} (phash, msg_id, user_id, nickname, time, img_unique)
+        VALUES (?,?,?,?,?,?)
+        """, (phash, msg_id, user_id, nickname, time, img_unique))
     conn.commit()
-    logger.debug(f"插入phash数据 phash={phash} msg_id={msg_id} user_id={user_id} nickname={nickname} time={time}")
+    logger.debug(f"插入phash数据 phash={phash} msg_id={msg_id} user_id={user_id} nickname={nickname} time={time} img_unique={img_unique}")
 
 
 # phash row 转换为 dict
@@ -63,7 +64,8 @@ def row_to_dict(row):
         "msg_id": row[2],
         "user_id": row[3],
         "nickname": row[4],
-        "time": datetime.fromtimestamp(row[5])
+        "time": datetime.fromtimestamp(row[5]),
+        "img_unique": row[6]
     }
 
 
@@ -89,3 +91,15 @@ def query_by_msg_id(group_id, msg_id):
         """, (msg_id,))
     rows = cursor.fetchall()
     return [row_to_dict(row) for row in rows]
+
+
+# 根据image_unique查询一条记录
+def query_by_img_unique(group_id, img_unique):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        SELECT * FROM {TABLE_NAME.format(group_id)}
+        WHERE img_unique = ?
+        """, (img_unique,))
+    row = cursor.fetchone()
+    return row_to_dict(row) if row else None

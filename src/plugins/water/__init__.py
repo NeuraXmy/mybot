@@ -5,7 +5,7 @@ from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from ..utils import *
 from ..record.sql import text_content_match, img_id_match
 from ..record import record_hook
-from .sql import query_by_phash, query_by_msg_id, insert_phash
+from .sql import query_by_phash, query_by_msg_id, insert_phash, query_by_img_unique
 from PIL import Image
 import requests
 
@@ -19,7 +19,7 @@ gbl = get_group_black_list(file_db, logger, 'water')
 # 计算图片的phash
 async def calc_phash(image_url):
     # 从网络下载图片
-    logger.info(f"下载图片 {image_url}")
+    # logger.info(f"下载图片 {image_url}")
     image = await download_image(image_url)
     def calc(image):
         # 缩小尺寸
@@ -176,22 +176,44 @@ async def handle_task():
 
         task = await task_queue.get()
         if not task: break 
-    
-        image_urls = extract_image_url(task['msg'])
-        if not image_urls: continue
 
-        for i, image_url in enumerate(image_urls):
-            try:
-                phash = await calc_phash(image_url)
+        try:
+            cqs = extract_cq_code(task['msg'])
+            img_cqs = cqs.get('image', [])
+        except Exception as e:
+            logger.print_exc(f'处理消息 {task["msg_id"]} 失败')
+
+        for i, img_cq in enumerate(img_cqs):
+            try:    
+                if 'url' not in img_cq: continue
+
+                if 'file_unique' in img_cq:
+                    img_unique = img_cq['file_unique']
+                elif 'file_id' in img_cq:
+                    img_unique = img_cq['file_id']
+                else:
+                    img_unique = ""
+
+                phash = None
+                if img_unique:
+                    rec = query_by_img_unique(task['group_id'], img_unique)
+                    if rec: 
+                        phash = rec['phash']
+                
+                if not phash:
+                    phash = await calc_phash(img_cq['url'])
+
                 insert_phash(
                     group_id=task['group_id'],
                     phash=str(phash),
                     msg_id=task['msg_id'],
                     user_id=task['user_id'],
                     nickname=task['nickname'],
-                    time=task['time'],
+                    time=datetime.fromtimestamp(task['time']),
+                    img_unique=img_unique,
                 )
                 logger.info(f'插入消息 {task["msg_id"]} 图片 {i} 的 phash: {phash}')
+
             except Exception as e:
                 logger.print_exc(f'计算消息 {task["msg_id"]} 图片 {i} 的 phash 失败')
 
