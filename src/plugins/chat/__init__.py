@@ -369,6 +369,7 @@ async def _(bot: Bot, event: MessageEvent):
 
 
 translator = Translator()
+translating_msg_ids = set()
 
 # 翻译图片
 translate_img = CmdHandler(["/trans", "/translate", "/翻译"], logger)
@@ -377,6 +378,7 @@ translate_img.check_cdrate(img_trans_cd).check_cdrate(img_trans_rate).check_wbli
 async def _(ctx: HandlerContext):
     try:
         reply_msg = await ctx.aget_reply_msg()
+        reply_msg_id = (await ctx.aget_reply_msg_obj()).get('message_id', 0)
         assert reply_msg is not None
         cqs = extract_cq_code(reply_msg)
         img_url = cqs['image'][0]['url']
@@ -399,6 +401,10 @@ async def _(ctx: HandlerContext):
     except Exception as e:
         raise Exception(f"下载图片失败: {e}")
     
+    if reply_msg_id in translating_msg_ids:
+        raise Exception("该图片正在被翻译，请勿重复提交")
+    translating_msg_ids.add(reply_msg_id)
+    
     try:
         if not translator.model_loaded:
             logger.info("加载翻译模型")
@@ -408,12 +414,26 @@ async def _(ctx: HandlerContext):
         res: TranslationResult = await translator.translate(ctx, img, lang=lang, debug=debug)
 
         msg = await get_image_cq(res.img)
-        msg += f"{res.total_time:.1f}s {res.total_cost:.4f}$" + " | "
-        msg += f"检测 {res.ocr_time:.1f}s" + " | "
-        msg += f"合并 {res.merge_time:.1f}s {res.merge_cost:.4f}$" + " | "
-        msg += f"翻译 {res.trans_time:.1f}s {res.trans_cost:.4f}$"
-
+        msg += f"{res.total_time:.1f}s {res.total_cost:.4f}$"
+        msg += " | "
+        msg += f"检测 {res.ocr_time:.1f}s"
+        msg += " | "
+        msg += f"合并"
+        if res.merge_time: msg += f" {res.merge_time:.1f}s"
+        if res.merge_cost: msg += f" {res.merge_cost:.4f}$"
+        msg += " | "
+        msg += f"翻译"
+        if res.trans_time: msg += f" {res.trans_time:.1f}s"
+        if res.trans_cost: msg += f" {res.trans_cost:.4f}$"
+        msg += " | "
+        msg += f"校对"
+        if res.correct_time: msg += f" {res.correct_time:.1f}s"
+        if res.correct_cost: msg += f" {res.correct_cost:.4f}$"
         await ctx.asend_reply_msg(msg.strip())
 
     except Exception as e:
         raise Exception(f"翻译失败: {e}")
+
+    finally:
+        try: translating_msg_ids.remove(reply_msg_id)
+        except: pass

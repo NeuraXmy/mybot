@@ -106,7 +106,7 @@ async def handle(bot: Bot, event: MessageEvent):
         if 'file_size' in data:
             res += f"\nsize: {get_readable_file_size(int(data['file_size']))}"
 
-        await send_reply_msg(check, event.message_id, res)
+        await send_fold_msg_adaptive(bot, check, event, res)
 
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
@@ -213,6 +213,12 @@ async def handle(bot: Bot, event: MessageEvent):
             if int(duration * interval) >= 20:
                 duration = int(duration * interval)
                 break
+        
+        frame_num = img.n_frames
+        if frame_num / interval <= 1:
+            max_rate = img.info['duration'] / (20 / (frame_num - 1))
+            return await send_reply_msg(speed, event.message_id, f"加速倍率过大!该图像最多只能加速{max_rate:.2f}x")
+
     except:
         return await send_reply_msg(speed, event.message_id, "请输入速度参数(直接输入数字调整duration，输入2x格式加倍速度")
 

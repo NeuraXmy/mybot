@@ -1269,6 +1269,9 @@ class HandlerContext:
     
     async def aget_reply_msg(self):
         return await get_reply_msg(self.bot, await self.aget_msg())
+    
+    async def aget_reply_msg_obj(self):
+        return await get_reply_msg_obj(self.bot, await self.aget_msg())
 
     # -------------------------- 消息发送 -------------------------- # 
 

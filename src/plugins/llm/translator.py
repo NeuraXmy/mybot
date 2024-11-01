@@ -28,6 +28,10 @@ class TranslationResult:
     trans_time: float
     trans_model: str
 
+    correct_cost: float
+    correct_time: float
+    correct_model: str
+
     total_time: float
     total_cost: float
 
@@ -39,10 +43,11 @@ class Translator:
         self.font_path = 'data/utils/fonts/SourceHanSansCN-Regular.otf'
         self.merge_prompt_path = "data/llm/translator/prompt_merge.txt"
         self.trans_prompt_path = "data/llm/translator/prompt_trans.txt"
+        self.correct_prompt_path = "data/llm/translator/prompt_correct.txt"
         self.model_name = "gpt-4o"
         self.task_id_top = 0
         self.langs = ['ja', 'ko']
-        self.max_size = 1024
+        self.max_size = 2048
         self.merge_method = 'alg'   # alg or llm
 
     def calc_box_dist(self, b1, b2):
@@ -69,23 +74,34 @@ class Translator:
         draw.rectangle([x2 - label_size - 2, y2 - label_size - 2, x2, y2], fill=(255, 255, 255, 150))
         draw.text((x2 - label_size, y2 - label_size), str(label), fill=color, font=font)
 
-    def draw_text(self, img, p1, p2, text):
+    def draw_text(self, img, p1, p2, text, direction):
+        direction = 'ltr' if direction == 'h' else 'ttb'
         draw = ImageDraw.Draw(img)
         x1, y1 = p1
         x2, y2 = p2
         w, h = x2 - x1, y2 - y1
-        font_size = 50
+        border = 2
+        
+        font_size_start, font_size_end, font_size_step = 32, 6, 3
+        font_size = font_size_start
         border = 2
         font = ImageFont.truetype(self.font_path, font_size)
-        while font_size > 5:
+        while font_size > font_size_end:
             font = font.font_variant(size=font_size)
-            bbox = draw.multiline_textbbox([0, 0], text, font=font)
-            size = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            if size[0] + border * 2 <= w and size[1] + border * 2 <= h:
+            cur_text = ""
+            for ch in text:
+                cur_text += ch
+                bbox = draw.multiline_textbbox([0, 0], cur_text, font=font, direction=direction)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                if tw + border * 2 > w:
+                    cur_text = cur_text[:-1] + "\n" + ch
+            bbox = draw.multiline_textbbox([0, 0], cur_text, font=font, direction=direction)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            if th + border * 2 <= h:
                 break
-            font_size -= 1
+            font_size -= font_size_step
         draw.rectangle([x1, y1, x2, y2], outline='black', fill='white')
-        draw.text((x1 + border, y1 + border), text, font=font, fill='black')
+        draw.text((x1 + border, y1 + border), cur_text, font=font, fill='black', direction=direction)
 
     def load_json_from_response(self, text) -> dict:
         first_bracket_index = text.find('{')
@@ -192,7 +208,7 @@ class Translator:
                             dfs(i, idx)
                     merge_result = {
                         'data': merge_result,
-                        'cost': 0.0,
+                        'cost': None,
                     }
 
             if debug:
@@ -240,7 +256,7 @@ class Translator:
                     )
                     response['data'] = self.load_json_from_response(response['result'])
                     assert len(response['data']) == len(merged_boxes)
-                    for idx, text in response['data'].items():
+                    for idx, item in response['data'].items():
                         idx = int(idx) - 1
                         assert idx >= 0 and idx < len(merged_boxes)
                     return response
@@ -248,29 +264,78 @@ class Translator:
                 logger.info(f'翻译任务{tid}开始向LLM请求翻译结果')
                 try:
                     trans_result = await query_trans()
+                    if debug:
+                        logger.info(f'翻译任务{tid}LLM翻译结果: {trans_result}')
                 except Exception as e:
                     raise Exception(f'向LLM请求翻译失败: {e}')
                 logger.info(f'翻译任务{tid}LLM翻译结果请求完成')
 
+            # query llm to correct
+            with Timer() as t_correct:
+                @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
+                async def query_correct():
+                    session = ChatSession()
+                    session.append_user_content(
+                        Path(self.correct_prompt_path).read_text().strip().format(last=trans_result['result']),
+                        [get_image_b64(img_w_merged_boxes)],
+                        verbose=False
+                    )
+                    response = await session.get_response(
+                        model_name=self.model_name,
+                        usage='translator_correct',
+                        user_id=user_id,
+                        group_id=group_id,
+                    )
+                    response['data'] = self.load_json_from_response(response['result'])
+                    assert len(response['data']) == len(merged_boxes)
+                    for idx, item in response['data'].items():
+                        idx = int(idx) - 1
+                        assert idx >= 0 and idx < len(merged_boxes)
+                    return response
+                
+                logger.info(f'翻译任务{tid}开始向LLM请求校对结果')
+                try:
+                    correct_result = await query_correct()
+                    data = correct_result['data']
+                except Exception as e:
+                    logger.warning(f'向LLM请求校对失败: {e}')
+                    correct_result = { "cost": None }
+                    data = trans_result['data']
+                logger.info(f'翻译任务{tid}LLM校对结果请求完成')
+
             # draw translated text
-            for idx, text in trans_result['data'].items():
+            for idx, item in data.items():
                 idx = int(idx) - 1
+                text, direction = item, 'h'
                 if debug:
-                    logger.info(f'{tid}翻译结果{idx+1}: {text}')
+                    logger.info(f'{tid}最终结果{idx+1}: ({direction}) {text}')
                 box = merged_boxes[idx]
-                self.draw_text(img, box[0], box[1], text)
-            logger.info(f'翻译任务{tid}翻译结果绘制完成')
+                self.draw_text(img, box[0], box[1], text, direction)
+            logger.info(f'翻译任务{tid}最终结果绘制完成')
+
+        total_cost = 0
+        if merge_result['cost'] is not None:   total_cost += merge_result['cost']
+        if trans_result['cost'] is not None:   total_cost += trans_result['cost']
+        if correct_result['cost'] is not None: total_cost += correct_result['cost']
 
         return TranslationResult(
             img=img,
+
+            total_time=t_total.get(),
+            total_cost=total_cost,
+
+            ocr_time=t_ocr.get(),
+
             merge_model=self.model_name,
             merge_cost=merge_result['cost'],
+            merge_time=t_merge.get(),
+
             trans_model=self.model_name,
             trans_cost=trans_result['cost'],
-            total_time=t_total.get(),
-            ocr_time=t_ocr.get(),
-            merge_time=t_merge.get(),
             trans_time=t_trans.get(),
-            total_cost=merge_result['cost'] + trans_result['cost'],
+
+            correct_model=self.model_name,
+            correct_cost=correct_result['cost'],
+            correct_time=t_correct.get(),
         )
 
