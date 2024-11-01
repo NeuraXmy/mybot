@@ -43,6 +43,19 @@ class Translator:
         self.task_id_top = 0
         self.langs = ['ja', 'ko']
         self.max_size = 1024
+        self.merge_method = 'alg'   # alg or llm
+
+    def calc_box_dist(self, b1, b2):
+        sx1, sy1 = b1[0]
+        tx1, ty1 = b1[2]
+        sx2, sy2 = b2[0]
+        tx2, ty2 = b2[2]
+        w1, h1 = tx1 - sx1, ty1 - sy1
+        w2, h2 = tx2 - sx2, ty2 - sy2
+        x1, y1 = min(sx1, sx2), min(sy1, sy2)
+        x2, y2 = max(tx1, tx2), max(ty1, ty2)
+        w, h = x2 - x1, y2 - y1
+        return (w - w1 - w2, h - h1 - h2)
 
     def draw_box_with_label(self, img, p1, p2, label):
         import random
@@ -51,10 +64,10 @@ class Translator:
         x1, y1 = p1
         x2, y2 = p2
         draw.rectangle([x1, y1, x2, y2], outline=color)
-        label_size = 20
+        label_size = 16
         font = ImageFont.truetype(self.font_path, label_size)
-        draw.rectangle([x2 + 1, y2 - label_size, x2 + label_size, y2], fill='white')
-        draw.text((x2, y2 - label_size), str(label), fill=color, font=font)
+        draw.rectangle([x2 - label_size - 2, y2 - label_size - 2, x2, y2], fill=(255, 255, 255, 150))
+        draw.text((x2 - label_size, y2 - label_size), str(label), fill=color, font=font)
 
     def draw_text(self, img, p1, p2, text):
         draw = ImageDraw.Draw(img)
@@ -88,7 +101,7 @@ class Translator:
             return True
         return False
 
-    async def translate(self, ctx: HandlerContext, img: Image.Image, lang=None) -> TranslationResult:
+    async def translate(self, ctx: HandlerContext, img: Image.Image, lang=None, debug=False) -> TranslationResult:
         with Timer() as t_total:
             if not self.model_loaded:
                 raise Exception('OCR模型未加载')
@@ -121,37 +134,69 @@ class Translator:
             # draw ocr boxes
             img_w_ocr_boxes = img.copy()
             for i, (box, text, score) in enumerate(ocr_result):
-                logger.debug(f'{tid}OCR框{i+1}: {box} | {text} | score={score}')
+                if debug:
+                    logger.info(f'{tid}OCR框{i+1}: {box} | {text} | score={score}')
                 x1, y1 = box[0]
                 x2, y2 = box[2] 
                 self.draw_box_with_label(img_w_ocr_boxes, (x1, y1), (x2, y2), i + 1)
+            if debug:
+                img_w_ocr_boxes.save("sandbox/img_w_ocr_boxes.png")
             logger.info(f'翻译任务{tid}OCR框绘制完成')
 
-            # query llm to merge
+            # merge
             with Timer() as t_merge:
-                @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
-                async def query_merge():
-                    session = ChatSession()
-                    session.append_user_content(
-                        Path(self.merge_prompt_path).read_text().strip(), 
-                        [get_image_b64(img_w_ocr_boxes)],
-                        verbose=False
-                    )
-                    response = await session.get_response(
-                        model_name=self.model_name,
-                        usage='translator_merge',
-                        user_id=user_id,
-                        group_id=group_id,
-                    )
-                    response['data'] = self.load_json_from_response(response['result'])
-                    return response
+                if self.merge_method == 'llm':
+                     # query llm to merge
+                    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
+                    async def query_merge():
+                        session = ChatSession()
+                        session.append_user_content(
+                            Path(self.merge_prompt_path).read_text().strip(), 
+                            [get_image_b64(img_w_ocr_boxes)],
+                            verbose=False
+                        )
+                        response = await session.get_response(
+                            model_name=self.model_name,
+                            usage='translator_merge',
+                            user_id=user_id,
+                            group_id=group_id,
+                        )
+                        response['data'] = self.load_json_from_response(response['result'])
+                        return response
 
-                logger.info(f'翻译任务{tid}开始向LLM请求合并框')
-                try:
-                    merge_result = await query_merge()
-                except Exception as e:
-                    raise Exception(f'向LLM请求合并框失败: {e}')
-                logger.info(f'翻译任务{tid}LLM合并框请求完成，合并后{len(merge_result["data"])}个框')
+                    logger.info(f'翻译任务{tid}开始向LLM请求合并框')
+                    try:
+                        merge_result = await query_merge()
+                    except Exception as e:
+                        raise Exception(f'向LLM请求合并框失败: {e}')
+                    logger.info(f'翻译任务{tid}LLM合并框请求完成，合并后{len(merge_result["data"])}个框')
+
+                elif self.merge_method == 'alg':
+                    # use algorithm to merge
+                    merge_result = {}
+                    n = len(ocr_result)
+                    dist = [[self.calc_box_dist(ocr_result[i][0], ocr_result[j][0]) for j in range(n)] for i in range(n)]
+                    visited = [False] * n
+                    def dfs(u, idx):
+                        merge_result[idx].append(u+1)
+                        visited[u] = True
+                        for v in range(n):
+                            if visited[v]: continue
+                            d = max(dist[u][v])
+                            if d < 5:
+                                dfs(v, idx)
+                    for i in range(n):
+                        if not visited[i]:
+                            idx = str(len(merge_result) + 1)
+                            merge_result[idx] = []
+                            dfs(i, idx)
+                    merge_result = {
+                        'data': merge_result,
+                        'cost': 0.0,
+                    }
+
+            if debug:
+                logger.info(f'翻译任务{tid}合并结果: {merge_result}')
 
             # draw merged boxes
             merged_boxes = []
@@ -167,11 +212,14 @@ class Translator:
                     x2 = max(x2, box[2][0])
                     y2 = max(y2, box[2][1])
                 merged_boxes.append(((x1, y1), (x2, y2)))
-                logger.debug(f'{tid}合并框{idx}: {merged_boxes[-1]}')
+                if debug:
+                    logger.info(f'{tid}合并框{idx}: {merged_boxes[-1]}')
             
             img_w_merged_boxes = img.copy()
             for i, box in enumerate(merged_boxes):
                 self.draw_box_with_label(img_w_merged_boxes, box[0], box[1], i + 1)
+            if debug:
+                img_w_merged_boxes.save("sandbox/img_w_merged_boxes.png")
             logger.info(f'翻译任务{tid}合并框绘制完成')
                 
             # query llm to translate
@@ -207,7 +255,8 @@ class Translator:
             # draw translated text
             for idx, text in trans_result['data'].items():
                 idx = int(idx) - 1
-                logger.debug(f'{tid}翻译结果{idx+1}: {text}')
+                if debug:
+                    logger.info(f'{tid}翻译结果{idx+1}: {text}')
                 box = merged_boxes[idx]
                 self.draw_text(img, box[0], box[1], text)
             logger.info(f'翻译任务{tid}翻译结果绘制完成')

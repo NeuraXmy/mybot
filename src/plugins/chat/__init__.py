@@ -384,6 +384,12 @@ async def _(ctx: HandlerContext):
         raise Exception("请回复一张图片")
     
     args = ctx.get_args().strip()
+
+    debug = False
+    if 'debug' in args:
+        debug = True
+        args = args.replace('debug', '').strip()
+
     if args and args not in translator.langs:
         raise Exception(f"支持语言:{translator.langs}, 指定语言仅影响文本检测，不影响翻译")
     lang = args if args else None
@@ -399,7 +405,7 @@ async def _(ctx: HandlerContext):
             translator.load_model()
 
         # await ctx.asend_reply_msg(f"翻译任务已提交，预计2分钟内完成")
-        res: TranslationResult = await translator.translate(ctx, img, lang=lang)
+        res: TranslationResult = await translator.translate(ctx, img, lang=lang, debug=debug)
 
         msg = await get_image_cq(res.img)
         msg += f"{res.total_time:.1f}s {res.total_cost:.4f}$" + " | "
