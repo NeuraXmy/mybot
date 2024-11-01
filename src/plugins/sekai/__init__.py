@@ -91,11 +91,23 @@ HONOR_DIFF_SCORE_MAP = {
     4700: ("append", "fullCombo"),
     4701: ("append", "allPerfect"),
 }
+SUPPORT_UNIT_GROUP_MAP = {
+    "light_sound": "ln",
+    "school_refusal": "25",
+    "street": "vbs",
+    "idol": "mmj",
+    "theme_park": "ws",
+}
 
-
-ASSET_DB_URLS = [
-    "https://storage.sekai.best/sekai-jp-assets/",
-    "https://asset3.pjsekai.moe/"
+ASSET_DB_URL_AND_MAPS = [
+    (
+        "https://storage.sekai.best/sekai-jp-assets/", 
+        lambda url: url,
+    ),
+    (
+        "https://asset3.pjsekai.moe/", 
+        lambda url: url.replace("_rip", ""),
+    )
 ]
 
 
@@ -125,14 +137,14 @@ GROUP_BGS = {
 }
 blured_bg = {}
 
-def random_bg(chara_id=None, blur=True):
-    if chara_id is None:
+def random_bg(group=None, blur=True):
+    if group is None:
         bg = random.choice(COMMON_BGS)
     else:
-        group = get_group_by_cid(chara_id)
         if group not in GROUP_BGS:
             group = random.choice(list(GROUP_BGS.keys()))
         bg = random.choice(GROUP_BGS[group])
+
     if blur:
         if bg not in blured_bg:
             bg_img = res.misc_images.get(bg)
@@ -140,6 +152,7 @@ def random_bg(chara_id=None, blur=True):
         bg_img = blured_bg[bg]
     else:
         bg_img = res.misc_images.get(bg)
+
     return ImageBg(bg_img)
 
 def roundrect_bg(fill=REGION_COLOR, radius=REGION_RADIUS, alpha=None):
@@ -173,11 +186,20 @@ async def get_asset(path: str, cache=True, allow_error=False) -> Image.Image:
         return Image.open(cache_path)
     except:
         pass
-    for db_url in ASSET_DB_URLS:
+
+    urls_to_try = []
+    for db_url, url_map in ASSET_DB_URL_AND_MAPS:
+        url = url_map(db_url + path)
+        urls_to_try.append((url, True))
+        if url.endswith(".webp"):
+            urls_to_try.append((url.removesuffix(".webp") + ".png", True))
+        elif url.endswith(".png"):
+            urls_to_try.append((url.removesuffix(".png") + ".webp", True))
+
+    for url, ok_to_cache in urls_to_try:
         try:
-            url = db_url + path
             img = await download_image(url)
-            if cache:
+            if cache and ok_to_cache:
                 create_parent_folder(cache_path)
                 img.save(cache_path)
             return img
@@ -197,8 +219,21 @@ def get_cid_by_nickname(nickname):
             return int(item['id'])
     return None
 
+# 获取卡牌所属团
+async def get_group_by_card_id(card_id):
+    cards = await res.cards.get()
+    card = find_by(cards, "id", card_id)
+    if not card: raise Exception(f"卡牌{card_id}不存在")
+    chara_group = get_group_by_chara_id(card['characterId'])
+    if chara_group != 'vs':
+        return chara_group
+    su = card['supportUnit']
+    if su in SUPPORT_UNIT_GROUP_MAP:
+        return SUPPORT_UNIT_GROUP_MAP[su]
+    return chara_group
+
 # 从角色id获取角色团名
-def get_group_by_cid(cid):
+def get_group_by_chara_id(cid):
     return find_by(CHARACTER_NICKNAMES, "id", cid)['group']
 
 # 从角色id获取角色昵称
@@ -562,7 +597,7 @@ async def compose_card_list_image(chara_id, cards, qid):
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
 
 
-    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=random_bg(get_group_by_chara_id(chara_id))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_sep(16).set_content_align('lt').set_item_align('lt'):
             if qid:
                 await get_detailed_profile_card(profile, pmsg)
@@ -687,12 +722,13 @@ async def get_player_avatar_info(detail_profile):
     card_id = cards[0]['cardId']
     avatar_img = await get_card_thumbnail(card_id, cards[0]['after_training'])
     chara_id = find_by(await res.cards.get(), 'id', card_id)['characterId']
-    group = get_group_by_cid(chara_id)
+    group = get_group_by_chara_id(chara_id)
     return {
         'card_id': card_id,
         'chara_id': chara_id,
         'group': group,
-        'avatar_img': avatar_img
+        'avatar_img': avatar_img,
+        'bg_group': await get_group_by_card_id(card_id)
     }
 
 # 获取玩家详细信息的简单卡片
@@ -867,7 +903,7 @@ async def compose_profile_image(basic_profile):
     avatar_img = await get_card_thumbnail(pcards[0]['cardId'], pcards[0]['after_training'])
     chara_id = find_by(await res.cards.get(), 'id', pcards[0]['cardId'])['characterId']
     
-    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=random_bg(await get_group_by_card_id(pcards[0]['cardId']))).set_padding(BG_PADDING) as canvas:
         with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
             ## 左侧
             with VSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_sep(32).set_padding((32, 35)):
@@ -1012,13 +1048,9 @@ async def compose_diff_board_image(diff, lv_musics, qid, show_id):
         lv_musics[i] = (lv, [m for m in musics if m['cover_img'] is not None])
 
     profile, pmsg = await get_detailed_profile(qid, raise_exc=False)
-    if profile:
-        avatar_info = await get_player_avatar_info(profile)
-        chara_id = avatar_info['chara_id']
-    else:
-        chara_id = None
+    bg_group = (await get_player_avatar_info(profile))['bg_group'] if profile else None
 
-    with Canvas(bg=random_bg(chara_id)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=random_bg(bg_group)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
             if profile:
                 await get_detailed_profile_card(profile, pmsg)
@@ -1195,7 +1227,6 @@ async def get_music_detail_str(music):
 async def compose_box_image(qid, cards, show_id, show_box):
     profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
     avatar_info = await get_player_avatar_info(profile)
-    avatar_chara_id = avatar_info['chara_id']
     # user cards
     user_cards = profile['userCards']
     # collect card imgs
@@ -1221,7 +1252,7 @@ async def compose_box_image(qid, cards, show_id, show_box):
     for i in range(len(chara_cards)):
         chara_cards[i][1].sort(key=lambda x: x['archivePublishedAt'])
 
-    with Canvas(bg=random_bg(avatar_chara_id)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=random_bg(avatar_info['bg_group'])).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
             await get_detailed_profile_card(profile, pmsg)
             with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(7):

@@ -47,7 +47,7 @@ class Translator:
         self.model_name = "gpt-4o"
         self.task_id_top = 0
         self.langs = ['ja', 'ko']
-        self.max_size = 2048
+        self.max_resolution = 1024 * 768
         self.merge_method = 'alg'   # alg or llm
 
     def calc_box_dist(self, b1, b2):
@@ -131,7 +131,11 @@ class Translator:
             self.task_id_top += 1
 
             img = img.convert('RGB')
-            img = resize_keep_ratio(img, self.max_size)
+            w, h = img.size
+            if w * h > self.max_resolution:
+                max_size = self.max_resolution // min(w, h)
+                img = resize_keep_ratio(img, max_size)
+                logger.info(f'翻译任务{tid}缩放图片从({w},{h})到{img.size}')
 
             user_id  = ctx.user_id  if ctx else None
             group_id = ctx.group_id if ctx else None
@@ -255,7 +259,8 @@ class Translator:
                         group_id=group_id,
                     )
                     response['data'] = self.load_json_from_response(response['result'])
-                    assert len(response['data']) == len(merged_boxes)
+                    if debug:
+                        logger.info(f'翻译任务{tid}LLM翻译结果: {response["data"]}')
                     for idx, item in response['data'].items():
                         idx = int(idx) - 1
                         assert idx >= 0 and idx < len(merged_boxes)
@@ -264,8 +269,6 @@ class Translator:
                 logger.info(f'翻译任务{tid}开始向LLM请求翻译结果')
                 try:
                     trans_result = await query_trans()
-                    if debug:
-                        logger.info(f'翻译任务{tid}LLM翻译结果: {trans_result}')
                 except Exception as e:
                     raise Exception(f'向LLM请求翻译失败: {e}')
                 logger.info(f'翻译任务{tid}LLM翻译结果请求完成')
@@ -287,7 +290,8 @@ class Translator:
                         group_id=group_id,
                     )
                     response['data'] = self.load_json_from_response(response['result'])
-                    assert len(response['data']) == len(merged_boxes)
+                    if debug:
+                        logger.info(f'翻译任务{tid}LLM校对结果: {response["data"]}')
                     for idx, item in response['data'].items():
                         idx = int(idx) - 1
                         assert idx >= 0 and idx < len(merged_boxes)
