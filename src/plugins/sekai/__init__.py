@@ -2171,6 +2171,8 @@ async def vlive_notify():
 @repeat_with_interval(60, '新曲自动提醒', logger)
 async def new_music_notify():
     bot = get_bot()
+
+    # 新曲上线
     notified_musics = file_db.get("notified_musics", [])
     musics = await res.musics.get()
     music_diffs = await res.music_diffs.get()
@@ -2199,5 +2201,55 @@ async def new_music_notify():
                 continue
 
         notified_musics.append(mid)
-                
     file_db.set("notified_musics", notified_musics)
+
+
+    # 新APPEND上线
+    no_append_musics = file_db.get("no_append_musics", [])
+    notified_appends = file_db.get("notified_appends", [])
+    for music in musics:
+        mid = music["id"]
+        diff_info = get_music_diff_info(mid, music_diffs)
+        if not diff_info['has_append']: 
+            no_append_musics.append(mid)
+            continue
+        if mid not in no_append_musics: continue
+        if mid in notified_appends: continue
+        logger.info(f"发送新APPEND上线提醒: {music['id']} {music['title']}")
+
+        msg = f"【PJSK新APPEND上线】\n"
+        try:
+            asset_name = music['assetbundleName']
+            cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
+            msg += await get_image_cq(cover_img, allow_error=False, logger=logger)
+        except Exception as e:
+            logger.print_exc(f"获取{mid}的封面失败")
+            msg += "[封面加载失败]\n"
+
+        title = music["title"]
+        cn_title = await get_music_cn_title(mid)
+        cn_title = f"({cn_title})" if cn_title else ""
+        msg += f"【{mid}】{title} {cn_title}\n"
+
+        diff_info = get_music_diff_info(mid, await res.music_diffs.get())
+        append_lv = diff_info['level'].get('append', '-')
+        append_count = diff_info['note_count'].get('append', '-')
+
+        msg += f"APPEND lv.{append_lv} | 物量: {append_count}\n"
+
+        for group_id in music_notify_gwl.get():
+            if not gbl.check_id(group_id): continue
+            try:
+                group_msg = msg
+                for uid, gid in subs['music'].get_all():
+                    if str(gid) == str(group_id):
+                        group_msg += f"[CQ:at,qq={uid}]"
+                await send_group_msg_by_bot(bot, group_id, group_msg.strip())
+            except:
+                logger.print_exc(f'发送新APPEND上线提醒到群{group_id}失败')
+                continue
+
+        no_append_musics.remove(mid)
+        notified_appends.append(mid)
+    file_db.set("no_append_musics", no_append_musics)
+    file_db.set("notified_appends", notified_appends)

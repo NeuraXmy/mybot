@@ -329,6 +329,8 @@ def get_logger(name) -> Logger:
         _loggers[name] = Logger(name)
     return _loggers[name]
 
+utils_logger = get_logger('Utils')
+
 
 # 文件数据库
 class FileDB:
@@ -570,20 +572,40 @@ def record_self_reply_msg(msg):
     except Exception as e:
         return msg
 
+# 检查消息发送次数限制
+MSG_RATE_LIMIT_PER_SECOND = get_config()['msg_rate_limit_per_second']
+current_msg_count = 0
+current_msg_second = -1
+def check_msg_rate_limit():
+    cur_ts = int(datetime.now().timestamp())
+    global current_msg_count, current_msg_second
+    if cur_ts != current_msg_second:
+        current_msg_count = 0
+        current_msg_second = cur_ts
+    if current_msg_count >= MSG_RATE_LIMIT_PER_SECOND:
+        utils_logger.warning(f'消息达到发送频率，取消本次发送')
+        return False
+    current_msg_count += 1
+    return True
+
 # 发送消息
 async def send_msg(handler, message):
+    if not check_msg_rate_limit(): return
     return record_self_reply_msg(await handler.send(OutMessage(message)))
 
 # 发送回复消息
 async def send_reply_msg(handler, reply_id, message):
+    if not check_msg_rate_limit(): return
     return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}')))
 
 # 发送at消息
 async def send_at_msg(handler, user_id, message):
+    if not check_msg_rate_limit(): return
     return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}')))
 
 # 发送群聊折叠消息 其中contents是text的列表
 async def send_group_fold_msg(bot, group_id, contents):
+    if not check_msg_rate_limit(): return
     msg_list = [{
         "type": "node",
         "data": {
@@ -606,10 +628,12 @@ async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, ne
 
 # 在event外发送群聊消息
 async def send_group_msg_by_bot(bot, group_id, message):
+    if not check_msg_rate_limit(): return
     return record_self_reply_msg(await bot.send_group_msg(group_id=int(group_id), message=message))
 
 # 在event外发送私聊消息
 async def send_private_msg_by_bot(bot, user_id, message):
+    if not check_msg_rate_limit(): return
     return record_self_reply_msg(await bot.send_private_msg(user_id=int(user_id), message=message))
 
 
@@ -671,7 +695,7 @@ def get_str_appear_length(s):
 
 # 开始重复执行某个异步任务
 def start_repeat_with_interval(interval, func, logger, name, every_output=False, error_output=True, error_limit=5, start_offset=10):
-    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset))
+    @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=start_offset), misfire_grace_time=60)
     async def _():
         try:
             error_count = 0
