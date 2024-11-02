@@ -98,6 +98,15 @@ SUPPORT_UNIT_GROUP_MAP = {
     "idol": "mmj",
     "theme_park": "ws",
 }
+BOARD_RANK_LIST = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    20, 30, 40, 50,
+    100, 200, 300, 400, 500,
+    1000, 1500, 2000, 2500, 3000,
+    4000, 5000, 10000, 20000, 30000,
+    40000, 50000, 100000,
+]
+
 
 ASSET_DB_URL_AND_MAPS = [
     (
@@ -118,42 +127,31 @@ FONT_PATH = get_config('font_path')
 BG_PADDING = 16
 REGION_COLOR = (255, 255, 255, 150)
 REGION_RADIUS = 10
-
 COMMON_BGS = [
-    "bg/bg_area_1.png",
-    "bg/bg_area_2.png",
-    "bg/bg_area_3.png",
-    "bg/bg_area_4.png",
-    "bg/bg_area_11.png",
-    "bg/bg_area_12.png",
-    "bg/bg_area_13.png",
+    ImageBg(res.misc_images.get("bg/bg_area_1.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_2.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_3.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_4.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_11.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_12.png")),
+    ImageBg(res.misc_images.get("bg/bg_area_13.png")),
 ]
 GROUP_BGS = {
-    "ln": ["bg/bg_area_5.png", "bg/bg_area_17.png"],
-    "mmj": ["bg/bg_area_7.png", "bg/bg_area_18.png"],
-    "vbs": ["bg/bg_area_8.png", "bg/bg_area_19.png"],
-    "ws": ["bg/bg_area_9.png", "bg/bg_area_20.png"],
-    "25": ["bg/bg_area_10.png", "bg/bg_area_21.png"],
+    "ln":   [ImageBg(res.misc_images.get("bg/bg_area_5.png")),  ImageBg(res.misc_images.get("bg/bg_area_17.png"))],
+    "mmj":  [ImageBg(res.misc_images.get("bg/bg_area_7.png")),  ImageBg(res.misc_images.get("bg/bg_area_18.png"))],
+    "vbs":  [ImageBg(res.misc_images.get("bg/bg_area_8.png")),  ImageBg(res.misc_images.get("bg/bg_area_19.png"))],
+    "ws":   [ImageBg(res.misc_images.get("bg/bg_area_9.png")),  ImageBg(res.misc_images.get("bg/bg_area_20.png"))],
+    "25":   [ImageBg(res.misc_images.get("bg/bg_area_10.png")), ImageBg(res.misc_images.get("bg/bg_area_21.png"))],
 }
-blured_bg = {}
 
-def random_bg(group=None, blur=True):
+def random_bg(group=None):
     if group is None:
         bg = random.choice(COMMON_BGS)
     else:
         if group not in GROUP_BGS:
             group = random.choice(list(GROUP_BGS.keys()))
         bg = random.choice(GROUP_BGS[group])
-
-    if blur:
-        if bg not in blured_bg:
-            bg_img = res.misc_images.get(bg)
-            blured_bg[bg] = bg_img.filter(ImageFilter.GaussianBlur(radius=3))
-        bg_img = blured_bg[bg]
-    else:
-        bg_img = res.misc_images.get(bg)
-
-    return ImageBg(bg_img)
+    return bg
 
 def roundrect_bg(fill=REGION_COLOR, radius=REGION_RADIUS, alpha=None):
     if alpha is not None:
@@ -1283,6 +1281,100 @@ async def compose_box_image(qid, cards, show_id, show_box):
 
     return await run_in_pool(canvas.get_img)
 
+# 获取榜线分数字符串
+def get_board_score_str(score):
+    if score is None:
+        return "?"
+    if score < 10000:
+        return score
+    score = score / 10000
+    return f"{score:.4f}w"
+
+# 合成榜线预测图片
+async def compose_board_predict_image():
+    predict_data = await download_json("https://sekai-data.3-3.dev/predict.json")
+    if predict_data['status'] != "success":
+        raise Exception(f"获取榜线数据失败: {predict_data['message']}")
+
+    try:
+        event_id    = predict_data['event']['id']
+        event_name  = predict_data['event']['name']
+        event_start = datetime.fromtimestamp(predict_data['event']['startAt'] / 1000)
+        event_end   = datetime.fromtimestamp(predict_data['event']['aggregateAt'] / 1000)
+
+        predict_time = datetime.fromtimestamp(predict_data['data']['ts'] / 1000)
+        predict_current = predict_data['rank']
+        predict_final = predict_data['data']
+
+        events = await res.events.get()
+        event = find_by(events, "id", event_id)
+        asset_name = event['assetbundleName']
+        try:
+            banner_img = await get_asset(f"home/banner/{asset_name}_rip/{asset_name}.webp")
+        except:
+            banner_img = None
+
+        try:
+            event_bg_img = await get_asset(f"event/{asset_name}/screen_rip/bg.webp")
+            canvas_bg = ImageBg(event_bg_img)
+        except:
+            event_stories = await res.event_stories.get()
+            event_story = find_by(event_stories, "eventId", event_id)
+            event_group = None
+            if event_story: 
+                event_chara_id = event_story.get('bannerGameCharacterUnitId', None)
+                if event_chara_id:
+                    event_group = get_group_by_chara_id(event_chara_id)
+            canvas_bg = random_bg(event_group)
+
+    except Exception as e:
+        raise Exception(f"获取榜线数据失败: {e}")
+
+    with Canvas(bg=canvas_bg).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            with HSplit().set_bg(roundrect_bg()).set_content_align('l').set_item_align('l').set_padding(16).set_sep(7):
+                if banner_img:
+                    ImageBox(banner_img, size=(0, 80))
+                else:
+                    TextBox("活动Banner图加载失败", TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=RED))
+                
+                with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
+                    TextBox(event_name, TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    TextBox(f"{event_start.strftime('%Y-%m-%d %H:%M')} ~ {event_end.strftime('%Y-%m-%d %H:%M')} (UTC+8)", 
+                            TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
+                    time_to_end = event_end - datetime.now()
+                    if time_to_end.total_seconds() <= 0:
+                        time_to_end = "活动已结束"
+                    else:
+                        time_to_end = f"距离活动结束还有{get_readable_timedelta(time_to_end)}"
+                    TextBox(time_to_end, TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
+                    time_from_predict = datetime.now() - predict_time
+                    TextBox(f"预测更新时间: {predict_time.strftime('%Y-%m-%d %H:%M')} ({get_readable_timedelta(time_from_predict)}前)",
+                            TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
+                    TextBox("数据来源: 3-3.dev", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
+
+            g_size = (200, 30)
+            ranks = [r for r in predict_final if r != 'ts']
+            ranks.sort(key=lambda x: int(x))
+            with Grid(col_count=3).set_bg(roundrect_bg()).set_content_align('c').set_sep(hsep=8, vsep=5).set_padding(16):
+                bg1 = FillBg((255, 255, 255, 160))
+                bg2 = FillBg((255, 255, 255, 100))
+                title_style = TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK)
+                item_style  = TextStyle(font=DEFAULT_FONT,      size=20, color=BLACK)
+                TextBox("排名",        title_style).set_bg(bg1).set_size(g_size).set_content_align('c')
+                TextBox("预测当前分数", title_style).set_bg(bg1).set_size(g_size).set_content_align('c')
+                TextBox("预测最终分数", title_style).set_bg(bg1).set_size(g_size).set_content_align('c')
+                for i, rank in enumerate(ranks):
+                    bg = bg2 if i % 2 == 0 else bg1
+                    current_score = get_board_score_str(predict_current.get(rank))
+                    final_score = get_board_score_str(predict_final.get(rank))
+                    TextBox(rank,          item_style).set_bg(bg).set_size(g_size).set_content_align('c')
+                    TextBox(current_score, item_style).set_bg(bg).set_size(g_size).set_content_align('r').set_padding((16, 0))
+                    TextBox(final_score,   item_style).set_bg(bg).set_size(g_size).set_content_align('r').set_padding((16, 0))
+
+
+    return await run_in_pool(canvas.get_img)
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -1991,6 +2083,14 @@ async def _(ctx: HandlerContext):
         res_cards.append(card)
     
     await ctx.asend_reply_msg(await get_image_cq(await compose_box_image(ctx.user_id, res_cards, show_id, show_box)))
+
+
+# 查询榜线预测
+pjsk_rank_predict = CmdHandler(["/pjsk sk predict", "/pjsk_sk_predict", "/pjsk sk", "/pjsk_sk", "/sk预测"], logger)
+pjsk_rank_predict.check_cdrate(cd).check_wblist(gbl)
+@pjsk_rank_predict.handle()
+async def _(ctx: HandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_board_predict_image()))
 
 
 # ========================================= 定时任务 ========================================= #

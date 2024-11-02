@@ -440,7 +440,7 @@ def get_readable_timedelta(delta):
         return f"{int(delta.total_seconds() / 60)}分钟"
     if delta.total_seconds() < 60 * 60 * 12:
         return f"{int(delta.total_seconds() / 60 / 60)}小时{int(delta.total_seconds() / 60 % 60)}分钟"
-    return str(delta)
+    return f"{delta.days}天{int(delta.seconds / 60 / 60)}小时{int(delta.seconds / 60 % 60)}分钟"
 
 
 # 获取加入的所有群id
@@ -1208,6 +1208,9 @@ async def download_json(url):
             if resp.status == 200:
                 if "text/plain" in resp.content_type:
                     return json.loads(await resp.text())
+                if "application/octet-stream" in resp.content_type:
+                    import io
+                    return json.loads(io.BytesIO(await resp.read()).read().decode())
                 return await resp.json()
             else:
                 raise Exception(resp.status)

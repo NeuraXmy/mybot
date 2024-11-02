@@ -22,6 +22,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk diff board` 难度排行查询](#pjsk-diff-board)
 - [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
 - [`/pjsk box` box查询](#pjsk-box)
+- [`/pjsk sk` 榜线预测查询](#pjsk-sk)
 
 ### 管理指令
 
@@ -294,6 +295,21 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pjsk box 四星 粉花 奶卡 限定 今年` 查询今年的四星粉花奶卡限定卡牌
 
     `/pjsk box box` 仅查询自己有的卡牌
+
+
+## `/pjsk sk`
+
+```
+查询榜线预测，数据来自3-3.dev
+```
+
+- **指令别名**
+
+    `/sk预测` `/pjsk sk predict`
+
+- **示例**
+
+    `/sk预测`
 
 
 --- 
