@@ -55,7 +55,7 @@ async def handle_bird(bot: Bot, event: MessageEvent):
     if bird_name in bird_data.keys():
         bird_info = bird_data[bird_name]
         res = ""
-        res += await get_image_cq(bird_info['图片'])
+        res += await get_image_cq(bird_info['图片'], allow_error=True, logger=logger)
         res += f"{bird_info['名称']}\n"
         res += f"{bird_info['分类']}\n"
         res += f"{bird_info['描述']}\n"

@@ -1351,7 +1351,7 @@ class CmdHandler:
         self.private_group_check = "private"
         return self
 
-    def check_wblist(self, wblist: GroupWhiteList | GroupBlackList, allow_private=False, allow_super=False):
+    def check_wblist(self, wblist: GroupWhiteList | GroupBlackList, allow_private=True, allow_super=False):
         self.wblist_checks.append((wblist, { "allow_private": allow_private, "allow_super": allow_super }))
         return self
 
