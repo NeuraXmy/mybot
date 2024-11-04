@@ -748,6 +748,13 @@ def start_async_task(func, logger, name, start_offset=5):
         except Exception as e:
             logger.print_exc(f'异步执行 {name} 任务失败')
 
+# 开始执行某个任务的装饰器
+def async_task(name: str, logger: Logger, start_offset=5):
+    def wrapper(func):
+        start_async_task(func, logger, name, start_offset)
+        return func
+    return wrapper  
+
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #
 

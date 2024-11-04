@@ -38,18 +38,17 @@ async def init_birds():
 
 # ------------------------------------------ 指令 ------------------------------------------ #
         
-bird = on_command('/bird', priority=100, block=False)
+bird = CmdHandler(['/bird'], logger)
+bird.check_cdrate(cd).check_wblist(gbl)
 @bird.handle()
-async def handle_bird(bot: Bot, event: MessageEvent):
+async def handle_bird(ctx: HandlerContext):
     global bird_data
-    if not gbl.check(event, allow_private=True): return
-    if not (await cd.check(event)): return
     await init_birds()
 
-    bird_name = event.get_message().extract_plain_text().replace('/bird', '').strip()
+    bird_name = ctx.get_args().strip()
     logger.info(f"鸟类查询：{bird_name}")
-    if not bird_name or bird_name == "":
-        return await send_reply_msg(bird, event.message_id, "鸟类名称不能为空")
+    if not bird_name:
+        raise Exception("请输入鸟类名称")
 
     # 查找精确匹配
     if bird_name in bird_data.keys():
@@ -61,17 +60,15 @@ async def handle_bird(bot: Bot, event: MessageEvent):
         res += f"{bird_info['描述']}\n"
         res += f"{bird_info['俗名']}\n"
         logger.info(f"鸟类查询：{bird_name}，精确匹配")
+        return await ctx.asend_fold_msg_adaptive(res.strip())
 
-        return await send_fold_msg_adaptive(bot, bird, event, res.strip())
-        
-
-    # 查找模糊匹配
+    
     def search_blur_folk():
+        # 查找模糊匹配
         blur_names = []
         for name in bird_data.keys():
             if bird_name in name:
                 blur_names.append(name)
-
         edit_distance = {}
         for name in bird_data.keys():
             edit_distance[name] = levenshtein_distance(bird_name, name)
@@ -80,13 +77,13 @@ async def handle_bird(bot: Bot, event: MessageEvent):
         blur_names += [x[0] for x in edit_distance[:QUERY_TOPK]]
         blur_names = blur_names[:QUERY_TOPK]
         
-        
         # 查找俗名里面有的
         folk_names = [key for key, value in bird_data.items() if bird_name in value['俗名']]
         folk_names = folk_names[:FOLK_NAME_MAX]
 
         logger.info(f"鸟类查询：{bird_name}，模糊匹配: {blur_names} 俗名匹配: {folk_names}")
         return blur_names, folk_names
+    
     blur_names, folk_names = await run_in_pool(search_blur_folk)
 
     res = f"没有找到这个鸟类哦\n"
@@ -94,8 +91,8 @@ async def handle_bird(bot: Bot, event: MessageEvent):
         res += f"\"{bird_name}\"可能是这些鸟的俗名：{', '.join(folk_names)}\n"
     if len(blur_names) > 0:
         res += f"模糊匹配：{', '.join(blur_names)}\n"
-
-    return await send_reply_msg(bird, event.message_id, res.strip())
+    
+    return ctx.asend_reply_msg(res.strip())
 
 
 

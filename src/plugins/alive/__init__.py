@@ -59,6 +59,7 @@ async def send_noti(state):
 
 
 # 存活检测
+@repeat_with_interval(CHECK_INTERVAL, "存活检测", logger, start_offset=5, error_limit=999999)
 async def alive_check():
     global cur_state, noti_state, cur_elapsed, last_check_time, group_reported
     # 检测连接状态
@@ -100,14 +101,8 @@ async def alive_check():
     last_check_time = datetime.now()
 
 
-# 定时任务
-start_repeat_with_interval(CHECK_INTERVAL, alive_check, logger, "存活检测", start_offset=5, error_limit=999999)
-
-
 # 测试命令
-alive = on_command("/alive", priority=100, block=False)
+alive = CmdHandler(["/alive"], logger).check_superuser()
 @alive.handle()
-async def handle_function(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-    msg = f"存活持续时间：{cur_elapsed}"
-    await send_reply_msg(alive, event.message_id, msg)
+async def handle_function(ctx: HandlerContext):
+    await ctx.asend_reply_msg(f"存活持续时间：{cur_elapsed}")
