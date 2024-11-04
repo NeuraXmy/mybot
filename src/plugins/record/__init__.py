@@ -27,6 +27,7 @@ def record_hook(func):
 # 记录消息
 async def record_message(bot, event):
     if event.message_id in message_id_set: return
+    if not is_group_msg(event) and event.user_id == event.self_id: return
     message_id_set.add(event.message_id)
 
     for hook in record_hook_funcs:
