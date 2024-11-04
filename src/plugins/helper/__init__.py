@@ -35,7 +35,7 @@ async def _(ctx: HandlerContext):
             pass
 
     if not args or args not in help_names:
-        msg = "使用 \"/help 英文服务名\" 查看各服务的详细帮助\n"
+        msg = "@我 并发送 \"/help 英文服务名\" 查看各服务的详细帮助\n"
         msg += "\n可查询的服务列表:\n"
         for name, desc in zip(help_names, help_decs):
             msg += f"【{name}】{desc}\n"

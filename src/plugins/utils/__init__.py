@@ -26,6 +26,7 @@ import shutil
 from PIL import Image, ImageDraw, ImageFont
 import re
 from .plot import *
+import math
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -1191,25 +1192,31 @@ async def send_mail_async(
             await asyncio.sleep(retry_interval)
 
 
+# 不会触发消息回复的Exception，用于退出当前Event
+class NoReplyException(Exception):
+    pass
+
+
+# 适用于HandlerContext的参数解析器
 class MessageArgumentParser(ArgumentParser):
-    def __init__(self, handler, event, commands, logger=None, *args, **kwargs):
+    def __init__(self, ctx, *args, **kwargs):
         super().__init__(*args, **kwargs, exit_on_error=False)
-        self.event = event
-        self.handler = handler
-        self.commands = commands
-        self.logger = logger
+        self.ctx = ctx
 
     def error(self, message):
-        loop = asyncio.get_event_loop()
-        loop.create_task(send_reply_msg(self.handler, self.event.message_id, f'参数解析失败: {message}'))
-        raise Exception(f'参数解析失败: {message}')
+        raise Exception(message)
 
-    async def parse_args(self, *args, **kwargs):
-        s = self.event.get_plaintext().strip()
-        for cmd in self.commands:
-            s = s.removeprefix(cmd).strip()
-        s = s.split(' ')
-        return super().parse_args(s, *args, **kwargs)
+    async def parse_args(self, error_reply=None, *args, **kwargs):
+        try:
+            s = self.ctx.get_args().strip().split()
+            return super().parse_args(s, *args, **kwargs)
+        except Exception as e:
+            self.ctx.logger.print_exc("参数解析失败")
+            if error_reply is None:
+                raise e
+            else:
+                await self.ctx.asend_msg(error_reply)
+                raise NoReplyException()
 
 
 from concurrent.futures import ThreadPoolExecutor
@@ -1282,11 +1289,15 @@ class HandlerContext:
     message_id: int = None
     user_id: int = None
     group_id: int = None
+    logger: Logger = None
 
     # --------------------------  数据获取 -------------------------- #
 
     def get_args(self) -> str:
         return self.arg_text
+
+    def get_argparser(self) -> MessageArgumentParser:
+        return MessageArgumentParser(self)
 
     def aget_msg(self):
         return get_msg(self.bot, self.message_id)
@@ -1299,6 +1310,7 @@ class HandlerContext:
     
     async def aget_reply_msg_obj(self):
         return await get_reply_msg_obj(self.bot, await self.aget_msg())
+
 
     # -------------------------- 消息发送 -------------------------- # 
 
@@ -1375,6 +1387,7 @@ class CmdHandler:
                 context.nonebot_handler = self.handler
                 context.bot = bot
                 context.event = event
+                context.logger = self.logger
 
                 plain_text = event.message.extract_plain_text()
                 for cmd in sorted(self.commands, key=len, reverse=True):
@@ -1390,6 +1403,8 @@ class CmdHandler:
 
                 try:
                     return await handler_func(context)
+                except NoReplyException:
+                    return
                 except Exception as e:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
@@ -1441,3 +1456,46 @@ class SubHelper:
         self.db.delete(self.key)
         self.logger.log(f'{self.name}清空订阅')
 
+
+# 拼接图片，mode: 'v' 垂直拼接 'h' 水平拼接 'g' 网格拼接
+def concat_images(images: List[Image.Image], mode) -> Image.Image:
+    if mode == 'v':
+        max_w = max(img.width for img in images)
+        images = [
+            img if img.width == max_w 
+            else img.resize((max_w, int(img.height * max_w / img.width)), Image.ANTIALIAS) 
+            for img in images
+        ]
+        ret = Image.new('RGBA', (max_w, sum(img.height for img in images)))
+        y = 0
+        for img in images:
+            img = img.convert('RGBA')
+            ret.paste(img, (0, y), img)
+            y += img.height
+        return ret
+    
+    elif mode == 'h':
+        max_h = max(img.height for img in images)
+        images = [
+            img if img.height == max_h 
+            else img.resize((int(img.width * max_h / img.height), max_h), Image.ANTIALIAS) 
+            for img in images
+        ]
+        ret = Image.new('RGBA', (sum(img.width for img in images), max_h))
+        x = 0
+        for img in images:
+            img = img.convert('RGBA')
+            ret.paste(img, (x, 0), img)
+            x += img.width
+        return ret
+
+    elif mode == 'g':
+        with Canvas(bg=FillBg(WHITE)) as canvas:
+            col_num = int(math.ceil(math.sqrt(len(images))))
+            with Grid(col_count=col_num, item_align='c', hsep=0, vsep=0):
+                for img in images:
+                    ImageBox(img)
+        return canvas.get_img()
+
+    else:
+        raise Exception('concat mode must be v/h/g')
