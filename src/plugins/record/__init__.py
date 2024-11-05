@@ -191,11 +191,21 @@ async def private_forward_hook(bot: Bot, event: MessageEvent):
         await send_private_msg_by_bot(bot, forward_user_id, msg)
 
 
-# log撤回消息
-recall_log = on_notice()
-@recall_log.handle()
+# log各种事件消息
+misc_notice_log = on_notice()
+@misc_notice_log.handle()
 async def _(bot: Bot, event: NoticeEvent):
+    # 群消息撤回
     if event.notice_type == 'group_recall':
         logger.info(f"群 {event.group_id} 的用户 {event.operator_id} 撤回了用户 {event.user_id} 发送的消息 {event.message_id}")
+    # 好友消息撤回
     if event.notice_type == 'friend_recall':
         logger.info(f"用户 {event.user_id} 撤回了自己的私聊消息 {event.message_id}")
+    # 群消息点赞
+    if event.notice_type == 'group_msg_emoji_like':
+        for like in event.likes:
+            logger.info(f"群 {event.group_id} 的用户 {event.user_id} 给消息 {event.message_id} 点了 {like['count']} 个 {like['emoji_id']}")
+    # 群戳一戳
+    if event.notice_type == 'notify' and event.sub_type == 'poke':
+        logger.info(f"群 {event.group_id} 的用户 {event.user_id} 戳了用户 {event.target_id}")
+    
