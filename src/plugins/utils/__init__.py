@@ -479,6 +479,11 @@ def get_avatar_url(user_id):
     return f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
 
 
+# 获取高清头像url
+def get_avatar_url_large(user_id):
+    return f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
+
+
 # 获取群聊中的用户名 如果有群名片则返回群名片 否则返回昵称
 async def get_group_member_name(bot, group_id, user_id):
     info = await bot.call_api('get_group_member_info', **{'group_id': int(group_id), 'user_id': int(user_id)})
@@ -692,6 +697,18 @@ def get_str_appear_length(s):
     for c in s:
         l += 1 if ord(c) < 128 else 2
     return l
+
+# 获取字符串行数
+def get_str_line_count(s: str, line_length: int) -> int:
+    lines = [""]
+    for c in s:
+        if c == '\n':
+            lines.append("")
+            continue
+        if get_str_appear_length(lines[-1] + c) > line_length:
+            lines.append("")
+        lines[-1] += c
+    return len(lines)
 
 
 # 开始重复执行某个异步任务

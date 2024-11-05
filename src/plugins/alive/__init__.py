@@ -105,4 +105,5 @@ async def alive_check():
 alive = CmdHandler(["/alive"], logger).check_superuser()
 @alive.handle()
 async def handle_function(ctx: HandlerContext):
-    await ctx.asend_reply_msg(f"存活持续时间：{cur_elapsed}")
+    dt = datetime.now() - cur_elapsed
+    await ctx.asend_reply_msg(f"当前连接持续时长: {get_readable_timedelta(cur_elapsed)}\n连接时间: {dt.strftime('%Y-%m-%d %H:%M:%S')}")

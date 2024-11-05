@@ -47,22 +47,22 @@ def phash_to_str(phash):
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
-add = on_message(block=False)
-@add.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
-    msg = await get_msg(bot, event.message_id)
-    cmd = extract_text(msg).strip()
-    if cmd != '/water': return
-    if not (await cd.check(event)): return
-
+water = CmdHandler(['/water', '/watered'], logger)
+water.check_group().check_wblist(gbl).check_cdrate(cd)
+@water.handle()
+async def _(ctx: HandlerContext):
     # 获取回复的内容
-    reply_msg = await get_reply_msg(bot, msg)
-    if reply_msg is None: return
+    reply_msg = await ctx.aget_reply_msg()
+    if not reply_msg:
+        raise Exception("请回复一条文字或图片消息")
+
     reply_text = extract_text(reply_msg)
     reply_imgs = extract_image_id(reply_msg)
     reply_img_urls = extract_image_url(reply_msg)
-    group_id = event.group_id
+    group_id = ctx.group_id
+
+    if not reply_text and not reply_imgs:
+        raise Exception("不支持的消息格式！只支持查询文字或图片水果")
 
     if len(reply_imgs) > 0:
         # 图片只查询第一张
@@ -110,36 +110,26 @@ async def _(bot: Bot, event: GroupMessageEvent):
         for uid, (cnt, nickname) in top_users:
             res += f"{nickname}({uid})：{cnt/len(recs)*100:.2f}%\n"
 
-    return await send_reply_msg(add, event.message_id, res.strip())
+    return await ctx.asend_reply_msg(res.strip())
 
 
 
-query_phash = on_command("/phash", priority=5, block=False)
+query_phash = CmdHandler(['/phash'], logger)
+query_phash.check_cdrate(cd).check_wblist(gbl)
 @query_phash.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
-    if not check_superuser(event): return
-    
-    # 获取回复的内容
-    msg = await get_msg(bot, event.message_id)
-    reply_msg_obj = await get_reply_msg_obj(bot, msg)
+async def _(ctx: HandlerContext):
+    reply_msg_obj = await ctx.aget_reply_msg_obj()
     reply_msg_id = reply_msg_obj['message_id']
 
-    try:
-        phash_records = query_by_msg_id(event.group_id, reply_msg_id)
-        if len(phash_records) == 0:
-            return await send_reply_msg(query_phash, event.message_id, "图片phash未计算")
- 
-        smsg = ""
-        for rec in phash_records:
-            smsg += f"phash: {rec['phash']}\n"
-            smsg += phash_to_str(rec['phash']).strip() + "\n"
-        return await send_reply_msg(query_phash, event.message_id, smsg.strip())
-    
-    except Exception as e:
-        logger.print_exc(f'获取phash失败')
-        return await send_reply_msg(query_phash, event.message_id, "获取phash失败")
+    phash_records = query_by_msg_id(ctx.group_id, reply_msg_id)
+    if len(phash_records) == 0:
+        raise Exception("该消息不包含图片或Phash未计算")
 
+    smsg = ""
+    for rec in phash_records:
+        smsg += f"phash: {rec['phash']}\n"
+        smsg += phash_to_str(rec['phash']).strip() + "\n"
+    return await ctx.asend_reply_msg(smsg.strip())
 
 
 # ------------------------------------------ PHASH记录 ------------------------------------------ #
@@ -168,6 +158,7 @@ async def record_new_message(bot, event):
 
 
 # 任务处理
+@async_task('PHash计算', logger, 10)
 async def handle_task():
     while True:
         while task_queue.qsize() > MAX_TASK_NUM:
@@ -217,5 +208,3 @@ async def handle_task():
             except Exception as e:
                 logger.print_exc(f'计算消息 {task["msg_id"]} 图片 {i} 的 phash 失败')
 
-
-start_async_task(handle_task, logger, 'PHash计算', 10)

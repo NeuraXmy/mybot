@@ -106,18 +106,15 @@ async def _(bot: Bot, event: MessageEvent):
 
 
 # 检查消息
-check = on_command("/check", block=False)
+check = CmdHandler(["/check"], logger)
+check.check_superuser()
 @check.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-
-    msg = await get_msg(bot, event.message_id)
-    reply_msg_obj = await get_reply_msg_obj(bot, msg)
-
+async def _(ctx: HandlerContext):
+    msg = await ctx.aget_msg()
+    reply_msg_obj = await ctx.aget_reply_msg_obj()
     if not reply_msg_obj:
-        return await send_reply_msg(check, event.message_id, f"请回复一条消息")
-    
-    await send_reply_msg(check, event.message_id, str(reply_msg_obj))
+        raise Exception("请回复一条消息")
+    await ctx.asend_reply_msg(str(reply_msg_obj))
 
 
 # 获取用户在群聊中用过的昵称
@@ -159,4 +156,37 @@ async def _(ctx: HandlerContext):
         msg += f"({time}) {name}\n"
     
     return await ctx.asend_fold_msg_adaptive(msg.strip(), 0, True)
-    
+
+
+# 私聊转发
+private_forward = CmdHandler(["/forward"], logger)
+private_forward.check_private().check_superuser()
+@private_forward.handle()
+async def _(ctx: HandlerContext):
+    private_forward_list = file_db.get('private_forward_list', [])
+    user_id = ctx.user_id
+    if user_id in private_forward_list:
+        private_forward_list.remove(user_id)
+        file_db.set('private_forward_list', private_forward_list)
+        return await ctx.asend_reply_msg("私聊转发已关闭")
+    else:
+        private_forward_list.append(user_id)
+        file_db.set('private_forward_list', private_forward_list)
+        return await ctx.asend_reply_msg("私聊转发已开启")
+
+
+# 私聊转发hook
+@record_hook
+async def private_forward_hook(bot: Bot, event: MessageEvent):
+    user_id = event.sender.user_id
+    nickname = event.sender.nickname
+    msg = await get_msg(bot, event.message_id)
+    if is_group_msg(event):
+        return
+
+    for forward_user_id in file_db.get('private_forward_list', []):
+        if user_id == forward_user_id:
+            continue
+        await send_private_msg_by_bot(bot, forward_user_id, f"来自{nickname}({user_id})的私聊消息:")
+        await send_private_msg_by_bot(bot, forward_user_id, msg)
+

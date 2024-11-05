@@ -594,3 +594,39 @@ async def handle(bot: Bot, event: MessageEvent):
     except Exception as e:
         logger.print_exc(f"处理图片失败: {e}")
         await send_reply_msg(gen_qrcode, event.message_id, "处理图片失败")
+
+
+# 生成语录
+gen_saying = CmdHandler(['/saying', '/语录'], logger)
+gen_saying.check_cdrate(cd).check_wblist(gbl).check_group()
+@gen_saying.handle()
+async def _(ctx: HandlerContext):
+    try:
+        reply_msg = await ctx.aget_reply_msg()
+        reply_msg_obj = await ctx.aget_reply_msg_obj()
+        reply_user_id = reply_msg_obj['sender']['user_id']
+        text = extract_text(reply_msg)
+    except:
+        raise Exception("无法获取回复消息")
+    
+    if not text:
+        raise Exception("回复的消息没有文本!")
+    
+    text = "「 " + text + " 」"
+    line_len = 32
+    name_text = "——" + await get_group_member_name(ctx.bot, ctx.group_id, reply_user_id)
+
+    with Canvas(bg=FillBg(BLACK)) as canvas:
+        with HSplit().set_item_align('c').set_content_align('c').set_padding(32).set_sep(32):
+            with VSplit().set_item_align('c').set_content_align('c'):
+                Spacer(10, 64)
+                ImageBox(await download_image(get_avatar_url_large(reply_user_id)), size=(256, 256)).set_margin(32)
+                Spacer(10, 64)
+            
+            with VSplit().set_item_align('c').set_content_align('c').set_sep(16):
+                font_sz = 24
+                TextBox(text, TextStyle(DEFAULT_FONT, font_sz, WHITE), line_count=get_str_line_count(text, line_len)).set_w(font_sz * line_len // 2).set_content_align('l')
+                TextBox(name_text, TextStyle(DEFAULT_FONT, font_sz, WHITE)).set_w(font_sz * line_len // 2).set_content_align('r')
+            Spacer(32, 32)
+
+    return await ctx.asend_reply_msg(await get_image_cq(await run_in_pool(canvas.get_img)))

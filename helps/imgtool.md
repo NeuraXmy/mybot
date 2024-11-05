@@ -23,6 +23,7 @@
 - [`/img repeat` 重复效果](#img-repeat)
 - [`/scan` 二维码识别](#scan)
 - [`/qrcode` 生成二维码](#qrcode)
+- [`/saying` 生成群友语录](#saying)
 
 ### 管理指令
 
@@ -200,7 +201,17 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
     `/qrcode https://www.test.com`
 
 
+## `/saying`
+```
+生成群友语录
+```
+- **指令别名**
 
+    `/语录`
+
+- **示例**
+
+    `(回复一条文本消息) /语录`
 
 --- 
 
