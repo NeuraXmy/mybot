@@ -1,6 +1,6 @@
 from nonebot import on_command, on_message, on
-from nonebot import get_bot
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, Bot, Event
+from nonebot import get_bot, on_notice
+from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, Bot, Event, NoticeEvent
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from datetime import datetime
 from ..utils import *
@@ -190,3 +190,12 @@ async def private_forward_hook(bot: Bot, event: MessageEvent):
         await send_private_msg_by_bot(bot, forward_user_id, f"来自{nickname}({user_id})的私聊消息:")
         await send_private_msg_by_bot(bot, forward_user_id, msg)
 
+
+# log撤回消息
+recall_log = on_notice()
+@recall_log.handle()
+async def _(bot: Bot, event: NoticeEvent):
+    if event.notice_type == 'group_recall':
+        logger.info(f"群 {event.group_id} 的用户 {event.operator_id} 撤回了用户 {event.user_id} 发送的消息 {event.message_id}")
+    if event.notice_type == 'friend_recall':
+        logger.info(f"用户 {event.user_id} 撤回了自己的私聊消息 {event.message_id}")

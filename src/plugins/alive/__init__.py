@@ -10,6 +10,7 @@ from nonebot import on_command
 config = get_config('alive')
 logger = get_logger("Alive")
 file_db = get_file_db("data/alive/db.json", logger)
+cd = ColdDown(file_db, logger, 5)
 
 CHECK_INTERVAL = config['check_interval']
 TIME_THRESHOLD = config['time_threshold']
@@ -102,7 +103,8 @@ async def alive_check():
 
 
 # 测试命令
-alive = CmdHandler(["/alive"], logger).check_superuser()
+alive = CmdHandler(["/alive"], logger)
+alive.check_cdrate(cd)
 @alive.handle()
 async def handle_function(ctx: HandlerContext):
     dt = datetime.now() - cur_elapsed
