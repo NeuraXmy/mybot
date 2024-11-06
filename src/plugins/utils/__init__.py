@@ -65,7 +65,8 @@ def create_folder(folder_path):
 
 def create_parent_folder(file_path):
     parent_folder = os.path.dirname(file_path)
-    return create_folder(parent_folder)
+    create_folder(parent_folder)
+    return file_path
 
 def remove_folder(folder_path):
     folder_path = str(folder_path)
@@ -658,7 +659,12 @@ async def get_image_cq(image, allow_error=False, logger=None):
             tmp_file_path = 'data/imgtool/tmp/tmp'
             tmp_file_path += '.gif' if is_gif(image) else '.png'
             os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
-            image.save(tmp_file_path)
+            if not is_gif(image):
+                image.save(tmp_file_path)
+            else:
+                from PIL import ImageSequence
+                frames = [f.copy() for f in ImageSequence.Iterator(image)]
+                frames[0].save(tmp_file_path, save_all=True, append_images=frames[1:], duration=image.info.get('duration', 100), loop=0, disposal=2)
             with open(tmp_file_path, 'rb') as f:
                 cq = f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
             os.remove(tmp_file_path)
@@ -1432,8 +1438,8 @@ class CmdHandler:
                 except Exception as e:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
-                        et = type(e).__name__ if type(e).__name__!= "Exception" else ""
-                        await context.asend_reply_msg(truncate(f"指令处理失败: {et} {e}", 128))
+                        et = f"{type(e).__name__}: " if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
+                        await context.asend_reply_msg(truncate(f"指令处理失败: {et}{e}", 128))
                         
             return func
         return decorator

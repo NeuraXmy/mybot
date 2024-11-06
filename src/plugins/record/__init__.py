@@ -204,7 +204,7 @@ async def _(bot: Bot, event: NoticeEvent):
     # 群消息点赞
     if event.notice_type == 'group_msg_emoji_like':
         for like in event.likes:
-            logger.info(f"群 {event.group_id} 的用户 {event.user_id} 给消息 {event.message_id} 点了 {like['count']} 个 {like['emoji_id']}")
+            logger.info(f"群 {event.group_id} 的用户 {event.user_id} 给消息 {event.message_id} 回应了 {like['count']} 个emoji {like['emoji_id']}")
     # 群戳一戳
     if event.notice_type == 'notify' and event.sub_type == 'poke':
         logger.info(f"群 {event.group_id} 的用户 {event.user_id} 戳了用户 {event.target_id}")
