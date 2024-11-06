@@ -1875,7 +1875,7 @@ async def _(ctx: HandlerContext):
         aliases = aliases.split(",")
         assert aliases
     except:
-        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias set 歌曲ID 别名1 别名2...")
+        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias add 歌曲ID 别名1，别名2...")
 
     alias_to_music = {}
     for i, alias_list in music_alias.items():

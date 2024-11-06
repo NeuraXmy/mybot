@@ -5,10 +5,12 @@ from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ..utils import *
+from ..llm import ChatSession
 from PIL import Image, ImageSequence, ImageOps
 from io import BytesIO
 from aiohttp import ClientSession
 from enum import Enum
+from tenacity import retry, wait_fixed, stop_after_attempt
 
 
 config = get_config('imgtool')
@@ -115,18 +117,14 @@ async def get_reply_fst_image(ctx: HandlerContext):
         raise NoReplyException()
     return img
 
-# 图片操作Handler
-img_op = CmdHandler("/img", logger, priority=100)
-img_op.check_cdrate(cd).check_wblist(gbl)
-@img_op.handle()
-async def _(ctx: HandlerContext):
+# 进行图片操作
+async def operate_image(args: str, img: Image.Image) -> Image.Image:
+    args = args.strip().split()
     all_op_names = ImageOperation.all_ops.keys()
-    args = ctx.get_args().strip().split()
-    if not args:
-        return await ctx.asend_reply_msg(f"""
+    assert args, f"""操作序列不能为空
 使用方式: (回复一张图片) /img 操作1 参数1 操作2 参数2 ...
 可用的操作: {', '.join(all_op_names)}
-""".strip())
+""".strip()
 
     # 获取操作和参数序列
     ops: List[Tuple[ImageOperation, List[str]]] = []
@@ -134,13 +132,15 @@ async def _(ctx: HandlerContext):
         if arg in all_op_names:
             ops.append((ImageOperation.all_ops[arg], []))
         else:
-            if not ops:
-                raise Exception(f"未指定初始操作, 可用的操作: {', '.join(all_op_names)}")
+            assert ops, f"未指定初始操作, 可用的操作: {', '.join(all_op_names)}"
             ops[-1][1].append(arg)
     logger.info(f"请求图片操作\"{args}\" 序列: {[(op.name, args) for op, args in ops]}")
 
     assert ops, f"未指定操作, 可用的操作: {', '.join(all_op_names)}"
     assert len(ops) <= 10, f"操作过多, 最多支持10个操作"
+
+    # 检查初始输入类型是否匹配
+    assert ops[0][0].input_type.check_img(img), f"回复的图片类型与 1.{ops[0][0].name} 的输入类型 {ops[0][0].input_type} 不匹配"
 
     # 检查操作输入输出类型是否对应
     for i in range(1, len(ops)):
@@ -149,11 +149,6 @@ async def _(ctx: HandlerContext):
         pre_type = ops[i-1][0].output_type
         cur_type = ops[i][0].input_type
         assert pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配"
-            
-    # 获取图片
-    img = await get_reply_fst_image(ctx)
-    # 检查初始输入类型是否匹配
-    assert ops[0][0].input_type.check_img(img), f"回复的图片类型与 1.{ops[0][0].name} 的输入类型 {ops[0][0].input_type} 不匹配"
 
     # 执行操作序列
     for i, (op, args) in enumerate(ops):
@@ -161,11 +156,75 @@ async def _(ctx: HandlerContext):
             img = await run_in_pool(op, img, args)
         except Exception as e:
             logger.print_exc(f"执行图片操作 {i+1}.{op.name} 失败")
-            return await ctx.asend_reply_msg(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
+            raise Exception(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
+        
     logger.info(f"{len(ops)}个图片操作全部执行完毕")
+    return img
 
-    # 返回结果
+# 让gpt根据用户要求生成操作序列
+async def generate_image_ops_by_gpt(query: str, img: Image.Image, failed_ops: list) -> str:
+    help_doc = Path("helps/imgtool.md").read_text()
+    start_idx = help_doc.find("## 图片操作")
+    end_idx = help_doc.find("---", start_idx)
+    help_doc = help_doc[start_idx:end_idx]
+
+    failed_history = ""
+    if failed_ops:
+        failed_ops = "\n".join(failed_ops)
+        failed_history = f"除此之外，以下的操作序列尝试过，但是出现错误:\n{failed_ops}\n"
+    
+    prompt_template = Path("data/imgtool/generate_ops_prompt.txt").read_text()
+    prompt = prompt_template.format(
+        help_doc=help_doc, 
+        query=query, 
+        img_size=f"{img.size[0]}x{img.size[1]}",
+        img_type=str(ImageType.get_type(img)),
+        failed_history=failed_history
+    )
+
+    session = ChatSession()
+    session.append_user_content(prompt, verbose=False)
+    
+    logger.info(f"请求GPT生成图片操作序列: {query}")
+    result = await session.get_response('gpt-4o', 'generate_img_ops')
+    ops = result['result'].strip()
+    logger.info(f"GPT生成图片操作序列结果: {ops}")
+    return ops
+
+# 图片操作Handler
+img_op = CmdHandler("/img", logger, priority=100)
+img_op.check_cdrate(cd).check_wblist(gbl)
+@img_op.handle()
+async def _(ctx: HandlerContext):
+    img = await get_reply_fst_image(ctx)
+    img = operate_image(ctx.get_args(), img)
     return await ctx.asend_reply_msg(await get_image_cq(img))
+
+# gpt图片操作Handler
+imgpt = CmdHandler("/imgpt", logger, priority=101)
+imgpt.check_cdrate(cd).check_wblist(gbl)
+@imgpt.handle()
+async def _(ctx: HandlerContext):
+    img = await get_reply_fst_image(ctx)
+    query = ctx.get_args().strip()
+
+    generated_ops = []
+    @retry(wait=wait_fixed(1), stop=stop_after_attempt(3), reraise=True)
+    async def do(img, query):
+        ops = await generate_image_ops_by_gpt(query, img, generated_ops)
+        generated_ops.append(ops)
+        return await operate_image(ops, img)
+    
+    try:
+        img = await do(img, query)
+    except Exception as e:
+        generated_ops = "\n".join(generated_ops)
+        return await ctx.asend_reply_msg(f"失败次数达到上限！\nGPT尝试过的操作序列:\n{generated_ops}\n最后一次错误:\n{e}")
+    
+    msg = await get_image_cq(img)
+    msg += f"操作序列: {generated_ops[-1]}"
+    return await ctx.asend_reply_msg(msg)
+
 
 # ============================= 图片操作 ============================= # 
 
@@ -324,7 +383,7 @@ speed 100 设置动图帧间隔为100ms
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
         duration = img.info['duration']
         if 'speed' in args:
-            duration = int(duration * args['speed'])
+            duration = duration / args['speed']
         elif 'duration' in args:
             duration = int(args['duration'])
 
@@ -421,7 +480,7 @@ class RevColorOperation(ImageOperation):
         return None
 
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
-        img = img.convert('RGBA')
+        img = img.convert('RGB')
         return ImageOps.invert(img)
 
 class RepeatOperation(ImageOperation): 
