@@ -186,7 +186,7 @@ async def generate_image_ops_by_gpt(query: str, img: Image.Image, failed_ops: li
     session.append_user_content(prompt, verbose=False)
     
     logger.info(f"请求GPT生成图片操作序列: {query}")
-    result = await session.get_response('gpt-4o', 'generate_img_ops')
+    result = await session.get_response('gpt-4o-mini', 'generate_img_ops')
     ops = result['result'].strip()
     logger.info(f"GPT生成图片操作序列结果: {ops}")
     return ops
@@ -197,7 +197,7 @@ img_op.check_cdrate(cd).check_wblist(gbl)
 @img_op.handle()
 async def _(ctx: HandlerContext):
     img = await get_reply_fst_image(ctx)
-    img = operate_image(ctx.get_args(), img)
+    img = await operate_image(ctx.get_args(), img)
     return await ctx.asend_reply_msg(await get_image_cq(img))
 
 # gpt图片操作Handler
