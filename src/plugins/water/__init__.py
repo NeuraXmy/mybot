@@ -103,12 +103,16 @@ async def _(ctx: HandlerContext):
         TOP_K = 5
         top_users = sorted(user_count.items(), key=lambda x: x[1][0], reverse=True)[:TOP_K]
 
-        res = f"水果总数：{len(recs)}\n"
-        res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
-        res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})\n"
-        res += f"水果比例：\n"
-        for uid, (cnt, nickname) in top_users:
-            res += f"{nickname}({uid})：{cnt/len(recs)*100:.2f}%\n"
+        if len(recs) > 1:
+            res = f"水果总数：{len(recs)}\n"
+            res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
+            res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})\n"
+            res += f"水果比例：\n"
+            for uid, (cnt, nickname) in top_users:
+                res += f"{nickname}({uid})：{cnt/len(recs)*100:.2f}%\n"
+        else:
+            res = f"水果总数：{len(recs)}\n"
+            res += f"上次水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
 
     return await ctx.asend_reply_msg(res.strip())
 

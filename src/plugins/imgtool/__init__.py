@@ -548,7 +548,7 @@ fan r 0.5x: 逆时针旋转，旋转速度为0.5倍
         if image_type == ImageType.Animated:
             img = img.crop((0, 0, img.width, img.height))
         speed = args['speed']
-        frame_count = max(5, int(8 / speed))
+        frame_count = int(20 / speed)
         width, height = img.size
         frames = []
         for i in range(frame_count):
@@ -556,12 +556,12 @@ fan r 0.5x: 逆时针旋转，旋转速度为0.5倍
             angle = 360 / frame_count * i
             if args['mode'] == "cw":
                 angle = -angle
-            img = img.convert('RGBA').rotate(angle, expand=False)
-            new_img.paste(img, (0, 0), img)
+            rotated_img = img.copy().convert('RGBA').rotate(angle, expand=False)
+            new_img.paste(rotated_img, (0, 0), rotated_img)
             frames.append(new_img)
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=50, loop=0, disposal=2)
+            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=20, loop=0, disposal=2)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -596,7 +596,7 @@ flow 2x: 流动速度为2倍
         if image_type == ImageType.Animated:
             img = img.crop((0, 0, img.width, img.height))
         speed = args['speed']
-        frame_count = max(5, int(8 / speed))
+        frame_count = int(20 / speed)
         width, height = img.size
         frames = []
         mode = args['mode']
@@ -617,7 +617,7 @@ flow 2x: 流动速度为2倍
             frames.append(new_img)
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=50, loop=0, disposal=2)
+            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=20, loop=0, disposal=2)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
