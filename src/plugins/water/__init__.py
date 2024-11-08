@@ -171,6 +171,7 @@ async def handle_task():
 
         task = await task_queue.get()
         if not task: break 
+        current_q_size = task_queue.qsize()
 
         try:
             cqs = extract_cq_code(task['msg'])
@@ -207,7 +208,7 @@ async def handle_task():
                     time=datetime.fromtimestamp(task['time']),
                     img_unique=img_unique,
                 )
-                logger.info(f'插入消息 {task["msg_id"]} 图片 {i} 的 phash: {phash}')
+                logger.info(f'记录消息 {task["msg_id"]} 图片 {i} 的 phash: {phash}, 队列剩余 {current_q_size} 个任务')
 
             except Exception as e:
                 logger.print_exc(f'计算消息 {task["msg_id"]} 图片 {i} 的 phash 失败')

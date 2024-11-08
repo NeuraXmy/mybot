@@ -22,22 +22,37 @@ gbl = get_group_black_list(file_db, logger, 'imgtool')
 
 # ============================= 基础设施 ============================= # 
 
+IMAGE_LIST_CLEAN_INTERVAL = 3 * 60 * 60  # 图片列表失效时间
+MULTI_IMAGE_MAX_NUM = 20  # 多张图片最大数量
+
 # 图片类型
 class ImageType(Enum):
     Any         = 1
     Animated    = 2
     Static      = 3
+    Multiple    = 4
 
     def __str__(self):
         if self == ImageType.Any:
-            return "任意类型"
+            return "任意单图"
         elif self == ImageType.Animated:
             return "动图"
         elif self == ImageType.Static:
             return "静态图"
+        elif self == ImageType.Multiple:
+            return "多张图片"
 
     def check_img(self, img) -> bool:
-        if self == ImageType.Any:
+        if self == ImageType.Multiple:
+            if not isinstance(img, list):
+                return False
+            for i in img:
+                if not isinstance(i, Image.Image):
+                    return False
+                if is_gif(i):
+                    return False
+                return True
+        elif self == ImageType.Any:
             return True
         elif self == ImageType.Animated:
             return is_gif(img)
@@ -45,13 +60,17 @@ class ImageType(Enum):
             return not is_gif(img)
 
     def check_type(self, tar) -> bool:
+        if self == ImageType.Multiple:
+            return self == tar
         if self == ImageType.Any or tar == ImageType.Any:
             return True
         return self == tar
 
     @classmethod
     def get_type(cls, img) -> 'ImageType':
-        if is_gif(img):
+        if isinstance(img, list):
+            return ImageType.Multiple
+        elif is_gif(img):
             return ImageType.Animated
         else:
             return ImageType.Static
@@ -68,6 +87,7 @@ class ImageOperation:
         self.help = ""
         ImageOperation.all_ops[name] = self
         assert process_type in ['single', 'batch'], f"图片操作类型{process_type}错误"
+        assert not (input_type == ImageType.Multiple and process_type == 'batch'), f"多张图片操作不能以批量方式处理"
 
     def parse_args(self, args: List[str]) -> dict:
         return None
@@ -103,12 +123,13 @@ class ImageOperation:
                 return self.operate(img, args, img_type)
                 
 # 从回复消息获取第一张图片
-async def get_reply_fst_image(ctx: HandlerContext):
+async def get_reply_fst_image(ctx: HandlerContext, return_url=False):
     reply_msg = await ctx.aget_reply_msg()
     assert reply_msg, "请回复一张图片"
     imgs = extract_image_url(reply_msg)
     assert imgs, "回复的消息中不包含图片"
     img_url = imgs[0]   
+    if return_url: return img_url
     try:
         img = await download_image(img_url)
     except Exception as e:
@@ -117,14 +138,128 @@ async def get_reply_fst_image(ctx: HandlerContext):
         raise NoReplyException()
     return img
 
+# 获取图片列表，并检测用户user_id的失效
+def get_image_list(user_id):
+    user_id = str(user_id)
+    image_list = file_db.get('image_list', {})
+    image_list_edit_time = file_db.get('image_list_edit_time', {})
+    
+    # 第一次获取
+    if user_id not in image_list_edit_time:
+        image_list[user_id] = []
+        image_list_edit_time[user_id] = datetime.now().timestamp()
+        file_db.set('image_list', image_list)
+        file_db.set('image_list_edit_time', image_list_edit_time)
+        return image_list
+    
+    # 判断过期
+    last_edit_time = datetime.fromtimestamp(image_list_edit_time[user_id])
+    if (datetime.now() - last_edit_time).total_seconds() > IMAGE_LIST_CLEAN_INTERVAL:
+        logger.info(f"用户 {user_id} 的图片列表已过期")
+        image_list[user_id] = []
+        file_db.set('image_list', image_list)
+
+    # 更新时间
+    image_list_edit_time[user_id] = datetime.now().timestamp()
+    file_db.set('image_list_edit_time', image_list_edit_time)
+    logger.info(f"获取用户 {user_id} 的图片列表, 共有 {len(image_list[user_id])} 张图片")
+    return image_list
+
+# 往图片列表push图片
+async def add_image_to_list(ctx: HandlerContext, reply=True):
+    user_id = str(ctx.user_id)
+    image_list = get_image_list(user_id)
+    assert len(image_list[user_id]) < MULTI_IMAGE_MAX_NUM, f"图片列表已满，最多只能处理{MULTI_IMAGE_MAX_NUM}张图片"
+    img = await get_reply_fst_image(ctx, return_url=True)
+    image_list[user_id].append(img)
+    file_db.set('image_list', image_list)
+    logger.info(f"用户 {user_id} 向图片列表添加了图片，共有 {len(image_list[user_id])} 张")
+    if reply:
+        return await ctx.asend_reply_msg(f"添加成功，当前列表有{len(image_list[user_id])}张图片")
+
+# 从图片列表pop图片
+async def pop_image_from_list(ctx: HandlerContext, reply=True):
+    user_id = str(ctx.user_id)
+    image_list = get_image_list(user_id)
+    if not image_list[user_id]:
+        raise Exception("图片列表为空")
+    img = image_list[user_id].pop()
+    file_db.set('image_list', image_list)
+    logger.info(f"用户 {user_id} 从图片列表中弹出图片, 剩余 {len(image_list[user_id])} 张")
+    img = await get_image_cq(img)
+    if reply:
+        return await ctx.asend_reply_msg(f"{img}移除该图片，剩余{len(image_list[user_id])}张图片")
+
+# 清空图片列表
+async def clear_image_list(ctx: HandlerContext, reply=True):
+    user_id = str(ctx.user_id)
+    image_list = get_image_list(user_id)
+    pre_len = len(image_list[user_id])
+    image_list[user_id].clear()
+    file_db.set('image_list', image_list)
+    logger.info(f"用户 {user_id} 清空了图片列表, 之前有 {pre_len} 张图片")
+    if reply:
+        return await ctx.asend_reply_msg(f"清空列表中 {pre_len} 张图片")
+
+# 翻转图片列表
+async def reverse_image_list(ctx: HandlerContext, reply=True):
+    user_id = str(ctx.user_id)
+    image_list = get_image_list(user_id)
+    image_list[user_id].reverse()
+    file_db.set('image_list', image_list)
+    logger.info(f"用户 {user_id} 翻转了图片列表")
+    if reply:
+        return await ctx.asend_reply_msg(f"翻转成功，当前列表有{len(image_list[user_id])}张图片")
+
+# 获取多张图片
+async def get_multi_images(ctx: HandlerContext) -> List[Image.Image]:
+    reply_msg = await ctx.aget_reply_msg()
+    # 使用回复消息
+    if reply_msg:
+        reply_cqs = extract_cq_code(reply_msg)
+        # 回复转发多张图片
+        if 'forward' in reply_cqs:
+            img_urls = []
+            for msg_obj in reply_cqs['forward'][0]['content']:
+                msg = msg_obj['message']
+                img_urls.extend(extract_image_url(msg))
+            assert_and_reply(img_urls, "回复的转发消息中不包含图片")
+            assert_and_reply(len(img_urls) <= MULTI_IMAGE_MAX_NUM, f"最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
+        # 回复的消息有图片
+        else:
+            img_urls = extract_image_url(reply_msg)
+            assert_and_reply(img_urls, "回复的消息中不包含图片")
+
+    # 使用图片列表
+    else:
+        user_id = str(ctx.user_id)
+        img_urls = get_image_list(user_id).get(user_id, [])
+        assert_and_reply(img_urls, """
+图片列表为空，请先使用 /img push 添加图片
+也可以直接回复包含多张图片的消息或折叠转发消息
+""".strip())
+        
+    # 下载图片
+    imgs = []
+    for img_url in img_urls:
+        try:
+            img = await download_image(img_url)
+        except Exception as e:
+            logger.print_exc(f"获取图片 {img_url} 失败")
+            await ctx.asend_reply_msg(f"获取图片 {img_url} 失败")
+            raise NoReplyException()
+        imgs.append(img)
+    return imgs
+
 # 进行图片操作
-async def operate_image(args: str, img: Image.Image) -> Image.Image:
-    args = args.strip().split()
+async def operate_image(ctx: HandlerContext) -> Image.Image:
+    args = ctx.get_args().strip().split()
     all_op_names = ImageOperation.all_ops.keys()
-    assert args, f"""操作序列不能为空
+    assert_and_reply(args, f"""
+操作序列不能为空！
 使用方式: (回复一张图片) /img 操作1 参数1 操作2 参数2 ...
 可用的操作: {', '.join(all_op_names)}
-""".strip()
+""".strip())
 
     # 获取操作和参数序列
     ops: List[Tuple[ImageOperation, List[str]]] = []
@@ -132,15 +267,12 @@ async def operate_image(args: str, img: Image.Image) -> Image.Image:
         if arg in all_op_names:
             ops.append((ImageOperation.all_ops[arg], []))
         else:
-            assert ops, f"未指定初始操作, 可用的操作: {', '.join(all_op_names)}"
+            assert_and_reply(ops, f"未指定初始操作, 可用的操作: {', '.join(all_op_names)}")
             ops[-1][1].append(arg)
     logger.info(f"请求图片操作\"{args}\" 序列: {[(op.name, args) for op, args in ops]}")
 
-    assert ops, f"未指定操作, 可用的操作: {', '.join(all_op_names)}"
-    assert len(ops) <= 10, f"操作过多, 最多支持10个操作"
-
-    # 检查初始输入类型是否匹配
-    assert ops[0][0].input_type.check_img(img), f"回复的图片类型与 1.{ops[0][0].name} 的输入类型 {ops[0][0].input_type} 不匹配"
+    assert_and_reply(ops, f"未指定操作, 可用的操作: {', '.join(all_op_names)}")
+    assert_and_reply(len(ops) <= 10, f"操作过多, 最多支持10个操作")
 
     # 检查操作输入输出类型是否对应
     for i in range(1, len(ops)):
@@ -148,7 +280,15 @@ async def operate_image(args: str, img: Image.Image) -> Image.Image:
         cur_name = ops[i][0]
         pre_type = ops[i-1][0].output_type
         cur_type = ops[i][0].input_type
-        assert pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配"
+        assert_and_reply(pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配")
+
+    # 获取图片，并检查初始输入类型是否匹配
+    fst_input_type = ops[0][0].input_type
+    if fst_input_type == ImageType.Multiple:
+        img = await get_multi_images(ctx)
+    else:
+        img = await get_reply_fst_image(ctx)
+        assert_and_reply(fst_input_type.check_img(img), f"回复的图片类型与 1.{ops[0][0].name} 的输入类型 {ops[0][0].input_type} 不匹配")
 
     # 执行操作序列
     for i, (op, args) in enumerate(ops):
@@ -158,72 +298,55 @@ async def operate_image(args: str, img: Image.Image) -> Image.Image:
             logger.print_exc(f"执行图片操作 {i+1}.{op.name} 失败")
             raise Exception(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
         
+    # 清空图片列表
+    if fst_input_type == ImageType.Multiple:
+        await clear_image_list(ctx, reply=False)    
+        
     logger.info(f"{len(ops)}个图片操作全部执行完毕")
-    return img
 
-# 让gpt根据用户要求生成操作序列
-async def generate_image_ops_by_gpt(query: str, img: Image.Image, failed_ops: list) -> str:
-    help_doc = Path("helps/imgtool.md").read_text()
-    start_idx = help_doc.find("## 图片操作")
-    end_idx = help_doc.find("---", start_idx)
-    help_doc = help_doc[start_idx:end_idx]
-
-    failed_history = ""
-    if failed_ops:
-        failed_ops = "\n".join(failed_ops)
-        failed_history = f"除此之外，以下的操作序列尝试过，但是出现错误:\n{failed_ops}\n"
-    
-    prompt_template = Path("data/imgtool/generate_ops_prompt.txt").read_text()
-    prompt = prompt_template.format(
-        help_doc=help_doc, 
-        query=query, 
-        img_size=f"{img.size[0]}x{img.size[1]}",
-        img_type=str(ImageType.get_type(img)),
-        failed_history=failed_history
-    )
-
-    session = ChatSession()
-    session.append_user_content(prompt, verbose=False)
-    
-    logger.info(f"请求GPT生成图片操作序列: {query}")
-    result = await session.get_response('gpt-4o-mini', 'generate_img_ops')
-    ops = result['result'].strip()
-    logger.info(f"GPT生成图片操作序列结果: {ops}")
-    return ops
+    last_output_type = ops[-1][0].output_type
+    if last_output_type == ImageType.Multiple:
+        msg = ""
+        for item in img:
+            msg += await get_image_cq(item)
+        return await ctx.asend_fold_msg_adaptive(msg, threshold=0)
+    else:
+        return await ctx.asend_reply_msg(await get_image_cq(img))
 
 # 图片操作Handler
 img_op = CmdHandler("/img", logger, priority=100)
 img_op.check_cdrate(cd).check_wblist(gbl)
 @img_op.handle()
 async def _(ctx: HandlerContext):
-    img = await get_reply_fst_image(ctx)
-    img = await operate_image(ctx.get_args(), img)
-    return await ctx.asend_reply_msg(await get_image_cq(img))
+    await operate_image(ctx)
 
-# gpt图片操作Handler
-imgpt = CmdHandler("/imgpt", logger, priority=101)
-imgpt.check_cdrate(cd).check_wblist(gbl)
-@imgpt.handle()
+# push图片列表Handler
+img_push = CmdHandler(["/img push", "/imgpush"], logger, priority=101)
+img_push.check_cdrate(cd).check_wblist(gbl)
+@img_push.handle()
 async def _(ctx: HandlerContext):
-    img = await get_reply_fst_image(ctx)
-    query = ctx.get_args().strip()
+    await add_image_to_list(ctx)
 
-    generated_ops = []
-    @retry(wait=wait_fixed(1), stop=stop_after_attempt(3), reraise=True)
-    async def do(img, query):
-        ops = await generate_image_ops_by_gpt(query, img, generated_ops)
-        generated_ops.append(ops)
-        return await operate_image(ops, img)
-    
-    try:
-        img = await do(img, query)
-    except Exception as e:
-        generated_ops = "\n".join(generated_ops)
-        return await ctx.asend_reply_msg(f"失败次数达到上限！\nGPT尝试过的操作序列:\n{generated_ops}\n最后一次错误:\n{e}")
-    
-    msg = await get_image_cq(img)
-    msg += f"操作序列: {generated_ops[-1]}"
-    return await ctx.asend_reply_msg(msg)
+# pop图片列表Handler
+img_pop = CmdHandler(["/img pop", "/imgpop"], logger, priority=101)
+img_pop.check_cdrate(cd).check_wblist(gbl)
+@img_pop.handle()
+async def _(ctx: HandlerContext):
+    await pop_image_from_list(ctx)
+
+# 清空图片列表Handler
+img_clear = CmdHandler(["/img clear", "/imgclear"], logger, priority=101)
+img_clear.check_cdrate(cd).check_wblist(gbl)
+@img_clear.handle()
+async def _(ctx: HandlerContext):
+    await clear_image_list(ctx)
+
+# 翻转图片列表Handler
+img_reverse = CmdHandler(["/img rev", "/imgrev"], logger, priority=101)
+img_reverse.check_cdrate(cd).check_wblist(gbl)
+@img_reverse.handle()
+async def _(ctx: HandlerContext):
+    await reverse_image_list(ctx)
 
 
 # ============================= 图片操作 ============================= # 
@@ -301,7 +424,7 @@ resize 3.0x 2.0x: 宽缩放3倍高缩放2倍
                 w = args['w']
             if args['h']is not None:
                 h = args['h']
-        assert 0 < w <= 8192 and 0 < h <= 8192, f"图片尺寸{w}x{h}超出限制"
+        assert 0 < w * h * total_frame <= 1024 * 1024 * 16, f"图片尺寸{w}x{h}超出限制"
         return img.resize((w, h))
 
 class MirrorOperation(ImageOperation):
@@ -622,6 +745,93 @@ flow 2x: 流动速度为2倍
         finally:
             remove_file(tmp_path)
 
+class ConcatOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("concat", ImageType.Multiple, ImageType.Static, 'single')
+        self.help = """
+将多张图片拼接成一张，使用方式:
+concat: 垂直拼接
+concat h: 水平拼接
+concat g: 网格拼接
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert len(args) <= 1, "最多只支持一个参数"
+        ret = {'mode': 'v'}
+        if 'h' in args: ret['mode'] = 'h'
+        elif 'g' in args: ret['mode'] = 'g'
+        return ret
+    
+    def operate(self, imgs: List[Image.Image], args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        img = concat_images(imgs, args['mode'])
+        return img
+
+class StackOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("stack", ImageType.Multiple, ImageType.Animated, 'single')
+        self.help = """
+将多张图片堆叠成动图，所有图片会缩放到和第一张图相同大小，使用方式:
+stack: 默认以fps为20堆叠
+stack 10: 以fps为10堆叠
+""".strip()
+
+    def parse_args(self, args: List[str]) -> dict:
+        assert len(args) <= 1, "最多只支持一个参数"
+        ret = {'fps': 20}
+        if args:
+            ret['fps'] = int(args[0])
+        assert 1 <= ret['fps'] <= 50, "fps只能在1-50之间"
+        return ret
+    
+    def operate(self, imgs: List[Image.Image], args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        fps = args['fps']
+        frame_count = len(imgs)
+        w, h = imgs[0].size
+        frames = []
+        for i in range(frame_count):
+            # resize to first frame size
+            img = imgs[i].resize((w, h))
+            frames.append(img)
+        try:
+            tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
+            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0, disposal=2)
+            return Image.open(tmp_path)
+        finally:
+            remove_file(tmp_path)
+
+class ExtractOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("extract", ImageType.Animated, ImageType.Multiple, 'single')
+        self.help = """
+将动图拆分成多张图片，使用方式:
+extract: 拆分动图，帧数太多会自动抽帧
+extract 2: 以间隔2帧拆分
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert len(args) <= 1, "最多只支持一个参数"
+        ret = {'interval': None }
+        if args:
+            ret['interval'] = int(args[0])
+            assert 1 <= ret['interval'] <= 100, "间隔只能在1-100之间"
+        return ret
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> List[Image.Image]: 
+        interval = args['interval']
+        frames = [img.copy() for frame in ImageSequence.Iterator(img)]
+        n_frames = len(frames)
+        max_frame_num = 20
+        if interval: 
+            if interval >= n_frames:
+                raise Exception(f"拆分间隔过大！该动图最多只能以{n_frames}帧拆分")
+            frame_num = n_frames // interval
+            if frame_num > max_frame_num:
+                min_interval = n_frames // max_frame_num
+                raise Exception(f"拆分间隔过小！该动图最多只能以{min_interval}帧拆分")
+        else:
+            interval = max(1, n_frames // max_frame_num)
+        return [frames[i] for i in range(0, n_frames, interval)]
+
 
 # 注册所有图片操作
 def register_all_ops():
@@ -718,11 +928,11 @@ async def _(ctx: HandlerContext):
             reply_msg = reply_msg_obj['message']
             reply_user_id = reply_msg_obj['sender']['user_id']
             reply_user_name = reply_msg_obj['sender']['nickname']
-            text = extract_text(reply_msg)
+            text = await extract_special_text(reply_msg, ctx.group_id)
         else:
             reply_user_id = reply_msg_obj['sender']['user_id']
             reply_user_name = await get_group_member_name(ctx.bot, ctx.group_id, reply_user_id)
-            text = extract_text(reply_msg)
+            text = await extract_special_text(reply_msg, ctx.group_id)
     except:
         raise Exception("无法获取回复消息")
     

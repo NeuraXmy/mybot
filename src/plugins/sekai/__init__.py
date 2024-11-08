@@ -1636,7 +1636,7 @@ async def _(ctx: HandlerContext):
         nickname = get_nickname_by_cid(cid)
 
         dst_len = get_str_appear_length(text)
-        text_zoom_ratio = min(1.0, 0.5 + 0.05 * (dst_len - 1))
+        text_zoom_ratio = min(1.0, 0.3 + 0.07 * (dst_len - 1))
 
         from .sticker_maker import make_sticker
         result_image = make_sticker(

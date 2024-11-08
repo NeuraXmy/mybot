@@ -546,6 +546,35 @@ def extract_text(msg):
     return ' '.join([cq['text'] for cq in cqs["text"]])
 
 
+# 从消息段提取带有特殊消息的文本
+async def extract_special_text(msg, group_id=None):
+    bot = get_bot()
+    text = ""
+    for seg in msg:
+        if seg['type'] == 'text':
+            text += seg['data']['text']
+        elif seg['type'] == 'at':
+            if group_id:
+                name = await get_group_member_name(bot, group_id, seg['data']['qq'])
+            else:
+                name = await get_stranger_info(bot, seg['data']['qq'])['nickname']
+            if text: text += " "
+            text += f"@{name} "
+        elif seg['type'] == 'image':
+            text += f"[图片]"
+        elif seg['type'] == 'face':
+            text += f"[表情]"
+        elif seg['type'] == 'video':
+            text += f"[视频]"
+        elif seg['type'] == 'file':
+            text += f"[文件]"
+        elif seg['type'] =='record':
+            text += f"[语音]"
+        elif seg['type'] =='mface':
+            text += f"[表情]"
+    return text
+    
+
 # 获取折叠消息
 async def get_forward_msg(bot, forward_id):
     return await bot.call_api('get_forward_msg', **{'id': str(forward_id)})
@@ -1226,6 +1255,13 @@ async def send_mail_async(
 class NoReplyException(Exception):
     pass
 
+# 触发特定消息回复并且不会折叠的Exception，用于退出当前Event
+class ReplyException(Exception):
+    pass
+
+def assert_and_reply(condition, msg):
+    if not condition:
+        raise ReplyException(msg)
 
 # 适用于HandlerContext的参数解析器
 class MessageArgumentParser(ArgumentParser):
@@ -1397,6 +1433,10 @@ class CmdHandler:
         def decorator(handler_func):
             @self.handler.handle()
             async def func(bot: Bot, event: MessageEvent):
+                # 禁止私聊自己的指令生效
+                if not is_group_msg(event) and event.user_id == event.self_id:
+                    return
+
                 # 权限检查
                 if self.private_group_check == "group" and not is_group_msg(event):
                     return
@@ -1435,6 +1475,8 @@ class CmdHandler:
                     return await handler_func(context)
                 except NoReplyException:
                     return
+                except ReplyException as e:
+                    return await context.asend_reply_msg(str(e))
                 except Exception as e:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
@@ -1493,7 +1535,7 @@ def concat_images(images: List[Image.Image], mode) -> Image.Image:
         max_w = max(img.width for img in images)
         images = [
             img if img.width == max_w 
-            else img.resize((max_w, int(img.height * max_w / img.width)), Image.ANTIALIAS) 
+            else img.resize((max_w, int(img.height * max_w / img.width))) 
             for img in images
         ]
         ret = Image.new('RGBA', (max_w, sum(img.height for img in images)))
@@ -1508,7 +1550,7 @@ def concat_images(images: List[Image.Image], mode) -> Image.Image:
         max_h = max(img.height for img in images)
         images = [
             img if img.height == max_h 
-            else img.resize((int(img.width * max_h / img.height), max_h), Image.ANTIALIAS) 
+            else img.resize((int(img.width * max_h / img.height), max_h)) 
             for img in images
         ]
         ret = Image.new('RGBA', (sum(img.width for img in images), max_h))
