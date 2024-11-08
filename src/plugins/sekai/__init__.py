@@ -2205,18 +2205,25 @@ async def new_music_notify():
 
 
     # 新APPEND上线
-    no_append_musics = file_db.get("no_append_musics", [])
-    notified_appends = file_db.get("notified_appends", [])
+    no_append_musics = set(file_db.get("no_append_musics", []))
+    notified_appends = set(file_db.get("notified_appends", []))
     for music in musics:
         mid = music["id"]
         diff_info = get_music_diff_info(mid, music_diffs)
-        if not diff_info['has_append']: 
-            no_append_musics.append(mid)
-            continue
-        if mid not in no_append_musics: continue
+        # 之前已经通知过: 忽略
         if mid in notified_appends: continue
+        # 歌曲本身无APPEND: 忽略，并尝试添加到no_append_musics中
+        if not diff_info['has_append']: 
+            if mid not in no_append_musics:
+                no_append_musics.add(mid)
+            continue
+        # 歌曲本身有APPEND，但是之前不在no_append_musics中，即一开始就有APPEND了，忽略，并且认为已经通知过
+        if mid not in no_append_musics: 
+            if mid not in notified_appends:
+                notified_appends.add(mid)
+            continue
+        
         logger.info(f"发送新APPEND上线提醒: {music['id']} {music['title']}")
-
         msg = f"【PJSK新APPEND上线】\n"
         try:
             asset_name = music['assetbundleName']
@@ -2250,6 +2257,6 @@ async def new_music_notify():
                 continue
 
         no_append_musics.remove(mid)
-        notified_appends.append(mid)
-    file_db.set("no_append_musics", no_append_musics)
-    file_db.set("notified_appends", notified_appends)
+        notified_appends.add(mid)
+    file_db.set("no_append_musics", list(no_append_musics))
+    file_db.set("notified_appends", list(notified_appends))
