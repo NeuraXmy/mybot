@@ -8,6 +8,61 @@ file_db = get_file_db("data/sekai/db.json", logger)
 
 # ================================ Json资源 ================================ #
 
+class DatabaseCollection:
+    def __init__(self, db_and_version_urls, version_update_interval: int):
+        self.db_and_version_urls = db_and_version_urls
+        self.newest_db_url = None
+        self.newest_version = None
+        self.version_update_interval = version_update_interval
+        self.version_update_time = None
+
+    async def update(self):
+        logger.info(f"开始获取{len(self.db_and_version_urls)}个数据库的版本信息")
+
+        async def get_version(db_url, version_url):
+            version = "0.0.0.0"
+            try:
+                version_data = await download_json(db_url + version_url)
+                version = version_data.get('assetVersion', "0.0.0.0")
+                logger.info(f"数据库 {db_url} 的版本为 {version}")
+            except:
+                logger.warning(f"获取数据库 {db_url} 的版本信息失败")
+            version = list(map(int, version.split(".")))
+            while len(version) < 4: version.append(0)
+            return version
+
+        version_list = await asyncio.gather(*[get_version(*item) for item in self.db_and_version_urls])
+        max_version_idx = version_list.index(max(version_list))
+        self.newest_db_url = self.db_and_version_urls[max_version_idx][0]
+        self.newest_version = version_list[max_version_idx]
+        self.version_update_time = datetime.now()
+        logger.info(f"获取到最新版本的数据库为 {self.newest_db_url} 版本号为{self.newest_version}")
+    
+    async def get_newest_db_url(self):
+        if self.version_update_interval is None or \
+            self.version_update_time is None or \
+            (datetime.now() - self.version_update_time).total_seconds() > self.version_update_interval:
+            await self.update()
+        return self.newest_db_url
+
+    def specify(self, res_url) -> 'DbBasedUrl':
+        u = DbBasedUrl(self, res_url)
+        return u
+    
+class DbBasedUrl:
+    def __init__(self, res_db: DatabaseCollection, url: str):
+        self.res_db = res_db
+        self.url = url
+
+    async def get(self) -> str:
+        return await self.res_db.get_newest_db_url() + self.url
+    
+
+res_db_collection = DatabaseCollection([
+    ("https://database.pjsekai.moe/", "version.json"),
+    ("https://sekai-world.github.io/sekai-master-db-diff/", "versions.json"),
+], version_update_interval=60 * 60)
+
 sekai_json_res_list = []
 sekai_json_res_updated_hook = []
 DATA_UPDATE_TIMES = config["data_update_times"]
@@ -22,7 +77,10 @@ class SekaiJsonRes:
 
     async def update(self):
         t = datetime.now()
-        self.data = await download_json(self.url)
+        url = self.url
+        if isinstance(url, DbBasedUrl):
+            url = await url.get()
+        self.data = await download_json(url)
         if self.map_fn:
             self.data = self.map_fn(self.data)
         elapsed = (datetime.now() - t).total_seconds()
@@ -112,22 +170,23 @@ def vlives_map_fn(vlives):
     return all_ret
 
 
-musics              = SekaiJsonRes("曲目数据", "https://database.pjsekai.moe/musics.json")
+musics              = SekaiJsonRes("曲目数据", res_db_collection.specify("musics.json"))
+music_diffs         = SekaiJsonRes("曲目难度数据", res_db_collection.specify("musicDifficulties.json"))
+vlives              = SekaiJsonRes("虚拟Live数据", res_db_collection.specify("virtualLives.json"), map_fn=vlives_map_fn)
+events              = SekaiJsonRes("活动数据", res_db_collection.specify("events.json"))
+event_stories       = SekaiJsonRes("活动故事数据", res_db_collection.specify("eventStories.json"))
+event_story_units   = SekaiJsonRes("活动故事团数据", res_db_collection.specify("eventStoryUnits.json"))
+characters          = SekaiJsonRes("角色数据", res_db_collection.specify("gameCharacters.json"))
+characters_2ds      = SekaiJsonRes("角色模型数据", res_db_collection.specify("character2ds.json"))
+stamps              = SekaiJsonRes("表情数据", res_db_collection.specify("stamps.json"))
+cards               = SekaiJsonRes("卡牌数据", res_db_collection.specify("cards.json"))
+card_supplies       = SekaiJsonRes("卡牌供给数据", res_db_collection.specify("cardSupplies.json"))
+skills              = SekaiJsonRes("技能数据", res_db_collection.specify("skills.json"))
+honors              = SekaiJsonRes("头衔数据", res_db_collection.specify("honors.json"))
+honor_groups        = SekaiJsonRes("头衔组数据", res_db_collection.specify("honorGroups.json"))
+bonds_honnors       = SekaiJsonRes("羁绊头衔数据", res_db_collection.specify("bondsHonors.json"))
+
 music_cn_titles     = SekaiJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json")
-music_diffs         = SekaiJsonRes("曲目难度数据", "https://database.pjsekai.moe/musicDifficulties.json")
-vlives              = SekaiJsonRes("虚拟Live数据", "https://database.pjsekai.moe/virtualLives.json", map_fn=vlives_map_fn)
-events              = SekaiJsonRes("活动数据", "https://database.pjsekai.moe/events.json")
-event_stories       = SekaiJsonRes("活动故事数据", "https://database.pjsekai.moe/eventStories.json")
-event_story_units   = SekaiJsonRes("活动故事团数据", "https://database.pjsekai.moe/eventStoryUnits.json")
-characters          = SekaiJsonRes("角色数据", "https://database.pjsekai.moe/gameCharacters.json")
-characters_2ds      = SekaiJsonRes("角色模型数据", "https://database.pjsekai.moe/character2ds.json")
-stamps              = SekaiJsonRes("表情数据", "https://database.pjsekai.moe/stamps.json")
-cards               = SekaiJsonRes("卡牌数据", "https://database.pjsekai.moe/cards.json")
-card_supplies       = SekaiJsonRes("卡牌供给数据", "https://database.pjsekai.moe/cardSupplies.json")
-skills              = SekaiJsonRes("技能数据", "https://database.pjsekai.moe/skills.json")
-honors              = SekaiJsonRes("头衔数据", "https://database.pjsekai.moe/honors.json")
-honor_groups        = SekaiJsonRes("头衔组数据", "https://database.pjsekai.moe/honorGroups.json")
-bonds_honnors       = SekaiJsonRes("羁绊头衔数据", "https://database.pjsekai.moe/bondsHonors.json")
 
 # ================================ 图片资源 ================================ #
 

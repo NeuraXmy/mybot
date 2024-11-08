@@ -1334,7 +1334,7 @@ async def compose_board_predict_image():
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
             with HSplit().set_bg(roundrect_bg()).set_content_align('l').set_item_align('l').set_padding(16).set_sep(7):
                 if banner_img:
-                    ImageBox(banner_img, size=(0, 80))
+                    ImageBox(banner_img, size=(None, 96))
                 else:
                     TextBox("活动Banner图加载失败", TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=RED))
                 

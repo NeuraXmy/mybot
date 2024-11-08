@@ -24,6 +24,21 @@ def record_hook(func):
     return func
 
 
+# 缩减部分类型的消息用于日志输出
+def simplify_msg(msg):
+    try:
+        for seg in msg:
+            t = seg['type']
+            if t == 'image':
+                del seg['data']['file']
+                del seg['data']['file_id']
+            if t == 'forward':
+                del seg['data']['content']
+    except:
+        pass
+    return msg
+
+
 # 记录消息
 async def record_message(bot, event):
     if event.message_id in message_id_set: return
@@ -55,14 +70,16 @@ async def record_message(bot, event):
         group_id = 0
         user_name = (await get_stranger_info(bot, user_id)).get('nickname', '')
 
+
+    msg_for_log = simplify_msg(msg)
     if not is_group:
-        logger.info(f"记录 {user_id} 发送的私聊消息 {msg_id}: {str(msg)}")
+        logger.info(f"记录 {user_id} 发送的私聊消息 {msg_id}: {str(msg_for_log)}")
     elif check_self_reply(event):
-        logger.info(f"记录自身在 {group_id} 中触发的回复 {msg_id}: {str(msg)}")
+        logger.info(f"记录自身在 {group_id} 中触发的回复 {msg_id}: {str(msg_for_log)}")
     elif check_self(event):
-        logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg)}")
+        logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg_for_log)}")
     else:
-        logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg)}")
+        logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg_for_log)}")
 
     msg_insert(
         group_id=group_id,
