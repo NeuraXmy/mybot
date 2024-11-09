@@ -13,6 +13,7 @@
 - [`/scan` 二维码识别](#scan)
 - [`/qrcode` 生成二维码](#qrcode)
 - [`/saying` 生成群友语录](#saying)
+- [`/md` Markdown转图片](#md)
 
 ### 管理指令
 
@@ -28,13 +29,14 @@
 - [`mid` 对称效果](#mid)
 - [`resize` 调整图片大小](#resize)
 - [`gray` 灰度化](#gray)
-- [`revcolor` 反色](#revcolor)
+- [`invert` 反色](#invert)
 - [`flow` 流动效果](#flow)
 - [`fan` 旋转效果](#fan)
 - [`repeat` 重复效果](#repeat)
 - [`concat` 拼接图片](#concat)
 - [`stack` 合成动图](#stack)
 - [`extract` 提取动图帧](#extract)
+- [`mirage` 生成幻影坦克](#mirage)
 
 ---
 
@@ -134,6 +136,20 @@
 - **示例**
 
     `(回复一条文本消息) /语录`
+
+
+## `/md`
+```
+将Markdown文本转换为图片
+```
+- **指令别名**
+
+    `/markdown`
+
+- **示例**
+
+    `(回复一条Markdown文本消息) /md`
+
 
 --- 
 
@@ -263,7 +279,7 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
     `gray`
 
 
-## `revcolor`
+## `invert`
 ```
 将图片颜色反转
 ```
@@ -273,7 +289,7 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 
 - **示例**
 
-    `revcolor`
+    `invert`
 
 
 ## `flow`
@@ -374,6 +390,22 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
     `extract` 提取出动图的帧，帧数量过多时会自动抽掉部分帧
 
     `extract 2` 以2帧为间隔提取出动图的帧
+
+
+## `mirage`
+```
+生成幻影坦克
+```
+
+- **输入输出**
+
+    `多张图片 -> 静态图`
+
+- **示例**
+
+    `mirage` 使用图片列表倒数第二张作为表面图，倒数第一张作为隐藏图
+
+    `mirage r` 使用图片列表倒数第一张作为表面图，倒数第二张作为隐藏图
 
 
 --- 

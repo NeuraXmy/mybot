@@ -8,6 +8,7 @@
 - [存活检测服务 (alive)](./alive.md)
 - [鸟类查询服务 (bird)](./bird.md)
 - [骰子服务 (bobing)](./bobing.md)
+- [广播服务 (broadcast)](./broadcast.md)
 - [GPT聊天服务 (chat)](./chat.md)
 - [定时任务服务 (cron)](./cron.md)
 - [科学计算服务 (eval)](./eval.md)

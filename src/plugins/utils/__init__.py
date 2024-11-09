@@ -23,7 +23,7 @@ import colorsys
 import inspect
 from typing import Optional, List, Tuple
 import shutil
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re
 from .plot import *
 import math
@@ -92,6 +92,7 @@ def rand_filename(ext):
         ext = ext[1:]
     return f"{random.randint(0, 1000000000):09}.{ext}"
 
+
 # 创建透明GIF
 def create_transparent_gif(img, save_path):
     def color_distance(c1, c2):
@@ -130,7 +131,7 @@ def create_transparent_gif(img, save_path):
             raise Exception("The specific color was not found in the palette.")
         save_path = os.path.abspath(save_path)
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index)
+        img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index, disposal=2)
         break
 
 # 下载图片 返回PIL.Image对象
@@ -651,6 +652,24 @@ async def send_group_fold_msg(bot, group_id, contents):
         }
     } for content in contents]
     ret = await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+    ret['message_id'] = int(ret['message_id']) - 1
+    return record_self_reply_msg(ret)
+
+# 发送多条消息折叠消息
+async def send_multiple_fold_msg(bot, event, contents):
+    if not check_msg_rate_limit(): return
+    msg_list = [{
+        "type": "node",
+        "data": {
+            "user_id": bot.self_id,
+            "nickname": BOT_NAME,
+            "content": content
+        }
+    } for content in contents]
+    if is_group_msg(event):
+        ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
+    else:
+        ret = await bot.send_private_forward_msg(user_id=event.user_id, messages=msg_list)
     ret['message_id'] = int(ret['message_id']) - 1
     return record_self_reply_msg(ret)
 
@@ -1376,8 +1395,7 @@ class HandlerContext:
     
     async def aget_reply_msg_obj(self):
         return await get_reply_msg_obj(self.bot, await self.aget_msg())
-
-
+    
     # -------------------------- 消息发送 -------------------------- # 
 
     def asend_msg(self, msg: str):
@@ -1392,6 +1410,10 @@ class HandlerContext:
     def asend_fold_msg_adaptive(self, msg: str, threshold=100, need_reply=True):
         return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply)
 
+    def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True):
+        if show_cmd:
+            msgs = [self.trigger_cmd + self.arg_text] + msgs
+        return send_multiple_fold_msg(self.bot, self.event, msgs)
 
 
 class CmdHandler:
@@ -1481,7 +1503,7 @@ class CmdHandler:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
                         et = f"{type(e).__name__}: " if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
-                        await context.asend_reply_msg(truncate(f"指令处理失败: {et}{e}", 128))
+                        await context.asend_reply_msg(truncate(f"指令处理失败: {et}{e}", 256))
                         
             return func
         return decorator

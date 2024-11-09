@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ..utils import *
+from .mirage import generate_mirage
 from ..llm import ChatSession
 from PIL import Image, ImageSequence, ImageOps
 from io import BytesIO
@@ -86,8 +87,8 @@ class ImageOperation:
         self.process_type = process_type
         self.help = ""
         ImageOperation.all_ops[name] = self
-        assert process_type in ['single', 'batch'], f"图片操作类型{process_type}错误"
-        assert not (input_type == ImageType.Multiple and process_type == 'batch'), f"多张图片操作不能以批量方式处理"
+        assert_and_reply(process_type in ['single', 'batch'], f"图片操作类型{process_type}错误")
+        assert_and_reply(not (input_type == ImageType.Multiple and process_type == 'batch'), f"多张图片操作不能以批量方式处理")
 
     def parse_args(self, args: List[str]) -> dict:
         return None
@@ -125,9 +126,9 @@ class ImageOperation:
 # 从回复消息获取第一张图片
 async def get_reply_fst_image(ctx: HandlerContext, return_url=False):
     reply_msg = await ctx.aget_reply_msg()
-    assert reply_msg, "请回复一张图片"
+    assert_and_reply(reply_msg, "请回复一张图片")
     imgs = extract_image_url(reply_msg)
-    assert imgs, "回复的消息中不包含图片"
+    assert_and_reply(imgs, "回复的消息中不包含图片")
     img_url = imgs[0]   
     if return_url: return img_url
     try:
@@ -169,7 +170,7 @@ def get_image_list(user_id):
 async def add_image_to_list(ctx: HandlerContext, reply=True):
     user_id = str(ctx.user_id)
     image_list = get_image_list(user_id)
-    assert len(image_list[user_id]) < MULTI_IMAGE_MAX_NUM, f"图片列表已满，最多只能处理{MULTI_IMAGE_MAX_NUM}张图片"
+    assert_and_reply(len(image_list[user_id]) < MULTI_IMAGE_MAX_NUM, f"图片列表已满，最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
     img = await get_reply_fst_image(ctx, return_url=True)
     image_list[user_id].append(img)
     file_db.set('image_list', image_list)
@@ -306,10 +307,8 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
 
     last_output_type = ops[-1][0].output_type
     if last_output_type == ImageType.Multiple:
-        msg = ""
-        for item in img:
-            msg += await get_image_cq(item)
-        return await ctx.asend_fold_msg_adaptive(msg, threshold=0)
+        msgs = [f"{await get_image_cq(item)}#{i}" for i, item in enumerate(img)]
+        return await ctx.asend_multiple_fold_msg(msgs)
     else:
         return await ctx.asend_reply_msg(await get_image_cq(img))
 
@@ -357,7 +356,7 @@ class GifOperation(ImageOperation):
         self.help = "将静态PNG图片转换为GIF，让透明部分能够在聊天中正确显示"
 
     def parse_args(self, args: List[str]) -> dict:
-        assert not args, "该操作不接受参数"
+        assert_and_reply(not args, "该操作不接受参数")
         return None
 
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -424,7 +423,7 @@ resize 3.0x 2.0x: 宽缩放3倍高缩放2倍
                 w = args['w']
             if args['h']is not None:
                 h = args['h']
-        assert 0 < w * h * total_frame <= 1024 * 1024 * 16, f"图片尺寸{w}x{h}超出限制"
+        assert_and_reply(0 < w * h * total_frame <= 1024 * 1024 * 16, f"图片尺寸{w}x{h}超出限制")
         return img.resize((w, h))
 
 class MirrorOperation(ImageOperation):
@@ -438,7 +437,7 @@ mirror v: 垂直镜像
         
     def parse_args(self, args: List[str]) -> dict:
         args = [arg[0].lower() for arg in args]
-        assert len(args) <= 1, "最多只支持一个参数"
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
         if 'v' in args:
             return {'mode': 'v'}
         return {'mode': 'h'}
@@ -458,7 +457,7 @@ rotate 90: 逆时针旋转90度
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) == 1, "需要一个角度参数"
+        assert_and_reply(len(args) == 1, "需要一个角度参数")
         return {'degree': int(args[0])}
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -470,7 +469,7 @@ class BackOperation(ImageOperation):
         self.help = "将动图在时间上反向播放"
 
     def parse_args(self, args: List[str]) -> dict:
-        assert not args, "该操作不接受参数"
+        assert_and_reply(not args, "该操作不接受参数")
         return None
     
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -493,14 +492,14 @@ speed 100 设置动图帧间隔为100ms
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) == 1, "需要一个速度参数"
+        assert_and_reply(len(args) == 1, "需要一个速度参数")
         ret = {}
         if args[0].endswith('x'): 
             ret['speed'] = float(args[0].removesuffix('x'))
-            assert 0.01 <= ret['speed'] <= 100.0, "加速倍率必须在0.01-100.0之间"
+            assert_and_reply(0.01 <= ret['speed'] <= 100.0, "加速倍率必须在0.01-100.0之间")
         else: 
             ret['duration'] = int(args[0])
-            assert 1 <= ret['duration'] <= 1000, "帧间隔必须在1ms-1000ms之间"
+            assert_and_reply(1 <= ret['duration'] <= 1000, "帧间隔必须在1ms-1000ms之间")
         return ret
         
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -539,7 +538,7 @@ class GrayOperation(ImageOperation):
         self.help = "将图片转换为灰度图"
     
     def parse_args(self, args: List[str]) -> dict:
-        assert not args, "该操作不接受参数"
+        assert_and_reply(not args, "该操作不接受参数")
         return None
     
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -557,7 +556,7 @@ mid v r: 下侧贴到上侧
         
     def parse_args(self, args: List[str]) -> dict:
         args = [arg[0].lower() for arg in args]
-        assert len(args) <= 2, "最多只支持两个参数"
+        assert_and_reply(len(args) <= 2, "最多只支持两个参数")
         ret = {}
         if 'v' in args: ret['mode'] = 'v'
         else: ret['mode'] = 'h'
@@ -593,13 +592,13 @@ mid v r: 下侧贴到上侧
             new_img.paste(bottom_img, (0, height // 2))
         return new_img
 
-class RevColorOperation(ImageOperation):
+class InvertOperation(ImageOperation):
     def __init__(self):
-        super().__init__("revcolor", ImageType.Any, ImageType.Any, 'batch')
+        super().__init__("invert", ImageType.Any, ImageType.Any, 'batch')
         self.help = "将图片颜色反转"
 
     def parse_args(self, args: List[str]) -> dict:
-        assert not args, "该操作不接受参数"
+        assert_and_reply(not args, "该操作不接受参数")
         return None
 
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -616,9 +615,9 @@ repeat 1 2: 只纵向重复2次
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) == 2, "需要两个参数"
+        assert_and_reply(len(args) == 2, "需要两个参数")
         ret = {'w': int(args[0]), 'h': int(args[1])}
-        assert 1 <= ret['w'] <= 10 and 1 <= ret['h'] <= 10, "重复次数只能在1-10之间"
+        assert_and_reply(1 <= ret['w'] <= 10 and 1 <= ret['h'] <= 10, "重复次数只能在1-10之间")
         return ret
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -655,7 +654,7 @@ fan r 0.5x: 逆时针旋转，旋转速度为0.5倍
 """
 
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) <= 2, "最多只支持两个参数"
+        assert_and_reply(len(args) <= 2, "最多只支持两个参数")
         ret = {}
         if 'r' in args: ret['mode'] = 'ccw'
         else: ret['mode'] = 'cw'
@@ -663,7 +662,7 @@ fan r 0.5x: 逆时针旋转，旋转速度为0.5倍
         for arg in args:
             if arg.endswith('x'):
                 ret['speed'] = float(arg.removesuffix('x'))
-        assert 0.2 <= ret['speed'] <= 5.0, "旋转速度只能在0.2-5.0之间"
+        assert_and_reply(0.2 <= ret['speed'] <= 5.0, "旋转速度只能在0.2-5.0之间")
         return ret
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -702,7 +701,7 @@ flow 2x: 流动速度为2倍
 """
 
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) <= 3, "最多只支持三个参数"
+        assert_and_reply(len(args) <= 3, "最多只支持三个参数")
         ret = {}
         if 'v' in args: ret['mode'] = 'v'
         else: ret['mode'] = 'h'
@@ -711,7 +710,7 @@ flow 2x: 流动速度为2倍
         for arg in args:
             if arg.endswith('x'):
                 ret['speed'] = float(arg.removesuffix('x'))
-        assert 0.2 <= ret['speed'] <= 5.0, "流动速度只能在0.2-5.0之间"
+        assert_and_reply(0.2 <= ret['speed'] <= 5.0, "流动速度只能在0.2-5.0之间")
         return ret
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -756,7 +755,7 @@ concat g: 网格拼接
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) <= 1, "最多只支持一个参数"
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
         ret = {'mode': 'v'}
         if 'h' in args: ret['mode'] = 'h'
         elif 'g' in args: ret['mode'] = 'g'
@@ -776,11 +775,11 @@ stack 10: 以fps为10堆叠
 """.strip()
 
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) <= 1, "最多只支持一个参数"
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
         ret = {'fps': 20}
         if args:
             ret['fps'] = int(args[0])
-        assert 1 <= ret['fps'] <= 50, "fps只能在1-50之间"
+        assert_and_reply(1 <= ret['fps'] <= 50, "fps只能在1-50之间")
         return ret
     
     def operate(self, imgs: List[Image.Image], args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
@@ -809,18 +808,18 @@ extract 2: 以间隔2帧拆分
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert len(args) <= 1, "最多只支持一个参数"
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
         ret = {'interval': None }
         if args:
             ret['interval'] = int(args[0])
-            assert 1 <= ret['interval'] <= 100, "间隔只能在1-100之间"
+            assert_and_reply(1 <= ret['interval'] <= 100, "间隔只能在1-100之间")
         return ret
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> List[Image.Image]: 
         interval = args['interval']
         frames = [img.copy() for frame in ImageSequence.Iterator(img)]
         n_frames = len(frames)
-        max_frame_num = 20
+        max_frame_num = 32
         if interval: 
             if interval >= n_frames:
                 raise Exception(f"拆分间隔过大！该动图最多只能以{n_frames}帧拆分")
@@ -832,6 +831,31 @@ extract 2: 以间隔2帧拆分
             interval = max(1, n_frames // max_frame_num)
         return [frames[i] for i in range(0, n_frames, interval)]
 
+class MirageOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("mirage", ImageType.Multiple, ImageType.Static, 'single')
+        self.help = """
+生成幻影坦克图片，使用方式:
+mirage: 使用列表中倒数第二张图片作为表面图，倒数第一张图片作为隐藏图
+mirage r: 使用列表中倒数第一张图片作为表面图，倒数第二张图片作为隐藏图
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
+        ret = {'rev': False}
+        if 'r' in args: ret['rev'] = True
+        return ret
+    
+    def operate(self, img: List[Image.Image], args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        assert_and_reply(len(img) >= 2, "至少需要两张图片")
+        if args['rev']:
+            surface = img[-1]
+            hidden = img[-2]
+        else:
+            surface = img[-2]
+            hidden = img[-1]
+        return generate_mirage(surface, hidden)
+    
 
 # 注册所有图片操作
 def register_all_ops():
@@ -855,9 +879,12 @@ async def _(ctx: HandlerContext):
 
     if is_gif(img):
         msg += f"\n长度: {img.n_frames}帧"
-        msg += f"\n帧间隔: {img.info['duration']}ms"
-        fps = 1000 / img.info['duration']
-        msg += f"\nFPS: {fps:.2f}"
+        if not img.info.get('duration', 0):
+            msg += f"\n帧间隔/FPS: 未知"
+        else:
+            msg += f"\n帧间隔: {img.info['duration']}ms"
+            fps = 1000 / img.info['duration']
+            msg += f"\nFPS: {fps:.2f}"
 
     cqs = extract_cq_code(await ctx.aget_reply_msg())
     data = cqs['image'][0]
@@ -881,7 +908,7 @@ async def _(ctx: HandlerContext):
     img = await get_reply_fst_image(ctx)
     from pyzbar.pyzbar import decode
     res = decode(img)
-    assert res, "未发现二维码"
+    assert_and_reply(res, "未发现二维码")
     msg = "\n".join([r.data.decode("utf-8") for r in res])
     return await ctx.asend_reply_msg(f"共识别{len(res)}个条形码/二维码:\n{msg}")
 
@@ -892,7 +919,7 @@ gen_qrcode.check_cdrate(cd).check_wblist(gbl)
 @gen_qrcode.handle()
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
-    assert args, "请输入内容"
+    assert_and_reply(args, "请输入内容")
     import qrcode
     qr = qrcode.QRCode(
         version=1,
@@ -957,3 +984,16 @@ async def _(ctx: HandlerContext):
             Spacer(32, 32)
 
     return await ctx.asend_reply_msg(await get_image_cq(await run_in_pool(canvas.get_img)))
+
+
+# 渲染markdown
+md = CmdHandler(['/md', '/markdown'], logger)
+md.check_cdrate(cd).check_wblist(gbl)
+@md.handle()
+async def _(ctx: HandlerContext):
+    reply_msg = await ctx.aget_reply_msg()
+    assert_and_reply(reply_msg, "请回复一条带有markdown内容的消息")
+    text = extract_text(reply_msg)
+    img = markdown_to_image(text)
+    return await ctx.asend_reply_msg(await get_image_cq(img))
+
