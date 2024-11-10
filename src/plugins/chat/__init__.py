@@ -223,8 +223,7 @@ async def _(bot: Bot, event: MessageEvent):
                 session = ChatSession(system_prompt)
                 # 回复折叠内容
                 if "forward" in reply_cqs:
-                    forward_msgs = await get_forward_msg(bot, reply_cqs["forward"][0]["id"])
-                    forward_msgs = [m['content'] for m in forward_msgs["messages"]]
+                    forward_msgs = [m['message'] for m in reply_cqs['forward'][0]["content"]]
                     if len(forward_msgs) > FORWARD_MSG_INPUT_LIMIT:
                         forward_msgs = forward_msgs[-FORWARD_MSG_INPUT_LIMIT:]
                     for forward_msg in forward_msgs:

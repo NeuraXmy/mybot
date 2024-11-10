@@ -49,6 +49,7 @@ class Translator:
         self.langs = ['ja', 'ko']
         self.max_resolution = 1024 * 768
         self.merge_method = 'alg'   # alg or llm
+        self.llm_retry = 1
 
     def calc_box_dist(self, b1, b2):
         sx1, sy1 = b1[0]
@@ -167,7 +168,7 @@ class Translator:
             with Timer() as t_merge:
                 if self.merge_method == 'llm':
                      # query llm to merge
-                    @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
+                    @retry(reraise=True, stop=stop_after_attempt(self.llm_retry), wait=wait_fixed(3))
                     async def query_merge():
                         session = ChatSession()
                         session.append_user_content(
@@ -244,7 +245,7 @@ class Translator:
                 
             # query llm to translate
             with Timer() as t_trans:
-                @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
+                @retry(reraise=True, stop=stop_after_attempt(self.llm_retry), wait=wait_fixed(3))
                 async def query_trans():
                     session = ChatSession()
                     session.append_user_content(
@@ -275,7 +276,7 @@ class Translator:
 
             # query llm to correct
             with Timer() as t_correct:
-                @retry(reraise=True, stop=stop_after_attempt(3), wait=wait_fixed(3))
+                @retry(reraise=True, stop=stop_after_attempt(self.llm_retry), wait=wait_fixed(3))
                 async def query_correct():
                     session = ChatSession()
                     session.append_user_content(
