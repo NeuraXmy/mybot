@@ -352,7 +352,7 @@ async def _(ctx: HandlerContext):
 
 class GifOperation(ImageOperation):
     def __init__(self):
-        super().__init__("gif", ImageType.Static, ImageType.Animated, 'single')
+        super().__init__("gif", ImageType.Static, ImageType.Static, 'single')
         self.help = "将静态PNG图片转换为GIF，让透明部分能够在聊天中正确显示"
 
     def parse_args(self, args: List[str]) -> dict:

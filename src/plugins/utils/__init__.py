@@ -705,9 +705,11 @@ async def get_image_cq(image, allow_error=False, logger=None):
     try:
         if isinstance(image, Image.Image):
             tmp_file_path = 'data/imgtool/tmp/tmp'
-            tmp_file_path += '.gif' if is_gif(image) else '.png'
+            # check if image mode is P
+            is_g = (is_gif(image) or image.mode == 'P')
+            tmp_file_path += '.gif' if is_g else '.png'
             os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
-            if not is_gif(image):
+            if not is_g:
                 image.save(tmp_file_path)
             else:
                 from PIL import ImageSequence
