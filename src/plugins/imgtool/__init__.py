@@ -967,21 +967,21 @@ async def _(ctx: HandlerContext):
         raise Exception("回复的消息没有文本!")
     
     text = "「 " + text + " 」"
-    line_len = 32
+    line_len = 20
     name_text = "——" + reply_user_name
 
     with Canvas(bg=FillBg(BLACK)) as canvas:
-        with HSplit().set_item_align('c').set_content_align('c').set_padding(32).set_sep(32):
+        with HSplit().set_item_align('c').set_content_align('c').set_padding(16).set_sep(16):
             with VSplit().set_item_align('c').set_content_align('c'):
-                Spacer(10, 64)
-                ImageBox(await download_image(get_avatar_url_large(reply_user_id)), size=(256, 256)).set_margin(32)
-                Spacer(10, 64)
+                Spacer(10, 32)
+                ImageBox(await download_image(get_avatar_url_large(reply_user_id)), size=(256, 256)).set_margin(16)
+                Spacer(10, 32)
             
-            with VSplit().set_item_align('c').set_content_align('c').set_sep(16):
-                font_sz = 24
+            with VSplit().set_item_align('c').set_content_align('c').set_sep(8):
+                font_sz = 48
                 TextBox(text, TextStyle(DEFAULT_FONT, font_sz, WHITE), line_count=get_str_line_count(text, line_len) + 1).set_w(font_sz * line_len // 2).set_content_align('l')
                 TextBox(name_text, TextStyle(DEFAULT_FONT, font_sz, WHITE)).set_w(font_sz * line_len // 2).set_content_align('r')
-            Spacer(32, 32)
+            Spacer(16, 16)
 
     return await ctx.asend_reply_msg(await get_image_cq(await run_in_pool(canvas.get_img)))
 
