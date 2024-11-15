@@ -371,7 +371,7 @@ translator = Translator()
 translating_msg_ids = set()
 
 # 翻译图片
-translate_img = CmdHandler(["/trans", "/translate", "/翻译"], logger)
+translate_img = CmdHandler(["/trans", "/translate", "/翻译"], logger, disabled=True)
 translate_img.check_cdrate(img_trans_cd).check_cdrate(img_trans_rate).check_wblist(gwl)
 @translate_img.handle()
 async def _(ctx: HandlerContext):

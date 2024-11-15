@@ -26,6 +26,7 @@ import shutil
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re
 from .plot import *
+from .trans_gif import save_transparent_gif as _save_transparent_gif
 import math
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -93,46 +94,25 @@ def rand_filename(ext):
     return f"{random.randint(0, 1000000000):09}.{ext}"
 
 
-# 创建透明GIF
-def create_transparent_gif(img, save_path):
-    def color_distance(c1, c2):
-        return sum((a - b) ** 2 for a, b in zip(c1, c2))
-    original_img = img
-    retry_num = 0
-    while True:    
-        if retry_num > 20:
-            raise Exception("生成透明GIF失败")
-        img = original_img.copy()
-        if img.mode != "RGBA":
-            img = img.convert("RGBA")
-        transparent_color = (
-            random.randint(0, 255), 
-            random.randint(0, 255), 
-            random.randint(0, 255)
-        )
-        def check_color_exists(pixel):
-            return color_distance(pixel[:3], transparent_color) < 300
-        if any(map(check_color_exists, img.getdata())):
-            retry_num += 1
-            continue
-        def replace_alpha(pixel):
-            return (*transparent_color, 255) if len(pixel) == 4 and pixel[3] < 128 else pixel
-        trans_data = list(map(replace_alpha, img.getdata()))
-        img.putdata(trans_data)
-        img = img.convert("RGB").quantize(256)
-        palette = img.getpalette()[:768]
-        transparent_color_index, min_dist = None, float("inf")
-        for i in range(256):
-            color = palette[i*3:i*3+3]
-            dist = color_distance(color, transparent_color)
-            if dist < min_dist:
-                transparent_color_index, min_dist = i, dist
-        if transparent_color_index is None:
-            raise Exception("The specific color was not found in the palette.")
-        save_path = os.path.abspath(save_path)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index, disposal=2)
-        break
+# 从GIF获取帧间隔
+def get_gif_duration(img: Image.Image):
+    return img.info.get('duration', 100)
+
+# 从GIF获取帧序列
+def get_frames_from_gif(img: Image.Image):
+    return [frame.copy() for frame in ImageSequence.Iterator(img)]
+
+# 从帧序列保存透明GIF
+def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str):
+    t = datetime.now()
+
+    if isinstance(frames, Image.Image):
+        frames = [frames]
+    _save_transparent_gif(frames, duration, save_path)
+    
+    print(f"save gif cost {datetime.now() - t}")
+
+
 
 # 下载图片 返回PIL.Image对象
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
@@ -712,9 +692,7 @@ async def get_image_cq(image, allow_error=False, logger=None):
             if not is_g:
                 image.save(tmp_file_path)
             else:
-                from PIL import ImageSequence
-                frames = [f.copy() for f in ImageSequence.Iterator(image)]
-                frames[0].save(tmp_file_path, save_all=True, append_images=frames[1:], duration=image.info.get('duration', 100), loop=0, disposal=2)
+                save_transparent_gif(get_frames_from_gif(image), get_gif_duration(image), tmp_file_path)
             with open(tmp_file_path, 'rb') as f:
                 cq = f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
             os.remove(tmp_file_path)
@@ -1377,6 +1355,7 @@ class HandlerContext:
     user_id: int = None
     group_id: int = None
     logger: Logger = None
+    data: dict = {}
 
     # --------------------------  数据获取 -------------------------- #
 
@@ -1419,7 +1398,7 @@ class HandlerContext:
 
 
 class CmdHandler:
-    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False):
+    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False, disabled=False):
         if isinstance(commands, str):
             commands = [commands]
         self.commands = commands
@@ -1432,6 +1411,7 @@ class CmdHandler:
         self.private_group_check = None
         self.wblist_checks = []
         self.cdrate_checks = []
+        self.disabled = disabled
 
     def check_group(self):
         self.private_group_check = "group"
@@ -1457,6 +1437,9 @@ class CmdHandler:
         def decorator(handler_func):
             @self.handler.handle()
             async def func(bot: Bot, event: MessageEvent):
+                if self.disabled:
+                    return
+
                 # 禁止私聊自己的指令生效
                 if not is_group_msg(event) and event.user_id == event.self_id:
                     return

@@ -376,7 +376,7 @@ async def get_stamp_image_cq(sid):
     url = await get_stamp_image_url(sid)
     if not url: raise Exception(f"表情{sid}不存在")
     img = await download_image(url)
-    create_transparent_gif(img, save_path)
+    save_transparent_gif(img, save_path)
     return await get_image_cq(save_path)
 
 # 获取表情图片
@@ -391,7 +391,7 @@ async def get_stamp_image(sid):
     url = await get_stamp_image_url(sid)
     if not url: raise Exception(f"表情{sid}不存在")
     img = await download_image(url)
-    create_transparent_gif(img, save_path)
+    save_transparent_gif(img, save_path)
     return Image.open(save_path)
 
 # 合成某个角色的所有表情 返回PIL Image
@@ -1658,7 +1658,7 @@ async def _(ctx: HandlerContext):
         tmp_path = f"data/sekai/maker/tmp/{rand_filename('gif')}"
         try:
             create_parent_folder(tmp_path)
-            create_transparent_gif(result_image, tmp_path)
+            save_transparent_gif(result_image, tmp_path)
             await ctx.asend_reply_msg(await get_image_cq(tmp_path))
         finally:
             remove_file(tmp_path)

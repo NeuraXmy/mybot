@@ -29,7 +29,7 @@ async def _(ctx: HandlerContext):
     for i, dice in enumerate(dices):
         image.paste(dice_images[dice - 1], (i * DICE_SIZE, DICE_SIZE // 2))
     tmp_save_path = f"data/bobing/{rand_filename('gif')}"
-    create_transparent_gif(image, tmp_save_path)
+    save_transparent_gif(image, tmp_save_path)
     await ctx.asend_reply_msg(await get_image_cq(tmp_save_path))
     os.remove(tmp_save_path)
 

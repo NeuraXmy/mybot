@@ -160,19 +160,31 @@ async def handle(ctx: HandlerContext):
         logger.info(f'下载视频: {args.url}')
 
         tmp_save_path = os.path.abspath(f"data/imgexp/tmp/{rand_filename('.mp4')}")
-        os.makedirs('data/imgexp/tmp', exist_ok=True)
+        try:
+            os.makedirs('data/imgexp/tmp', exist_ok=True)
 
-        await ctx.asend_reply_msg("正在下载视频...")
-        await adownload_video(args.url, tmp_save_path, DOWNLOAD_MAXSIZE, args.low_quality)
+            await ctx.asend_reply_msg("正在下载视频...")
+            await adownload_video(args.url, tmp_save_path, DOWNLOAD_MAXSIZE, args.low_quality)
 
-        if args.gif:
-            gif_path = await aconvert_video_to_gif(tmp_save_path)
-            await ctx.asend_msg(await get_image_cq(gif_path))
-            os.remove(tmp_save_path)
-            os.remove(gif_path)
-        else:
-            await ctx.asend_msg(f"[CQ:video,file=file:///{tmp_save_path}]")
-            os.remove(tmp_save_path)
+            if os.path.getsize(tmp_save_path) > DOWNLOAD_MAXSIZE:
+                return await ctx.asend_reply_msg(f"视频大小超过限制")
+
+            if args.gif:
+                gif_path = await aconvert_video_to_gif(tmp_save_path)
+
+                try:
+                    await ctx.asend_msg(await get_image_cq(gif_path))
+                finally:
+                    if os.path.exists(gif_path):
+                        os.remove(gif_path)
+                
+            else:
+                await ctx.asend_msg(f"[CQ:video,file=file:///{tmp_save_path}]")
+
+        finally:
+            if os.path.exists(tmp_save_path):
+                os.remove(tmp_save_path)
+
 
 
     

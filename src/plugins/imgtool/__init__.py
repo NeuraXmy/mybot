@@ -114,8 +114,9 @@ class ImageOperation:
                 tmp_save_path = f"data/imgtool/tmp/{rand_filename('gif')}"
                 try:
                     create_parent_folder(tmp_save_path)
-                    frames = [self.operate(frame.copy(), args, img_type, i, img.n_frames) for i, frame in enumerate(ImageSequence.Iterator(img))]
-                    frames[0].save(tmp_save_path, save_all=True, append_images=frames[1:], duration=img.info.get('duration', 100), loop=0, disposal=2)
+                    frames = get_frames_from_gif(img)
+                    frames = [self.operate(f, args, img_type, i, img.n_frames) for i, f in enumerate(frames)]
+                    save_transparent_gif(frames, get_gif_duration(img), tmp_save_path)
                     return Image.open(tmp_save_path)
                 finally:
                     if os.path.exists(tmp_save_path):
@@ -362,7 +363,7 @@ class GifOperation(ImageOperation):
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
         try:
             tmp_path = f"data/imgtool/tmp/{rand_filename('gif')}"
-            create_transparent_gif(img, tmp_path)
+            save_transparent_gif(img, 100, tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -477,7 +478,7 @@ class BackOperation(ImageOperation):
             frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
             frames.reverse()
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=img.info['duration'], loop=0, disposal=2)
+            save_transparent_gif(frames, get_gif_duration(img), tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -527,7 +528,7 @@ speed 100 设置动图帧间隔为100ms
             new_frames = []
             for i in range(0, frame_num, interval):
                 new_frames.append(frames[i])
-            new_frames[0].save(tmp_path, save_all=True, append_images=new_frames[1:], duration=duration, loop=0, disposal=2)
+            save_transparent_gif(new_frames, duration, tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -683,7 +684,7 @@ fan r 0.5x: 逆时针旋转，旋转速度为0.5倍
             frames.append(new_img)
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=20, loop=0, disposal=2)
+            save_transparent_gif(frames, 20, tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -739,7 +740,7 @@ flow 2x: 流动速度为2倍
             frames.append(new_img)
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=20, loop=0, disposal=2)
+            save_transparent_gif(frames, 20, tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -793,7 +794,7 @@ stack 10: 以fps为10堆叠
             frames.append(img)
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
-            frames[0].save(tmp_path, save_all=True, append_images=frames[1:], duration=int(1000 / fps), loop=0, disposal=2)
+            save_transparent_gif(frames, int(1000 / fps), tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
