@@ -1355,7 +1355,6 @@ class HandlerContext:
     user_id: int = None
     group_id: int = None
     logger: Logger = None
-    data: dict = {}
 
     # --------------------------  数据获取 -------------------------- #
 

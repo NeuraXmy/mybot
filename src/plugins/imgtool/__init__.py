@@ -7,7 +7,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from ..utils import *
 from .mirage import generate_mirage
 from ..llm import ChatSession
-from PIL import Image, ImageSequence, ImageOps
+from PIL import Image, ImageSequence, ImageOps, ImageEnhance
 from io import BytesIO
 from aiohttp import ClientSession
 from enum import Enum
@@ -261,6 +261,7 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
 操作序列不能为空！
 使用方式: (回复一张图片) /img 操作1 参数1 操作2 参数2 ...
 可用的操作: {', '.join(all_op_names)}
+使用 /img help 操作名 获取某个操作的帮助
 """.strip())
 
     # 获取操作和参数序列
@@ -348,6 +349,21 @@ img_reverse.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: HandlerContext):
     await reverse_image_list(ctx)
 
+# 图片操作帮助handler
+img_help = CmdHandler(["/img help", "/imghelp", "/imgh"], logger, priority=101)
+img_help.check_cdrate(cd).check_wblist(gbl)
+@img_help.handle()
+async def _(ctx: HandlerContext):
+    ops = ImageOperation.all_ops
+    op_name = ctx.get_args().strip()
+    assert_and_reply(op_name, f"请输入要查找帮助的操作名，可用的操作: {', '.join(ops.keys())}")
+    op = ops.get(op_name)
+    assert_and_reply(op, f"未找到操作 {op_name}, 可用的操作: {', '.join(ops.keys())}")
+    msg = f"【{op.name}】\n"
+    msg += f"{op.input_type} -> {op.output_type}\n"
+    msg += op.help
+    return await ctx.asend_reply_msg(msg.strip())
+
 
 # ============================= 图片操作 ============================= # 
 
@@ -363,7 +379,7 @@ class GifOperation(ImageOperation):
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
         try:
             tmp_path = f"data/imgtool/tmp/{rand_filename('gif')}"
-            save_transparent_gif(img, 100, tmp_path)
+            save_transparent_gif(img, 0, tmp_path)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)
@@ -856,7 +872,113 @@ mirage r: 使用列表中倒数第一张图片作为表面图，倒数第二张�
             surface = img[-2]
             hidden = img[-1]
         return generate_mirage(surface, hidden)
+
+class BrightenOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("brighten", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+调整图片亮度，使用方式:
+brighten 1.5: 调整图片亮度为1.5倍
+brighten 0.5: 调整图片亮度为0.5倍
+0.0对应黑色图像，1.0对应原图像
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) == 1, "需要一个参数")
+        ret = {'ratio': float(args[0])}
+        assert_and_reply(0.0 <= ret['ratio'] <= 100.0, "亮度参数只能在0.0-100.0之间")
+        return ret  
     
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        ratio = args['ratio']
+        img = img.convert('RGBA')
+        return ImageEnhance.Brightness(img).enhance(ratio)
+    
+class ContrastOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("contrast", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+调整图片对比度，使用方式:
+contrast 1.5: 调整图片对比度为1.5倍
+contrast 0.5: 调整图片对比度为0.5倍
+0.0对应纯灰图像，1.0对应原图像
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) == 1, "需要一个参数")
+        ret = {'ratio': float(args[0])}
+        assert_and_reply(0.0 <= ret['ratio'] <= 100.0, "对比度参数只能在0.0-100.0之间")
+        return ret  
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        ratio = args['ratio']
+        img = img.convert('RGBA')
+        return ImageEnhance.Contrast(img).enhance(ratio)
+    
+class SharpenOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("sharpen", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+调整图片锐度，使用方式:
+sharpen 1.5: 调整图片锐度为1.5倍
+sharpen 0.5: 调整图片锐度为0.5倍
+0.0对应模糊图像，1.0对应原图像，2.0对应锐化图像
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) == 1, "需要一个参数")
+        ret = {'ratio': float(args[0])}
+        assert_and_reply(0.0 <= ret['ratio'] <= 100.0, "锐度参数只能在0.0-100.0之间")
+        return ret  
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        ratio = args['ratio']
+        img = img.convert('RGBA')
+        return ImageEnhance.Sharpness(img).enhance(ratio)
+        
+class SaturateOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("saturate", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+调整图片饱和度，使用方式:
+saturate 1.5: 调整图片饱和度为1.5倍
+saturate 0.5: 调整图片饱和度为0.5倍
+0.0对应黑白图像，1.0对应原图像
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) == 1, "需要一个参数")
+        ret = {'ratio': float(args[0])}
+        assert_and_reply(0.01 <= ret['ratio'] <= 100.0, "饱和度参数只能在0.01-100.0之间")
+        return ret  
+
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        ratio = args['ratio']
+        img = img.convert('RGBA')
+        return ImageEnhance.Color(img).enhance(ratio)
+
+class BlurOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("blur", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+对图片进行模糊处理，使用方式:
+blur 对图片应用默认半径为3的高斯模糊
+blur 5 对图片应用半径为5的高斯模糊
+""".strip()
+
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
+        ret = {'radius': 3}
+        if args:
+            ret['radius'] = int(args[0])
+        assert_and_reply(1 <= ret['radius'] <= 32, "模糊半径只能在1-32之间")
+        return ret
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        radius = args['radius']
+        img = img.convert('RGBA')
+        return img.filter(ImageFilter.GaussianBlur(radius=radius))
+
 
 # 注册所有图片操作
 def register_all_ops():
@@ -997,4 +1119,120 @@ async def _(ctx: HandlerContext):
     text = extract_text(reply_msg)
     img = markdown_to_image(text)
     return await ctx.asend_reply_msg(await get_image_cq(img))
+
+
+
+# 色卡
+def color_card(color, additional_text=None):
+    if sum(color) > 255 * 3 / 2:
+        back_color = BLACK
+        front_color = WHITE
+    else:
+        back_color = WHITE
+        front_color = BLACK
+
+    r, g, b = color
+    h, s, l = colorsys.rgb_to_hls(r/255, g/255, b/255)
+    h, s, l = int(h*360), int(s*100), int(l*100)
+
+    text_style = TextStyle(DEFAULT_FONT, 20, front_color)
+
+    with VSplit().set_bg(FillBg(back_color)).set_item_align('c').set_content_align('c').set_padding(8).set_sep(4) as card:
+        Spacer(128, 128).set_bg(RoundRectBg((*color, 255), 8))
+        if additional_text:
+            TextBox(additional_text, text_style)
+        TextBox(f"#{r:02x}{g:02x}{b:02x}",  text_style)
+        TextBox(f"rgb({r},{g},{b})",        text_style)
+        TextBox(f"hsl({h},{s},{l})",        text_style)
+    return card
+
+# 颜色显示
+color_show = CmdHandler(['/color'], logger)
+color_show.check_cdrate(cd).check_wblist(gbl)
+@color_show.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+
+    r, g, b = 0, 0, 0
+
+    try:
+        if '#' in args:
+            args = args.replace('#', '').strip()
+            if len(args) == 3:
+                args = ''.join([c*2 for c in args])
+            r, g, b = int(args[:2], 16), int(args[2:4], 16), int(args[4:], 16)
+        elif 'hsl' in args:
+            args = args.replace('hsl', '').strip()
+            h, s, l = args.split()
+            h, s, l = float(h) / 360, float(s) / 100, float(l) / 100
+            r, g, b = colorsys.hls_to_rgb(h, l, s)
+            r, g, b = int(r*255), int(g*255), int(b*255)
+        elif 'rgbf' in args:
+            args = args.replace('rgbf', '').strip()
+            r, g, b = args.split()
+            r, g, b = float(r), float(g), float(b)
+            r, g, b = int(r*255), int(g*255), int(b*255)
+        else:
+            args = args.replace('rgb', '').strip()
+            r, g, b = args.split()
+            r, g, b = int(r), int(g), int(b)
+    except:
+        logger.print_exc("参数解析失败")
+        return await ctx.asend_reply_msg("""
+参数错误，使用示例:
+/color #aabbcc
+/color #abc
+/color hsl 120 50 50
+/color rgb 255 255 255
+/color rgbf 1.0 1.0 1.0
+""".strip())
+    
+    r = max(0, min(255, r))
+    g = max(0, min(255, g))
+    b = max(0, min(255, b))
+
+    with Canvas(bg=FillBg(WHITE)) as canvas:
+        color_card([r, g, b])
+    img = await run_in_pool(canvas.get_img)
+    
+    return await ctx.asend_reply_msg(await get_image_cq(img))
+
+# 取色器
+color_picker = CmdHandler(['/pick'], logger)
+color_picker.check_cdrate(cd).check_wblist(gbl)
+@color_picker.handle()
+async def _(ctx: HandlerContext):
+    img = await get_reply_fst_image(ctx)
+    img = img.convert('RGB')
+    img = np.array(img)
+
+    args = ctx.get_args().strip()
+    top_k = 10
+    if args:
+        top_k = int(args)
+        assert_and_reply(1 <= top_k <= 10, "取色数量只能在1-10之间")
+
+    # K聚类提取主色
+    def k_means(arr: np.ndarray, k: int):
+        from sklearn.cluster import KMeans
+        arr = arr.reshape((-1, 3))
+        estimator = KMeans(n_clusters=k)
+        estimator.fit(arr)
+        centroids = estimator.cluster_centers_
+        labels = estimator.labels_
+        return centroids, labels
+    
+    # 获取topk主色
+    centroids, labels = await run_in_pool(k_means, img, top_k)  
+    colors = [tuple(int(c) for c in centroid) for centroid in centroids]
+    colors = sorted(colors, key=lambda c: sum(c))
+    colors = colors[:top_k]
+    
+    with Canvas(bg=FillBg((200, 200, 200, 255))) as canvas:
+        with Grid(col_count=5).set_item_align('c').set_content_align('c').set_sep(8):
+            for color in colors:
+                color_card(color).set_w(180)
+                
+    return await ctx.asend_reply_msg(await get_image_cq(await run_in_pool(canvas.get_img)))
+
 

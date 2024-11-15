@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from . import res
 from datetime import datetime
 import random
+import colorsys
 
 
 config = get_config('sekai')
@@ -376,7 +377,7 @@ async def get_stamp_image_cq(sid):
     url = await get_stamp_image_url(sid)
     if not url: raise Exception(f"表情{sid}不存在")
     img = await download_image(url)
-    save_transparent_gif(img, save_path)
+    save_transparent_gif(img, 0, save_path)
     return await get_image_cq(save_path)
 
 # 获取表情图片
@@ -391,7 +392,7 @@ async def get_stamp_image(sid):
     url = await get_stamp_image_url(sid)
     if not url: raise Exception(f"表情{sid}不存在")
     img = await download_image(url)
-    save_transparent_gif(img, save_path)
+    save_transparent_gif(img, 0, save_path)
     return Image.open(save_path)
 
 # 合成某个角色的所有表情 返回PIL Image
@@ -1654,11 +1655,14 @@ async def _(ctx: HandlerContext):
         )
         if result_image is None:
             return await ctx.asend_reply_msg("该表情ID不支持制作\n使用/pjsk stamp 角色简称 查询哪些表情支持制作")
+        
+        # 添加水印
+        result_image.paste((255, 255, 255, 255), (0, 0, 1, 1), mask=None)
 
         tmp_path = f"data/sekai/maker/tmp/{rand_filename('gif')}"
         try:
             create_parent_folder(tmp_path)
-            save_transparent_gif(result_image, tmp_path)
+            save_transparent_gif(result_image, 0, tmp_path)
             await ctx.asend_reply_msg(await get_image_cq(tmp_path))
         finally:
             remove_file(tmp_path)
