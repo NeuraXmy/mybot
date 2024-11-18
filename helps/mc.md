@@ -1,15 +1,20 @@
 # Minecraft服务 (mc)
 
-基于服务端卫星地图插件以及 RCON 协议，提供 Minecraft 服务器对接的服务。主要包含以下功能：
+基于 服务端卫星地图插件或日志监听服务 以及 RCON 协议，提供 Minecraft 服务器对接的服务。主要包含以下功能：
 - 一个群聊对应一个Minecraft服务器
 - 服务器和玩家状态查询，服务器断线上线提醒
 - 玩家上下线通知，玩家游玩时间统计
 - 服务器聊天和群聊天同步
 - 远程执行服务器指令
 
+监听模式分为卫星地图和日志两种
+- 卫星地图模式通过dynamic map插件获取服务器信息和聊天记录、发送消息
+- 日志模式通过日志文件获取聊天记录，通过rcon获取服务器信息和发送消息
+
 
 ###  用户指令
 
+- [`/listen` 设置或查询监听模式](#listen)
 - [`/send` 向服务器发送消息](#send)
 - [`/info` 获取服务器信息](#info)
 - [`/geturl` 获取服务器卫星地图链接](#geturl)
@@ -17,7 +22,7 @@
 - [`/seturl` 设置服务器卫星地图链接](#seturl)
 - [`/setinfo` 设置服务器信息](#setinfo)
 - [`/setrconurl` 设置服务器rcon链接](#setrconurl)
-- [`/listen` 开关该服务器的监听](#listen)
+- [`/setrconpw` 设置服务器rcon密码](#setrconpw)
 - [`/oplist` 获取op列表](#oplist)
 - [`/rcon` 向服务器发送rcon命令](#rcon)
 - [`/playtime` 查询玩家游玩时间](#playtime)
@@ -27,7 +32,7 @@
 - [`/getoffset` 获取请求时间偏移](#getoffset)
 - [`/setchatprefix` 设置聊天前缀](#setchatprefix)
 - [`/getchatprefix` 获取聊天前缀](#getchatprefix)
-- [`/server_notify_{on|off}` 开启/关闭服务器连线断线通知](#server_notify_onoff)
+- [`/connect_notify_{on|off}` 开启/关闭服务器连线断线通知](#connect_notify_onoff)
 
 ### 管理指令
 
@@ -35,6 +40,20 @@
 - [`/opdel` 删除用户的op](#opdel)
 
 ---
+
+## `/listen`
+```
+设置或查询群聊中服务器的监听模式，只有超级用户或op可以设置
+可用的模式:
+off: 关闭监听
+dynamicmap: 通过卫星地图监听
+log: 通过日志文件服务端监听
+```
+- **示例**
+
+    `/listen` 查询监听模式
+
+    `/listen dynamicmap` 设置监听模式为卫星地图
 
 
 ## `/send`
@@ -57,7 +76,7 @@
 
 ## `/geturl`
 ```
-获取服务器卫星地图链接
+获取服务器监听链接
 ```
 - **示例**
 
@@ -75,7 +94,7 @@
 
 ## `/seturl`
 ```
-设置服务器卫星地图链接，只有超级用户或op可以设置
+设置服务器监听链接，只有超级用户或op可以设置
 ```
 - **示例**
 
@@ -94,21 +113,21 @@
 ## `/setrconurl`
 ```
 设置服务器rcon链接，只有超级用户或op可以设置
-还需要在bot端手动设置rcon密码
 ```
 - **示例**
 
     `/setrconurl http://x.x.x.x:xxxx`
 
 
-## `/listen`
+## `/setrconpw`
 ```
-开关该服务器的监听，只有超级用户或op可以操作
-关闭监听后将不再接收服务器消息，也无法发送消息
+设置服务器rcon密码，只有超级用户或op可以设置
+需要在私聊中使用
 ```
+
 - **示例**
 
-    `/listen`
+    `/setrconpw 123456 pw` 设置群聊 123456 的 rcon 密码为 pw
 
 
 ## `/oplist`
@@ -182,6 +201,7 @@
 - **示例**
 
     `/setchatprefix` 设置聊天前缀为空
+
     `/setchatprefix ##` 设置聊天前缀为##
 
 
@@ -194,14 +214,15 @@
     `/getchatprefix`
 
 
-## `/server_notify_{on|off}`
+## `/connect_notify_{on|off}`
 ```
 开启/关闭服务器连线断线通知，只有超级用户或op可以操作
 ```
 - **示例**
 
-    `/server_notify_on`
-    `/server_notify_off`
+    `/connect_notify_on`
+
+    `/connect_notify_off`
 
 ---
 
