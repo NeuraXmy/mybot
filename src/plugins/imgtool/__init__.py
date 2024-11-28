@@ -24,7 +24,7 @@ gbl = get_group_black_list(file_db, logger, 'imgtool')
 # ============================= 基础设施 ============================= # 
 
 IMAGE_LIST_CLEAN_INTERVAL = 3 * 60 * 60  # 图片列表失效时间
-MULTI_IMAGE_MAX_NUM = 20  # 多张图片最大数量
+MULTI_IMAGE_MAX_NUM = 64  # 多张图片最大数量
 
 # 图片类型
 class ImageType(Enum):
@@ -101,10 +101,10 @@ class ImageOperation:
             args = self.parse_args(args)
         except Exception as e:
             if str(e):
-                msg = f"参数错误: {e}，{self.help}"
+                msg = f"参数错误: {e}\n{self.help}"
             else:
-                msg = f"参数错误，{self.help}"
-            raise Exception(msg.strip())
+                msg = f"参数错误\n{self.help}"
+            raise ReplyException(msg.strip())
         img_type = ImageType.get_type(img)
         logger.info(f"执行图片操作:{self.name} 输入类型:{img_type} 参数:{args}")
         if self.process_type == 'single':
@@ -169,22 +169,44 @@ def get_image_list(user_id):
 
 # 往图片列表push图片
 async def add_image_to_list(ctx: HandlerContext, reply=True):
+    args = ctx.get_args()
     user_id = str(ctx.user_id)
     image_list = get_image_list(user_id)
-    assert_and_reply(len(image_list[user_id]) < MULTI_IMAGE_MAX_NUM, f"图片列表已满，最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
-    img = await get_reply_fst_image(ctx, return_url=True)
-    image_list[user_id].append(img)
+
+    # 回复转发多张图片
+    reply_msg = await ctx.aget_reply_msg()
+    assert_and_reply(reply_msg, "请回复带有图片的消息/带有图片的折叠消息")
+    reply_cqs = extract_cq_code(reply_msg)
+    if 'forward' in reply_cqs:
+        img_urls = []
+        for msg_obj in reply_cqs['forward'][0]['content']:
+            msg = msg_obj['message']
+            img_urls.extend(extract_image_url(msg))
+        assert_and_reply(img_urls, "回复的转发消息中不包含图片")
+        assert_and_reply(len(img_urls) <= MULTI_IMAGE_MAX_NUM, f"最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
+    # 回复的消息有图片
+    else:
+        img_urls = extract_image_url(reply_msg)
+        assert_and_reply(img_urls, "回复的消息中不包含图片")
+
+    assert_and_reply(len(image_list[user_id]) + len(img_urls) <= MULTI_IMAGE_MAX_NUM, 
+                     f"图片列表已满，当前有{len(image_list[user_id])}张图片，最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
+
+    if 'r' in args:
+        img_urls = img_urls[::-1]
+
+    image_list[user_id].extend(img_urls)
     file_db.set('image_list', image_list)
-    logger.info(f"用户 {user_id} 向图片列表添加了图片，共有 {len(image_list[user_id])} 张")
+
+    logger.info(f"用户 {user_id} 向图片列表添加了 {len(img_urls)} 张图片，共有 {len(image_list[user_id])} 张")
     if reply:
-        return await ctx.asend_reply_msg(f"添加成功，当前列表有{len(image_list[user_id])}张图片")
+        return await ctx.asend_reply_msg(f"成功添加{len(img_urls)}张图片，当前有{len(image_list[user_id])}张图片")
 
 # 从图片列表pop图片
 async def pop_image_from_list(ctx: HandlerContext, reply=True):
     user_id = str(ctx.user_id)
     image_list = get_image_list(user_id)
-    if not image_list[user_id]:
-        raise Exception("图片列表为空")
+    assert_and_reply(image_list[user_id], "图片列表为空")
     img = image_list[user_id].pop()
     file_db.set('image_list', image_list)
     logger.info(f"用户 {user_id} 从图片列表中弹出图片, 剩余 {len(image_list[user_id])} 张")
@@ -299,7 +321,7 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
             img = await run_in_pool(op, img, args)
         except Exception as e:
             logger.print_exc(f"执行图片操作 {i+1}.{op.name} 失败")
-            raise Exception(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
+            raise ReplyException(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
         
     # 清空图片列表
     if fst_input_type == ImageType.Multiple:
@@ -536,7 +558,7 @@ speed 100 设置动图帧间隔为100ms
         frame_num = img.n_frames
         if frame_num / interval <= 1:
             max_rate = img.info['duration'] / (20 / (frame_num - 1))
-            raise Exception(f"加速倍率过大！该图像最多只能加速{max_rate:.2f}倍")
+            raise ReplyException(f"加速倍率过大！该图像最多只能加速{max_rate:.2f}倍")
 
         try:
             tmp_path = create_parent_folder(f"data/imgtool/tmp/{rand_filename('gif')}")
@@ -839,11 +861,11 @@ extract 2: 以间隔2帧拆分
         max_frame_num = 32
         if interval: 
             if interval >= n_frames:
-                raise Exception(f"拆分间隔过大！该动图最多只能以{n_frames}帧拆分")
+                raise ReplyException(f"拆分间隔过大！该动图最多只能以{n_frames}帧拆分")
             frame_num = n_frames // interval
             if frame_num > max_frame_num:
                 min_interval = n_frames // max_frame_num
-                raise Exception(f"拆分间隔过小！该动图最多只能以{min_interval}帧拆分")
+                raise ReplyException(f"拆分间隔过小！该动图最多只能以{min_interval}帧拆分")
         else:
             interval = max(1, n_frames // max_frame_num)
         return [frames[i] for i in range(0, n_frames, interval)]
@@ -979,6 +1001,88 @@ blur 5 对图片应用半径为5的高斯模糊
         img = img.convert('RGBA')
         return img.filter(ImageFilter.GaussianBlur(radius=radius))
 
+class CropOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("crop", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+裁剪图片，使用方式:
+crop 100x100: 裁剪图片100x100中间部分
+crop 0.5x0.5: 裁剪图片中心长宽为原来50%的部分
+crop 50%x100: 裁剪图片中心长为原来50%，宽为100px的部分
+crop 100x100 l: 裁剪图片100x100左边部分(lrtb:左右上下)
+crop 100x100 lt: 裁剪图片100x100左上角部分
+crop 100x100 50x50: 裁剪图片100x100，相对左上角偏移(50,50)px
+crop l0.1 t0.2 裁剪掉图片左边10%，上边20%部分
+参数中使用实数（带有小数点）或者百分比则对应比例，使用整数则对应像素
+""".strip()
+
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(len(args) >= 1, "至少需要一个参数")
+        assert_and_reply(len(args) <= 4, "最多只支持四个参数")
+
+        def s_to_i_or_f(s):
+            if '.' in s:
+                return float(s)
+            elif '%' in s:
+                return float(s.replace('%', '')) / 100.0
+            else:
+                return int(s)
+            
+        ret = {}
+        if 'x' in args[0]:
+            ret['type'] = 1
+            ret['size'] = tuple(map(s_to_i_or_f, args[0].split('x')))
+            if len(args) == 2:
+                if 'x' in args[1]:
+                    ret['offset'] = tuple(map(s_to_i_or_f, args[1].split('x')))
+                else:
+                    assert_and_reply(args[1] in ALIGN_MAP, f"指定位置错误，必须是{ALIGN_MAP.keys()}中的一个")
+                    ret['align'] = args[1].strip()
+        else:
+            ret['type'] = 2
+            ret['border'] = {}
+            for arg in args:
+                arg = arg.strip()
+                assert_and_reply(arg[0] in 'lrtb', f"裁剪方向错误，必须是(l,r,t,b)中的一个")
+                ret['border'][arg[0]] = s_to_i_or_f(arg[1:])
+        return ret
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        w, h = img.size
+        def getlen(l, ref):
+            if isinstance(l, float):
+                return int(l * ref)
+            return l
+        def getsize(size):
+            return getlen(size[0], w), getlen(size[1], h)
+            
+        x1, y1, x2, y2, cw, ch = 0, 0, w, h, w, h
+        if args['type'] == 1:
+            cw, ch = getsize(args['size'])
+            if 'offset' in args:
+                x1, y1 = getsize(args['offset'])
+            else:
+                x1, y1 = crop_by_align((w, h), (cw, ch), args.get('align', 'c'))[:2]
+            x2, y2 = x1 + cw, y1 + ch
+        else:
+            if 'l' in args['border']:
+                x1 = getlen(args['border']['l'], w)
+            if 'r' in args['border']:
+                x2 = w - getlen(args['border']['r'], w)
+            if 't' in args['border']:
+                y1 = getlen(args['border']['t'], h)
+            if 'b' in args['border']:
+                y2 = h - getlen(args['border']['b'], h)
+            cw, ch = x2 - x1, y2 - y1
+        
+        wh_str = f"({w}x{h})"
+        bbox_str = f"[({x1},{y1})->({x2},{y2}) {cw}x{ch}]"
+        assert_and_reply(x1 >= 0 and y1 >= 0 and x2 <= w and y2 <= h, f"裁剪区域{bbox_str}超出原图像{wh_str}")
+        assert_and_reply(cw > 0, f"裁剪区域{bbox_str}宽度错误")
+        assert_and_reply(ch > 0, f"裁剪区域{bbox_str}高度错误")
+
+        return img.crop((x1, y1, x2, y2))
+
 
 # 注册所有图片操作
 def register_all_ops():
@@ -1084,10 +1188,10 @@ async def _(ctx: HandlerContext):
             reply_user_name = await get_group_member_name(ctx.bot, ctx.group_id, reply_user_id)
             text = await extract_special_text(reply_msg, ctx.group_id)
     except:
-        raise Exception("无法获取回复消息")
+        raise ReplyException("无法获取回复消息")
     
     if not text:
-        raise Exception("回复的消息没有文本!")
+        raise ReplyException("回复的消息没有文本!")
     
     text = "「 " + text + " 」"
     line_len = 20

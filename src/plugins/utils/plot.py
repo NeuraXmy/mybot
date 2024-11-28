@@ -17,6 +17,27 @@ ALIGN_MAP = {
     'lt': ('l', 't'), 'lb': ('l', 'b'), 'rt': ('r', 't'), 'rb': ('r', 'b')
 }
 
+def crop_by_align(original_size, crop_size, align):
+    w, h = original_size
+    cw, ch = crop_size
+    assert cw <= w and ch <= h, "Crop size must be smaller than original size"
+    x, y = 0, 0
+    xa, ya = ALIGN_MAP[align]
+    if xa == 'l':
+        x = 0
+    elif xa == 'r':
+        x = w - cw
+    elif xa == 'c':
+        x = (w - cw) // 2
+    if ya == 't':
+        y = 0
+    elif ya == 'b':
+        y = h - ch
+    elif ya == 'c':
+        y = (h - ch) // 2
+    return x, y, x + cw, y + ch
+
+
 BLACK = (0, 0, 0, 255)
 WHITE = (255, 255, 255, 255)
 RED = (255, 0, 0, 255)
