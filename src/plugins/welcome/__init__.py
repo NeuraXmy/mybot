@@ -11,6 +11,11 @@ file_db = get_file_db("data/welcome/db.json", logger)
 gbl = get_group_black_list(file_db, logger, 'welcome')
 
 
+# 防止神秘原因导致的重复通知
+increase_notified = set()
+decrease_notified = set()
+
+
 # 更新群成员信息
 async def update_member_info(group_id=None):
     bot = get_bot()
@@ -45,6 +50,11 @@ async def handle_increase(group_id, user_id, sub_type):
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 加入 {group_id}')
 
+    guid = f"{group_id}_{user_id}"
+    if guid in increase_notified: return
+    increase_notified.add(guid)
+    decrease_notified.discard(guid)
+
     try:
         name = await get_group_member_name(bot, group_id, user_id)
         name = f"{name}({user_id})"
@@ -73,6 +83,11 @@ async def handle_decrease(group_id, user_id, sub_type):
     if user_id == bot.self_id: return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 离开 {group_id}')
+
+    guid = f"{group_id}_{user_id}"
+    if guid in decrease_notified: return
+    decrease_notified.add(guid)
+    increase_notified.discard(guid)
 
     members = file_db.get(f'{group_id}_members', {})
     name = members.get(str(user_id), '')

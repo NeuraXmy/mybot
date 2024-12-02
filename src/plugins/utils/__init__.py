@@ -104,13 +104,13 @@ def get_frames_from_gif(img: Image.Image):
 
 # 从帧序列保存透明GIF
 def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str):
-    t = datetime.now()
+    # t = datetime.now()
 
     if isinstance(frames, Image.Image):
         frames = [frames]
     _save_transparent_gif(frames, duration, save_path)
     
-    print(f"save gif cost {datetime.now() - t}")
+    # print(f"save gif cost {datetime.now() - t}")
 
 
 
