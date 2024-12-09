@@ -1302,7 +1302,7 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(await get_image_cq(img))
 
 # 取色器
-color_picker = CmdHandler(['/pick'], logger)
+color_picker = CmdHandler(['/pick'], logger, priority=101)
 color_picker.check_cdrate(cd).check_wblist(gbl)
 @color_picker.handle()
 async def _(ctx: HandlerContext):

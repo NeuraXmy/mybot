@@ -46,7 +46,7 @@ async def update_member_info(group_id=None):
 async def handle_increase(group_id, user_id, sub_type):
     bot = get_bot()
     if group_id in gbl.get(): return
-    if user_id == bot.self_id: return
+    if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 加入 {group_id}')
 
@@ -80,7 +80,7 @@ async def handle_increase(group_id, user_id, sub_type):
 async def handle_decrease(group_id, user_id, sub_type):
     bot = get_bot()
     if group_id in gbl.get(): return
-    if user_id == bot.self_id: return
+    if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 离开 {group_id}')
 

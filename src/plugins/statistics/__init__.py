@@ -121,125 +121,96 @@ async def get_word_statistic(bot, group_id, days, word):
 
 
 # 发送统计图
-sta = on_command("/sta", priority=100, block=False)
+sta = CmdHandler(["/sta"], logger, priority=100)
+sta.check_cdrate(cd).check_wblist(gbl).check_group()
 @sta.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
-    if not (await cd.check(event)): return
+async def _(ctx: HandlerContext):
     try:
-        try:
-            date = event.get_plaintext().split()[1]
-            if date.count('-') == 2:
-                datetime.strptime(date, "%Y-%m-%d")
-            else:
-                delta_day = int(date)
-                date = (datetime.now() + timedelta(days=delta_day)).strftime("%Y-%m-%d")
-        except:
-            logger.info(f'日期格式错误, 使用当前日期')
-            date = None
-        res = await get_statistic(bot, event.group_id, date)
-        return await send_reply_msg(sta, event.message_id, res)
-    
-    except Exception as e:
-        logger.print_exc(f'发送统计图失败')
-        return await send_reply_msg(sta, event.message_id, f'发送统计图失败：{e}')
+        date = ctx.get_args().strip()
+        if date.count('-') == 2:
+            datetime.strptime(date, "%Y-%m-%d")
+        else:
+            delta_day = int(date)
+            date = (datetime.now() + timedelta(days=delta_day)).strftime("%Y-%m-%d")
+    except:
+        logger.info(f'日期格式错误, 使用当前日期')
+        date = None
+    res = await get_statistic(ctx.bot, ctx.group_id, date)
+    return await ctx.asend_reply_msg(res)
 
 
 # 发送总消息量关于时间的统计图
-sta2 = on_command("/sta_time", priority=100, block=False)
-@sta2.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
-    if not (await cd.check(event)): return
-    msg = await get_msg(bot, event.message_id)
+sta_time = CmdHandler(["/sta_time"], logger, priority=101)
+sta_time.check_cdrate(cd).check_wblist(gbl).check_group()
+@sta_time.handle()
+async def _(ctx: HandlerContext):
+    msg = await ctx.aget_msg()
     cqs = extract_cq_code(msg)
     user_id = None
     if 'at' in cqs and len(cqs['at']) > 0:
         user_id = cqs['at'][0]['qq']
     try:
-        if event.get_plaintext().removeprefix('/sta_time').strip() == '': return
-        try:
-            days = int(event.get_plaintext().split()[1])
-        except:
-            logger.info(f'日期格式错误, 使用默认30天')
-            days = 30
-        res = await get_date_count_statistic(bot, event.group_id, days, user_id)
-        return await send_reply_msg(sta2, event.message_id, res)
-
-    except Exception as e:
-        logger.print_exc(f'发送总消息量关于时间的统计图失败')
-        return await send_reply_msg(sta2, event.message_id, f'发送总消息量关于时间的统计图失败：{e}')
+        days = int(ctx.get_args().strip().split()[0])
+    except:
+        logger.info(f'日期格式错误, 使用默认30天')
+        days = 30
+    res = await get_date_count_statistic(ctx.bot, ctx.group_id, days, user_id)
+    return await ctx.asend_reply_msg(res)
 
 
 # 发送某个词的统计图
-sta_word = on_command("/sta_word", priority=100, block=False)
+sta_word = CmdHandler(["/sta_word"], logger, priority=101)
+sta_word.check_cdrate(cd).check_wblist(gbl).check_group()
 @sta_word.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    if not gbl.check(event): return
-    if not (await cd.check(event)): return
-    args = event.get_plaintext().removeprefix('/sta_word').strip().split()
-    if len(args) == 0: return
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip().split()
+    assert_and_reply(args, "请输入需要查询的词")
+    word = args[0]
     try:
-        word = args[0]
-        try:
-            days = int(args[1])
-        except:
-            logger.info(f'日期格式错误, 使用默认30天')
-            days = 30
-        res = await get_word_statistic(bot, event.group_id, days, word)
-        return await send_reply_msg(sta_word, event.message_id, res)
-    except Exception as e:
-        logger.print_exc(f'发送某个词的统计图失败')
-        return await send_reply_msg(sta_word, event.message_id, f'发送某个词的统计图失败：{e}')
+        days = int(args[1])
+    except:
+        logger.info(f'日期格式错误, 使用默认30天')
+        days = 30
+    res = await get_word_statistic(ctx.bot, ctx.group_id, days, word)
+    return await ctx.asend_reply_msg(res)
 
 
 # 添加用户词汇
-msgadd = on_command("/sta_add", priority=100, block=False)
+msgadd = CmdHandler(["/sta_add"], logger)
+msgadd.check_superuser().check_wblist(gbl)
 @msgadd.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-    try:
-        words = event.get_plaintext().split()[1:]
-        if len(words) == 0:
-            return await msgadd.finish("输入为空")
-        userwords = file_db.get("userwords", [])
-        stopwords = file_db.get("stopwords", [])
-        for word in words:
-            if word in stopwords: stopwords.remove(word)
-            if word not in userwords: userwords.append(word)
-        file_db.set("userwords", userwords)
-        file_db.set("stopwords", stopwords)
-        reset_jieba()
-        return await send_reply_msg(msgadd, event.message_id, f"成功添加{len(words)}条用户词汇")
-    
-    except Exception as e:
-        logger.print_exc(f'添加用户词汇失败')
-        return await send_reply_msg(msgadd, event.message_id, f'添加用户词汇失败：{e}')
-
+async def _(ctx: HandlerContext):
+    words = ctx.get_args().strip().split()
+    assert_and_reply(words, "请输入需要添加的词")
+    userwords = file_db.get("userwords", [])
+    stopwords = file_db.get("stopwords", [])
+    for word in words:
+        if word in stopwords: stopwords.remove(word)
+        if word not in userwords: userwords.append(word)
+    file_db.set("userwords", userwords)
+    file_db.set("stopwords", stopwords)
+    reset_jieba()
+    return await ctx.asend_reply_msg(f"成功添加{len(words)}条用户词汇")
+   
 
 # 添加停用词汇
-msgban = on_command("/sta_ban", priority=100, block=False)
+msgban = CmdHandler(["/sta_ban"], logger)
+msgadd.check_superuser().check_wblist(gbl)
 @msgban.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-    try:
-        words = event.get_plaintext().split()[1:]
-        if len(words) == 0:
-            return await msgban.finish("输入为空")
-        userwords = file_db.get("userwords", [])
-        stopwords = file_db.get("stopwords", [])
-        for word in words:
-            if word in userwords: userwords.remove(word)
-            if word not in stopwords: stopwords.append(word)
-        file_db.set("userwords", userwords)
-        file_db.set("stopwords", stopwords)
-        reset_jieba()
-        return await send_reply_msg(msgban, event.message_id, f"成功添加{len(words)}条停用词汇")
-    except Exception as e:
-        logger.print_exc(f'添加停用词汇失败')
-        return await send_reply_msg(msgban, event.message_id, f'添加停用词汇失败：{e}')
-
-
+async def _(ctx: HandlerContext):
+    words = ctx.get_args().strip().split()
+    if len(words) == 0:
+        return await msgban.finish("输入为空")
+    userwords = file_db.get("userwords", [])
+    stopwords = file_db.get("stopwords", [])
+    for word in words:
+        if word in userwords: userwords.remove(word)
+        if word not in stopwords: stopwords.append(word)
+    file_db.set("userwords", userwords)
+    file_db.set("stopwords", stopwords)
+    reset_jieba()
+    return await ctx.asend_reply_msg(f"成功添加{len(words)}条停用词汇")
+ 
 
 # ------------------------------------------------ 定时任务 ------------------------------------------------
 
@@ -265,23 +236,18 @@ async def cron_statistic():
 
 
 # 取消今天的统计自动发送
-cancel_today = on_command("/sta_cancel_today", priority=100, block=False)
+cancel_today = CmdHandler("/sta_cancel_today", logger, priority=101)
+cancel_today.check_superuser().check_group().check_wblist(gbl).check_wblist(notify_gwl)
 @cancel_today.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-    if not notify_gwl.check(event): return
-    try:
-        group_id = event.group_id
-        cancel_date = file_db.get("cancel_date", {})
-        if group_id in cancel_date and cancel_date[group_id] == datetime.now().strftime("%Y-%m-%d"):
-            cancel_date.pop(group_id)
-            file_db.set("cancel_date", cancel_date)
-            return await send_reply_msg(msgban, event.message_id, f'恢复今天的统计自动发送')
-        else:
-            cancel_date[group_id] = datetime.now().strftime("%Y-%m-%d")
-            file_db.set("cancel_date", cancel_date)
-            return await send_reply_msg(msgban, event.message_id, f'取消今天的统计自动发送')
-        
-    except Exception as e:
-        logger.print_exc(f'取消当天的定时统计发送失败')
-        return await send_reply_msg(msgban, event.message_id, f'取消今天的统计自动发送失败: {e}')
+async def _(ctx: HandlerContext):
+    group_id = ctx.group_id
+    cancel_date = file_db.get("cancel_date", {})
+    if group_id in cancel_date and cancel_date[group_id] == datetime.now().strftime("%Y-%m-%d"):
+        cancel_date.pop(group_id)
+        file_db.set("cancel_date", cancel_date)
+        return await ctx.asend_reply_msg(f'恢复今天的统计自动发送')
+    else:
+        cancel_date[group_id] = datetime.now().strftime("%Y-%m-%d")
+        file_db.set("cancel_date", cancel_date)
+        return await ctx.asend_reply_msg(f'取消今天的统计自动发送')
+ 
