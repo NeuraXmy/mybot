@@ -33,6 +33,10 @@
 -l --low-quality 下载低质量视频
 ```
 
+- **指令别名**
+
+    `/video`
+
 - **示例**
 
     `/ytdlp https://www.youtube.com/watch?v=video_id` 下载视频，以mp4格式发送

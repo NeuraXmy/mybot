@@ -114,7 +114,7 @@ async def adownload_video(url, path, maxsize, lowq):
 
 
 
-ytdlp = CmdHandler(['/yt-dlp', '/ytdlp', '/yt_dlp'], logger)
+ytdlp = CmdHandler(['/yt-dlp', '/ytdlp', '/yt_dlp', '/video'], logger)
 ytdlp.check_cdrate(cd).check_wblist(gbl, allow_private=True)
 @ytdlp.handle()
 async def handle(ctx: HandlerContext):
