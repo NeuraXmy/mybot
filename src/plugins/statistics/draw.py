@@ -29,7 +29,7 @@ def pil_fig_to_image(fig) -> Image.Image:
     return Image.open(buf)
 
 # 绘制饼图
-def draw_pie(ax, recs, topk_user, topk_name, date):
+def draw_pie(ax, recs, topk_user, topk_name):
     logger.info(f"开始绘制饼图")
     topk = len(topk_user)
     user_count, user_image_count = Counter(), Counter()
@@ -217,13 +217,13 @@ def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
 
 
 # 绘制所有图
-def draw_all(recs, interval, topk1, topk2, user, name, path, date):
+def draw_all(recs, interval, topk1, topk2, user, name, path, date_str):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_pie(ax, recs, user[:topk1], name[:topk1], date)
+    draw_pie(ax, recs, user[:topk1], name[:topk1])
     pie_image = pil_fig_to_image(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
@@ -237,7 +237,7 @@ def draw_all(recs, interval, topk1, topk2, user, name, path, date):
         with VSplit().set_sep(10).set_padding(10):
             bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
 
-            title = TextBox(f"{date} 群聊消息统计 总消息数: {len(recs)}条")
+            title = TextBox(f"{date_str} 群聊消息统计 总消息数: {len(recs)}条")
             title.set_bg(bg).set_padding(10).set_w(850)
             title.set_style(TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
 
@@ -307,4 +307,86 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
     plt.tight_layout()
     plt.savefig(path)
     plt.close()
+    logger.info(f"绘制完成")
+
+
+# 绘制长时间统计的群总聊天数关于时间的折线图
+def draw_long_sta_date_count_plot(ax: plt.Axes, topk_user, topk_name, recs):
+    logger.info(f"开始绘制长时间统计的群总聊天数关于时间的折线图")
+
+    # 计算起止时间
+    start_date = recs[0]['time']
+    end_date = recs[-1]['time']
+    dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+
+    # 计算每日消息数
+    counts = [0] * len(dates)
+    for rec in recs:
+        date = rec['time']
+        index = (date - start_date).days
+        counts[index] += 1
+
+    # 计算topk用户的每日消息数
+    user_counts = [[0] * len(dates) for _ in range(len(topk_user))]
+    for rec in recs:
+        user_id = rec['user_id']
+        if user_id not in topk_user: continue
+        date = rec['time']
+        index = (date - start_date).days
+        user_counts[topk_user.index(user_id)][index] += 1
+
+    # 绘制图
+    ax.bar(dates, counts, label='日消息数', color='#bbbbbb', width=1)
+    for i in range(len(topk_user)):
+        ax.plot(dates, user_counts[i], label=topk_name[i], color=f'C{i}')
+
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+    ax.legend(fontsize=8)
+
+
+# 绘制所有图（长时间统计版本）
+def draw_all_long(recs, interval, topk1, topk2, user, name, path, date_str):
+    logger.info(f"开始绘制所有图到{path}")
+    plt.subplots_adjust(wspace=0.0, hspace=0.0)
+
+    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
+    fig.tight_layout()
+    draw_pie(ax, recs, user[:topk1], name[:topk1])
+    pie_image = pil_fig_to_image(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
+    fig.tight_layout()
+    draw_plot(ax, recs, interval, user[:topk2], name[:topk2])
+    plot_image = pil_fig_to_image(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5), nrows=1, ncols=1)
+    fig.tight_layout()
+    draw_long_sta_date_count_plot(ax, user[:topk2], name[:topk2], recs)
+    date_count_image = pil_fig_to_image(fig)
+
+    wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
+
+    with Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10) as canvas:
+        with VSplit().set_sep(10).set_padding(10):
+            bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
+
+            title = TextBox(f"{date_str} 群聊消息统计 总消息数: {len(recs)}条")
+            title.set_bg(bg).set_padding(10).set_w(850 + 850 + 10)
+            title.set_style(TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
+
+            with HSplit().set_sep(10):
+                with VSplit().set_sep(10):
+                    ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_w(850)
+                    ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(32).set_w(850)
+
+                    wrt = TextBox(word_rank_text, line_count=3)
+                    wrt.set_bg(bg).set_padding(16).set_w(850)
+                    wrt.set_style(TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT))
+                
+                with VSplit().set_sep(10):
+                    ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
+                    ImageBox(date_count_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
+
+    canvas.get_img().save(path)
     logger.info(f"绘制完成")

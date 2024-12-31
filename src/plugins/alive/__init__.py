@@ -41,7 +41,7 @@ async def send_noti(state):
     if state == DISCONNECT_STATE    and not NOTIFY_AT_DISCONNECT:   return
     if state == CONNECT_STATE       and not NOTIFY_AT_CONNECT:      return
     logger.info(f"存活检测发送通知：{state}")
-    if SEND_EMAIL:
+    if SEND_EMAIL and MAIL_RECEIVERS:
         for receiver in MAIL_RECEIVERS:
             try:
                 await send_mail_async(

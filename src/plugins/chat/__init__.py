@@ -279,13 +279,15 @@ async def _(bot: Bot, event: MessageEvent):
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
-        return await send_reply_msg(chat_request, event.message_id, f"会话失败: {e.message}")
+        ret = truncate(f"会话失败: {e.message}", 128)
+        return await send_reply_msg(chat_request, event.message_id, ret)
 
     except Exception as error:
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
-        return await send_reply_msg(chat_request, event.message_id, f"会话失败: {error}")
+        ret = truncate(f"会话失败: {error}", 128)
+        return await send_reply_msg(chat_request, event.message_id, ret)
     
     additional_info = f"{model_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if (rest_quota := get_rest_quota()) > 0:

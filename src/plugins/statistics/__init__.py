@@ -6,7 +6,7 @@ from datetime import datetime
 from PIL import Image
 import io
 from ..utils import *
-from .draw import draw_all, reset_jieba, draw_date_count_plot, draw_word_count_plot
+from .draw import draw_all, reset_jieba, draw_date_count_plot, draw_word_count_plot, draw_all_long
 from ..record.sql import msg_range, msg_count, text_range
 
 
@@ -31,7 +31,7 @@ STA_WORD_TOPK = config['sta_word_topk']
 
 
 # 获取某天统计图数据
-async def get_statistic(bot, group_id, date=None):
+async def get_day_statistic(bot, group_id, date=None):
     if date is None: date = datetime.now().strftime("%Y-%m-%d")
     start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
     end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
@@ -58,6 +58,39 @@ async def get_statistic(bot, group_id, date=None):
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.png"
     await run_in_pool(draw_all, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
+    # 发送图片
+    return await get_image_cq(path)
+
+# 获取长时间统计数据
+async def get_long_statistic(bot, group_id, start_date: datetime, end_date: datetime):
+    start_time = start_date.strftime("%Y-%m-%d 00:00:00")
+    end_time   = end_date.strftime("%Y-%m-%d 23:59:59")
+    start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+    end_time   = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+    recs = msg_range(group_id, start_time, end_time)
+    logger.info(f'绘制从{start_date}到{end_date}的长时间统计图: 共获取到{len(recs)}条消息')
+
+    if len(recs) == 0: return f"从{start_date}到{end_date}的消息记录为空"
+
+    # 统计发言数
+    user_count = Counter()
+    for rec in recs: user_count.inc(rec['user_id'])
+    sorted_user_count = sorted(user_count.items(), key=lambda x: x[1], reverse=True)
+    # 计算出需要的topk
+    need_k = len(sorted_user_count)
+    topk_user = [user for user, _ in sorted_user_count[:need_k]]
+    # 获取topk的名字
+    topk_name = []
+    for user in topk_user:
+        try:
+            name = truncate(await get_group_member_name(bot, group_id, user), NAME_LEN_LIMIT)
+            topk_name.append(name)
+        except:
+            topk_name.append(str(user))
+    # 画图
+    path = PLOT_PATH + f"plot_{group_id}.png"
+    date = f"{start_date.strftime('%Y-%m-%d')}~{end_date.strftime('%Y-%m-%d')}"
+    await run_in_pool(draw_all_long, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
     # 发送图片
     return await get_image_cq(path)
 
@@ -120,8 +153,8 @@ async def get_word_statistic(bot, group_id, days, word):
 # ------------------------------------------------ 聊天逻辑 ------------------------------------------------
 
 
-# 发送统计图
-sta = CmdHandler(["/sta"], logger, priority=100)
+# 发送每日统计图
+sta = CmdHandler(["/sta", "/sta_day"], logger, priority=100)
 sta.check_cdrate(cd).check_wblist(gbl).check_group()
 @sta.handle()
 async def _(ctx: HandlerContext):
@@ -135,7 +168,43 @@ async def _(ctx: HandlerContext):
     except:
         logger.info(f'日期格式错误, 使用当前日期')
         date = None
-    res = await get_statistic(ctx.bot, ctx.group_id, date)
+    res = await get_day_statistic(ctx.bot, ctx.group_id, date)
+    return await ctx.asend_reply_msg(res)
+
+
+# 发送长时间统计图
+sta_sum = CmdHandler(["/sta_sum", "/sta_summary"], logger, priority=101)
+sta_sum.check_cdrate(cd).check_wblist(gbl).check_group()
+@sta_sum.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip().split()
+    end_date, start_date = None, None
+
+    try:
+        if len(args) == 1:
+            args = args[0].strip().replace('/', '-')
+            if args.count('-') == 0:
+                days = int(args)
+                end_date = datetime.now()
+                start_date = (end_date - timedelta(days=days))
+            else:
+                start_date = datetime.strptime(args, "%Y-%m-%d")
+                end_date = datetime.now()
+        else:
+            st = args[0].strip().replace('/', '-')
+            ed = args[1].strip().replace('/', '-')
+            start_date = datetime.strptime(st, "%Y-%m-%d")
+            end_date = datetime.strptime(ed, "%Y-%m-%d")
+
+    except:
+        assert_and_reply(True, f"""
+使用方式: 
+/sta_sum [起始日期] [结束日期]
+/sta_sum [起始日期]
+/sta_sum [天数]
+""".strip())
+
+    res = await get_long_statistic(ctx.bot, ctx.group_id, start_date, end_date)
     return await ctx.asend_reply_msg(res)
 
 
@@ -229,7 +298,7 @@ async def cron_statistic():
 
         logger.info(f'尝试发送 {group_id} 统计图', flush=True)
         try:
-            res = await get_statistic(bot, group_id)
+            res = await get_day_statistic(bot, group_id)
             await send_group_msg_by_bot(bot, group_id, res)
         except Exception as e:
             logger.print_exc(f'发送 {group_id} 统计图失败')
