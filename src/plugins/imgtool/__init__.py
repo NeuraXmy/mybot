@@ -1083,6 +1083,26 @@ crop l0.1 t0.2 裁剪掉图片左边10%，上边20%部分
 
         return img.crop((x1, y1, x2, y2))
 
+class DemirageOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("demirage", ImageType.Static, ImageType.Multiple, 'single')
+        self.help = """
+提取幻影坦克图片的表图和底图
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(not args, "该操作不接受参数")
+        return None
+    
+    def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> List[Image.Image]: 
+        surface = Image.new('RGBA', img.size, (255, 255, 255, 255))
+        hidden = Image.new('RGBA', img.size, (0, 0, 0, 255))
+        surface.paste(img, (0, 0), img)
+        hidden.paste(img, (0, 0), img)
+        surface = surface.convert('RGB')
+        hidden = hidden.convert('RGB')
+        return [surface, hidden]
+
 
 # 注册所有图片操作
 def register_all_ops():

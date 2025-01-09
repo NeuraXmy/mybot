@@ -1397,7 +1397,7 @@ class HandlerContext:
 
 
 class CmdHandler:
-    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False, disabled=False):
+    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False, disabled=False, banned_cmds: List[str] = None):
         if isinstance(commands, str):
             commands = [commands]
         self.commands = commands
@@ -1411,6 +1411,9 @@ class CmdHandler:
         self.wblist_checks = []
         self.cdrate_checks = []
         self.disabled = disabled
+        self.banned_cmds = banned_cmds or []
+        if isinstance(self.banned_cmds, str):
+            self.banned_cmds = [self.banned_cmds]
 
     def check_group(self):
         self.private_group_check = "group"
@@ -1471,6 +1474,9 @@ class CmdHandler:
                         context.trigger_cmd = cmd
                         break
                 context.arg_text = plain_text.replace(context.trigger_cmd, "")
+
+                if any([banned_cmd in context.trigger_cmd for banned_cmd in self.banned_cmds]):
+                    return
 
                 context.message_id = event.message_id
                 context.user_id = event.user_id
