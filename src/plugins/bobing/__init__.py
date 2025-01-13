@@ -49,12 +49,14 @@ rand = CmdHandler(["/rand", "/roll"], logger)
 rand.check_cdrate(cd).check_wblist(gbl)
 @rand.handle()
 async def _(ctx: HandlerContext):
-    l, r = 0, 100
-    try:
-        l, r = map(int, ctx.get_args().strip().split())
-        assert l <= r
-    except:
-        pass
+    args = ctx.get_args().strip().split()
+    if len(args) == 1:
+        l, r = 1, int(args[0])
+    elif len(args) == 2:
+        l, r = int(args[0]), int(args[1])
+        assert_and_reply(l <= r, '左边界必须小于右边界')
+    else:
+        l, r = 0, 100
     msg = f'{random.randint(l, r)}'
     return await ctx.asend_reply_msg(msg)
 

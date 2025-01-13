@@ -1778,13 +1778,13 @@ pjsk_bind.check_cdrate(cd).check_wblist(gbl)
 @pjsk_bind.handle()
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
-    assert args.isdigit(), "请输入正确游戏ID"
     # 查询
     if not args:
         uid = get_user_bind_uid(ctx.user_id, check_bind=False)
         if not uid:
             return await ctx.asend_reply_msg("在指令后加上游戏ID进行绑定")
         return await ctx.asend_reply_msg(f"已绑定游戏ID: {uid}")
+    assert args.isdigit(), "请输入正确游戏ID"
     # 绑定
     profile = await get_basic_profile(args)
     user_name = profile['user']['name']
