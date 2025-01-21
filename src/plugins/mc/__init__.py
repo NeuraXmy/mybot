@@ -289,15 +289,18 @@ class ServerData:
 servers = set()
 
 # 通过group_id获取服务器
-def get_server(group_id) -> ServerData:
+def get_server(group_id, raise_exc=True) -> ServerData:
     for server in servers:
         if str(server.group_id) == str(group_id):
             return server
-    raise Exception(f'群 {group_id} 没有配置MC服务器')
+    if raise_exc:
+        raise Exception(f'群 {group_id} 没有配置MC服务器')
+    else:
+        return None
 
 # 通过group_id添加服务器
 async def add_server(group_id):
-    server = get_server(group_id)
+    server = get_server(group_id, raise_exc=False)
     if server is None:
         servers.add(ServerData(group_id))
     else:
@@ -305,7 +308,7 @@ async def add_server(group_id):
 
 # 通过group_id移除服务器
 async def remove_server(group_id):
-    server = get_server(group_id)
+    server = get_server(group_id, raise_exc=False)
     if server is not None:
         servers.remove(server)
         logger.info(f'移除 {group_id} 的服务器')
