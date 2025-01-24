@@ -643,7 +643,7 @@ async def get_card_image(cid, after_training):
 async def get_basic_profile(uid):
     cache_path = f"data/sekai/basic_profile_cache/{uid}.json"
     try:
-        url = f"http://api.unipjsk.com/api/user/{uid}/profile"
+        url = config["profile_api_url"].format(uid=uid)
         profile = await download_json(url)
         if not profile:
             raise Exception(f"找不到ID为{uid}的玩家")
@@ -652,6 +652,7 @@ async def get_basic_profile(uid):
             json.dump(profile, f, ensure_ascii=False, indent=4)
         return profile
     except Exception as e:
+        logger.print_exc(f"获取{uid}基本信息失败，使用缓存数据")
         if os.path.exists(cache_path):
             with open(cache_path, "r", encoding="utf-8") as f:
                 profile = json.load(f)
@@ -752,7 +753,7 @@ def get_user_bind_uid(user_id, check_bind=True):
     user_id = str(user_id)
     bind_list = file_db.get("bind_list", {})
     if check_bind and not bind_list.get(user_id, None):
-        raise Exception(f"请使用 /绑定 ID 绑定游戏账号")
+        raise Exception(f"请使用\"/绑定 你的游戏ID\"绑定游戏账号")
     return bind_list.get(user_id, None)
 
 # 合成完整头衔图片
