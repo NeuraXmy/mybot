@@ -47,6 +47,7 @@ class ServerData:
         self.first_update = True
         self.failed_count = 0
         self.failed_time = None
+        self.last_failed_reason = None
 
         self.players = {}
         self.player_login_time = {}
@@ -102,7 +103,7 @@ class ServerData:
     async def query_dynamicmap(self, ts):
         async with aiohttp.ClientSession() as session:
             url = f'{self.url}/up/world/world/{ts}'
-            async with session.get(url) as resp:
+            async with session.get(url, verify_ssl=False) as resp:
                 data = await resp.text()
                 json_data = json.loads(data)
                 return json_data
@@ -115,7 +116,7 @@ class ServerData:
                 'name': name,
                 'message': msg
             }
-            async with session.post(url, json=payload) as resp:
+            async with session.post(url, json=payload, verify_ssl=False) as resp:
                 return await resp.text()
 
     # 通过log请求
@@ -123,7 +124,7 @@ class ServerData:
         client_id = f'mybot_group_{self.group_id}'
         async with aiohttp.ClientSession() as session:
             url = f'{self.url}/query?client_id={client_id}'
-            async with session.get(url) as resp:
+            async with session.get(url, verify_ssl=False) as resp:
                 data = await resp.text()
                 json_data = json.loads(data)
                 return json_data
@@ -335,6 +336,7 @@ async def query_server(server: ServerData):
                 if server.notify_on:
                     server.queue.append('重新建立服务器监听连接')
             server.failed_count = 0
+            server.last_failed_reason = None
             server.has_sucess_query = True
         except Exception as e:
             if server.failed_count <= DISCONNECT_NOTIFY_COUNT:
@@ -348,6 +350,7 @@ async def query_server(server: ServerData):
                 else:
                     logger.print_exc(f'{server.url} 定时查询失败达到上限: {e}')
             server.failed_count += 1
+            server.last_failed_reason = str(e)
             server.next_query_ts = 0
 
 # 请求所有服务器
@@ -390,7 +393,12 @@ async def _(ctx: HandlerContext):
     if server.listen_mode == 'off':
         msg += f"监听已关闭"
     elif server.failed_count > 0:
-        msg += f"服务器监听连接断开\n断连时间: {server.failed_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        msg += f"服务器监听连接断开\n"
+        if server.failed_time:
+            msg += f"断连时间: {server.failed_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        if server.last_failed_reason:
+            msg += f"最近一次错误:\n"
+            msg += server.last_failed_reason
     else:
         if server.listen_mode == 'dynamicmap':
             msg += f'服务器时间: {gametick2time(server.time)}'
