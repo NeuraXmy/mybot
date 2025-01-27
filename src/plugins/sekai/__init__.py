@@ -1520,6 +1520,9 @@ async def compose_mysekai_res_image(qid):
 
     # 排序
     site_res_num = sorted(list(site_res_num.items()), key=lambda x: x[0])
+    tmp = site_res_num[1]
+    site_res_num[1] = site_res_num[2]
+    site_res_num[2] = tmp
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_res_num[i] = (site_id, sorted(list(res_num.items()), key=lambda x: (-x[1], x[0])))
