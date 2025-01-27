@@ -2,7 +2,6 @@
 
 Project Sekai（世界计划）日服游戏相关服务
 
-
 ###  用户指令
 
 - [`/pjsk bind` 绑定账号](#pjsk-bind)
@@ -23,6 +22,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
 - [`/pjsk box` box查询](#pjsk-box)
 - [`/pjsk sk` 榜线预测查询](#pjsk-sk)
+- [`/pjsk mysekai res` 烤森资源查询](#pjsk-mysekai-res)
 
 ### 管理指令
 
@@ -310,6 +310,21 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/sk预测`
+
+
+## `/pjsk mysekai res`
+
+```
+查询烤森资源，需要绑定并上传抓包数据
+```
+
+- **指令别名**
+
+    `/msr`
+
+- **示例**
+
+    `/msr`
 
 
 --- 
