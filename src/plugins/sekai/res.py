@@ -185,6 +185,7 @@ skills              = SekaiJsonRes("技能数据", res_db_collection.specify("sk
 honors              = SekaiJsonRes("头衔数据", res_db_collection.specify("honors.json"))
 honor_groups        = SekaiJsonRes("头衔组数据", res_db_collection.specify("honorGroups.json"))
 bonds_honnors       = SekaiJsonRes("羁绊头衔数据", res_db_collection.specify("bondsHonors.json"))
+mysekai_materials   = SekaiJsonRes("Mysekai素材数据", res_db_collection.specify("mysekaiMaterials.json"))
 
 music_cn_titles     = SekaiJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json")
 

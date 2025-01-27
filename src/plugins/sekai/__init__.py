@@ -659,6 +659,24 @@ async def get_basic_profile(uid):
             return profile
         raise e
     
+# 从玩家基本信息获取该玩家头像的card id、chara id、group、avatar img
+async def get_player_avatar_info_by_basic_profile(basic_profile):
+    decks = basic_profile['userDeck']
+    pcards = [find_by(basic_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
+    for pcard in pcards:
+        pcard['after_training'] = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
+    card_id = pcards[0]['cardId']
+    avatar_img = await get_card_thumbnail(card_id, pcards[0]['after_training'])
+    chara_id = find_by(await res.cards.get(), 'id', card_id)['characterId']
+    group = get_group_by_chara_id(chara_id)
+    return {
+        'card_id': card_id,
+        'chara_id': chara_id,
+        'group': group,
+        'avatar_img': avatar_img,
+        'bg_group': await get_group_by_card_id(card_id)
+    }
+
 # 获取玩家详细信息 -> profile, msg
 async def get_detailed_profile(qid, raise_exc=False):
     cache_path = None
@@ -676,7 +694,7 @@ async def get_detailed_profile(qid, raise_exc=False):
         
         cache_path = f"data/sekai/profile_cache/{uid}.json"
 
-        url = f"http://suite.unipjsk.com/api/user/{uid}/profile"
+        url = config["suite_api_url"].format(uid=uid)
         try:
             profile = await download_json(url)
         except Exception as e:
@@ -715,7 +733,8 @@ async def get_detailed_profile(qid, raise_exc=False):
 
 # 从玩家详细信息获取该玩家头像的card id、chara id、group、avatar img
 async def get_player_avatar_info(detail_profile):
-    decks = detail_profile['userDecks'][0]
+    deck_id = detail_profile['userGamedata']['deck']
+    decks = find_by(detail_profile['userDecks'], 'deckId', deck_id)
     cards = [find_by(detail_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
     for card in cards:
         card['after_training'] = card['defaultImage'] == "special_training" and card['specialTrainingStatus'] == "done"
@@ -739,9 +758,75 @@ async def get_detailed_profile_card(profile, msg) -> Frame:
                 avatar_info = await get_player_avatar_info(profile)
                 ImageBox(avatar_info['avatar_img'], size=(80, 80), image_size_mode='fill')
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
-                    game_data = profile['user']['userGamedata']
-                    update_time = datetime.fromtimestamp(profile['updatedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    game_data = profile['userGamedata']
+                    update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+            if msg:
+                TextBox(f"获取数据失败:{msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
+    return f
+
+# 获取玩家mysekai抓包数据 -> mysekai_info, msg
+async def get_mysekai_info(qid, raise_exc=False):
+    cache_path = None
+    try:
+        try:
+            uid = get_user_bind_uid(qid)
+        except Exception as e:
+            logger.info(f"获取{qid}mysekai抓包数据失败: 未绑定游戏账号")
+            raise e
+        
+        cache_path = f"data/sekai/mysekai_cache/{uid}.json"
+
+        url = config["mysekai_api_url"].format(uid=uid)
+        try:
+            mysekai_info = await download_json(url)
+        except Exception as e:
+            if int(e.args[0]) == 404:
+                logger.info(f"获取{qid}mysekai抓包数据失败: 未上传过mysekai数据")
+                raise Exception("未上传过mysekai数据")
+            else:
+                logger.info(f"获取{qid}mysekai抓包数据失败: {e}")
+                raise Exception(f"HTTP ERROR {e}")
+        if not mysekai_info:
+            logger.info(f"获取{qid}mysekai抓包数据失败: 找不到ID为{uid}的玩家")
+            raise Exception(f"找不到ID为{uid}的玩家")
+        
+        create_parent_folder(cache_path)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(mysekai_info, f, ensure_ascii=False, indent=4)
+        logger.info(f"获取{qid}mysekai抓包数据成功，数据已缓存")
+
+    except Exception as e:
+        if cache_path and os.path.exists(cache_path):
+            with open(cache_path, "r", encoding="utf-8") as f:
+                mysekai_info = json.load(f)
+                logger.info(f"从缓存获取{qid}mysekai抓包数据")
+            return mysekai_info, str(e) + "(使用先前的缓存数据)"
+        else:
+            logger.info(f"未找到{qid}的缓存mysekai抓包数据")
+
+        if raise_exc:
+            raise Exception(f"获取mysekai数据失败: {e}")
+        else:
+            return None, str(e)
+    return mysekai_info, ""
+
+# 获取玩家mysekai抓包数据的简单卡片
+async def get_mysekai_info_card(mysekai_info, basic_profile, msg) -> Frame:
+    with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
+        with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
+            if mysekai_info:
+                avatar_info = await get_player_avatar_info_by_basic_profile(basic_profile)
+                ImageBox(avatar_info['avatar_img'], size=(80, 80), image_size_mode='fill')
+                with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
+                    game_data = basic_profile['user']
+                    mysekai_game_data = mysekai_info['updatedResources']['userMysekaiGamedata']
+                    update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
+                        TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                        TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if msg:
@@ -1068,7 +1153,27 @@ async def compose_diff_board_image(diff, lv_musics, qid, show_id):
                         with Grid(col_count=10).set_sep(5):
                             for i in range(len(musics)):
                                 with VSplit().set_sep(2):
-                                    ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill')
+                                    with Frame():
+                                        ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill')
+
+                                        if profile:
+                                            mid = musics[i]['id'] 
+                                            all_diff_result = find_by(profile['userMusics'], "musicId", mid)
+                                            if all_diff_result:
+                                                all_diff_result = all_diff_result.get('userMusicDifficultyStatuses', [])
+                                                diff_result = find_by(all_diff_result, "musicDifficulty", diff)
+                                                if not diff_result or diff_result['musicDifficultyStatus'] != "available":
+                                                    continue
+                                                full_combo, all_prefect = False, False
+                                                for item in diff_result["userMusicResults"]:
+                                                    full_combo = full_combo or item["fullComboFlg"]
+                                                    all_prefect = all_prefect or item["fullPerfectFlg"]
+                                                result_type = "clear" if len(diff_result["userMusicResults"]) > 0 else "not_clear"
+                                                if full_combo: result_type = "fc"
+                                                if all_prefect: result_type = "ap"
+                                                result_img = res.misc_images.get(f"icon_{result_type}.png")
+                                                ImageBox(result_img, size=(16, 16), image_size_mode='fill').set_offset((64 - 10, 64 - 10))
+
                                     if show_id:
                                         TextBox(f"{musics[i]['id']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)).set_w(64)
                                 
@@ -1374,6 +1479,67 @@ async def compose_board_predict_image():
                     TextBox(current_score, item_style).set_bg(bg).set_size(g_size).set_content_align('r').set_padding((16, 0))
                     TextBox(final_score,   item_style).set_bg(bg).set_size(g_size).set_content_align('r').set_padding((16, 0))
 
+
+    return await run_in_pool(canvas.get_img)
+
+# 合成mysekai资源图片
+async def compose_mysekai_res_image(qid):
+    uid = get_user_bind_uid(qid)
+    basic_profile = await get_basic_profile(uid)
+    mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
+
+    # 计算资源数量
+    site_res_num = {}
+    harvest_maps = mysekai_info['updatedResources']['userMysekaiHarvestMaps']
+    for site_map in harvest_maps:
+        site_id = site_map['mysekaiSiteId']
+        res_drops = site_map['userMysekaiSiteHarvestResourceDrops']
+        for res_drop in res_drops:
+            res_type = res_drop['resourceType']
+            res_id = res_drop['resourceId']
+            res_status = res_drop['mysekaiSiteHarvestResourceDropStatus']
+            res_quantity = res_drop['quantity']
+
+            if res_type != "mysekai_material": continue
+            if res_status != "before_drop": continue
+
+            if site_id not in site_res_num:
+                site_res_num[site_id] = {}
+            if res_id not in site_res_num[site_id]:
+                site_res_num[site_id][res_id] = 0
+            site_res_num[site_id][res_id] += res_quantity
+
+    # 获取图片
+    site_imgs, res_imgs = {}, {}
+    for site_id in site_res_num:
+        site_imgs[site_id] = await get_asset(f"mysekai/site/sitemap/texture_rip/img_harvest_site_{site_id}.png")
+        for res_id in site_res_num[site_id]:
+            if res_id not in res_imgs:
+                icon_name = find_by(await res.mysekai_materials.get(), "id", res_id)['iconAssetbundleName']
+                res_imgs[res_id] = await get_asset(f"mysekai/thumbnail/material/{icon_name}_rip/{icon_name}.png")
+
+    # 排序
+    site_res_num = sorted(list(site_res_num.items()), key=lambda x: x[0])
+    for i in range(len(site_res_num)):
+        site_id, res_num = site_res_num[i]
+        site_res_num[i] = (site_id, sorted(list(res_num.items()), key=lambda x: (-x[1], x[0])))
+    
+    # 绘制
+    with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
+
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(16) as vs:
+                for site_id, res_num in site_res_num:
+                    if not res_num: continue
+                    with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(16):
+                        ImageBox(site_imgs[site_id], size=(None, 85))
+                        
+                        with Grid(col_count=5).set_content_align('lt').set_sep(hsep=5, vsep=5):
+                            for res_id, res_quantity in res_num:
+                                with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
+                                    ImageBox(res_imgs[res_id], size=(40, 40), use_alphablend=True)
+                                    TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(100, 100, 100))).set_w(80).set_content_align('l')
 
     return await run_in_pool(canvas.get_img)
 
@@ -1834,9 +2000,8 @@ pjsk_reg_time.check_cdrate(cd).check_wblist(gbl)
 @pjsk_reg_time.handle()
 async def _(ctx: HandlerContext):
     profile, pmsg = await get_detailed_profile(ctx.user_id, raise_exc=True)
-    fst_card = find_by(profile['userCards'], 'cardId', 1)
-    reg_time = datetime.fromtimestamp(fst_card['createdAt'] / 1000).strftime('%Y-%m-%d')
-    user_name = profile['user']['userGamedata']['name']
+    reg_time = datetime.fromtimestamp(profile['userRegistration']['registeredAt'] / 1000).strftime('%Y-%m-%d')
+    user_name = profile['userGamedata']['name']
     return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time}")
 
 
@@ -2096,6 +2261,18 @@ pjsk_rank_predict.check_cdrate(cd).check_wblist(gbl)
 @pjsk_rank_predict.handle()
 async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(await get_image_cq(await compose_board_predict_image()))
+
+
+# 查询mysekai资源
+pjsk_mysekai_res = CmdHandler([
+    "/pjsk mysekai res", "/pjsk_mysekai_res", 
+    "/mysekai res", "/mysekai_res",
+    "/msr", "/mysekai资源"
+], logger)
+pjsk_mysekai_res.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_res.handle()
+async def _(ctx: HandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_mysekai_res_image(ctx.user_id)))
 
 
 # ========================================= 定时任务 ========================================= #

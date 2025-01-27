@@ -362,6 +362,7 @@ async def query_all_servers():
 # 消费消息队列
 @repeat_with_interval(QUEUE_CONSUME_INTERVAL, '消费消息队列', logger)
 async def consume_queue():
+    consume_queue_failed_count = 0
     bot = get_bot()
     for server in servers:
         try:
