@@ -120,6 +120,10 @@ ASSET_DB_URL_AND_MAPS = [
     )
 ]
 
+HIGHLIGHTED_MYSEKAI_RES = [
+    5, 12, 20, 24,
+]
+
 
 # ========================================= 绘图相关 ========================================= #
 
@@ -1541,8 +1545,9 @@ async def compose_mysekai_res_image(qid):
                         with Grid(col_count=5).set_content_align('lt').set_sep(hsep=5, vsep=5):
                             for res_id, res_quantity in res_num:
                                 with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
+                                    text_color = (100, 100, 100) if res_id not in HIGHLIGHTED_MYSEKAI_RES else (200, 50, 0)
                                     ImageBox(res_imgs[res_id], size=(40, 40), use_alphablend=True)
-                                    TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(100, 100, 100))).set_w(80).set_content_align('l')
+                                    TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=text_color)).set_w(80).set_content_align('l')
 
     return await run_in_pool(canvas.get_img)
 
