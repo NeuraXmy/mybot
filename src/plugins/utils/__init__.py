@@ -632,7 +632,7 @@ async def send_group_fold_msg(bot, group_id, contents):
         }
     } for content in contents]
     ret = await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
-    ret['message_id'] = int(ret['message_id']) - 1
+    ret['message_id'] = int(ret['message_id'])
     return record_self_reply_msg(ret)
 
 # 发送多条消息折叠消息
@@ -1390,10 +1390,14 @@ class HandlerContext:
     def asend_fold_msg_adaptive(self, msg: str, threshold=100, need_reply=True):
         return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply)
 
-    def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True):
+    async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True):
         if show_cmd:
-            msgs = [self.trigger_cmd + self.arg_text] + msgs
-        return send_multiple_fold_msg(self.bot, self.event, msgs)
+            cmd_msg = self.trigger_cmd + self.arg_text
+            if self.group_id:
+                user_name = await get_group_member_name(self.bot, self.group_id, self.user_id)
+                cmd_msg = f'{user_name}: {cmd_msg}'
+            msgs = [cmd_msg] + msgs
+        return await send_multiple_fold_msg(self.bot, self.event, msgs)
 
 
 class CmdHandler:

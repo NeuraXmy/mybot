@@ -16,6 +16,7 @@ from . import res
 from datetime import datetime
 import random
 import colorsys
+import math
 
 
 config = get_config('sekai')
@@ -28,8 +29,9 @@ live_notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify_live', is_s
 music_notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify_music', is_service=False)
 
 subs = {
-    "live": SubHelper("虚拟live通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: x.split("@")),
-    "music": SubHelper("新曲上线通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: x.split("@")),
+    "live": SubHelper("虚拟live通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
+    "music": SubHelper("新曲上线通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
+    "msr": SubHelper("Mysekai资源查询自动推送", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
 }
 
 music_name_retriever = get_text_retriever("music_name")
@@ -120,10 +122,38 @@ ASSET_DB_URL_AND_MAPS = [
     )
 ]
 
-HIGHLIGHTED_MYSEKAI_RES = [
-    5, 12, 20, 24,
+MOST_RARE_MYSEKAI_RES = [
+    "mysekai_material_5", "mysekai_material_12", "mysekai_material_20", "mysekai_material_24",
 ]
-
+MYSEKAI_SITE_MAP_IMAGE_ANCHOR = {
+    5: [-21, 16, -18, 19],
+    7: [-19, 23, -24, 18],
+    6: [-21.5, 24.5, -20, 26],
+    8: [-30, 15, -29.5, 15.5],
+}
+MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
+    1001: "oak.png",
+    1002: "pine.png",
+    1003: "palm.png",
+    1004: "luxury.png",
+    2001: "stone.png", 
+    2002: "copper.png", 
+    2003: "glass.png", 
+    2004: "iron.png", 
+    2005: "crystal.png", 
+    2006: "diamond.png",
+    3001: "toolbox.png",
+    6001: "barrel.png",
+    5001: "junk.png",
+    5002: "junk.png",
+    5003: "junk.png",
+    5004: "junk.png",
+    5101: "junk.png",
+    5102: "junk.png",
+    5103: "junk.png",
+    5104: "junk.png",
+}
+mysekai_res_icons = {}
 
 # ========================================= 绘图相关 ========================================= #
 
@@ -1486,11 +1516,224 @@ async def compose_board_predict_image():
 
     return await run_in_pool(canvas.get_img)
 
+# 获取mysekai上次资源刷新时间
+def get_mysekai_last_refresh_time():
+    now = datetime.now()
+    last_refresh_time = None
+    now = datetime.now()
+    if now.hour < 4:
+        last_refresh_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        last_refresh_time -= timedelta(days=1)
+    elif now.hour < 16:
+        last_refresh_time = now.replace(hour=4, minute=0, second=0, microsecond=0)
+    else:
+        last_refresh_time = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    return last_refresh_time
+
+# 获取mysekai资源图标
+async def get_mysekai_res_icon(key: str):
+    global mysekai_res_icons
+    if key not in mysekai_res_icons:
+        try:
+            res_id = int(key.split("_")[-1])
+            if key.startswith("mysekai_material"):
+                name = find_by(await res.mysekai_materials.get(), "id", res_id)['iconAssetbundleName']
+                mysekai_res_icons[key] = await get_asset(f"mysekai/thumbnail/material/{name}_rip/{name}.png")
+            elif key.startswith("mysekai_item"):
+                name = find_by(await res.mysekai_items.get(), "id", res_id)['iconAssetbundleName']
+                mysekai_res_icons[key] = await get_asset(f"mysekai/thumbnail/item/{name}_rip/{name}.png")
+            elif key.startswith("mysekai_fixture"):
+                name = find_by(await res.mysekai_fixtures.get(), "id", res_id)['assetbundleName']
+                try:
+                    mysekai_res_icons[key] = await get_asset(f"mysekai/thumbnail/fixture/{name}_{res_id}_rip/{name}_{res_id}.png")
+                except:
+                    mysekai_res_icons[key] = await get_asset(f"mysekai/thumbnail/fixture/{name}_rip/{name}.png")
+            elif key.startswith("mysekai_music_record"):
+                mid = find_by(await res.mysekai_musicrecords.get(), "id", res_id)['externalId']
+                name = find_by(await res.musics.get(), "id", mid)['assetbundleName']
+                mysekai_res_icons[key] = await get_asset(f"music/jacket/{name}_rip/{name}.png")
+            else:
+                return None
+        except:
+            logger.print_exc(f"获取{key}资源的图标失败")
+            return None
+    return mysekai_res_icons[key]
+
+# 合成mysekai资源位置地图
+async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
+    draw_w, draw_h = 1024, 1024
+    canvas_padding = 32
+
+    site_id = harvest_map['mysekaiSiteId']
+
+    # 获取所有资源点的位置
+    min_x, max_x, min_z, max_z = MYSEKAI_SITE_MAP_IMAGE_ANCHOR[site_id]
+    harvest_points = []
+    for item in harvest_map['userMysekaiSiteHarvestFixtures']:
+        fid = item['mysekaiSiteHarvestFixtureId']
+        fstatus = item['userMysekaiSiteHarvestFixtureStatus']
+        if not show_harvested and fstatus != "spawned": 
+            continue
+
+        x, z = item['positionX'], item['positionZ']
+        x = max(min_x - 0.2, min(max_x + 0.2, x))
+        z = max(min_z - 0.2, min(max_z + 0.2, z))
+
+        try: 
+            image_name = MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME[int(fid)]
+            image = res.misc_images.get(f"mysekai/harvest_fixtures/{image_name}")
+        except: 
+            image = None
+
+        harvest_points.append({
+            "id": fid,
+            'image': image,
+            'x': int((x - min_x) * draw_w / (max_x - min_x)),
+            'z': draw_h - int((z - min_z) * draw_h / (max_z - min_z)),
+        })
+    harvest_points.sort(key=lambda x: (x['z'], x['x']))
+
+    # 获取高亮资源的位置
+    all_res = {}
+    for item in harvest_map['userMysekaiSiteHarvestResourceDrops']:
+        res_type = item['resourceType']
+        res_id = item['resourceId']
+        res_key = f"{res_type}_{res_id}"
+        res_status = item['mysekaiSiteHarvestResourceDropStatus']
+        if not show_harvested and res_status != "before_drop": continue
+
+        x, z = item['positionX'], item['positionZ']
+        x = max(min_x - 0.2, min(max_x + 0.2, x))
+        z = max(min_z - 0.2, min(max_z + 0.2, z))
+        pkey = f"{x}_{z}"
+        
+        if pkey not in all_res:
+            all_res[pkey] = {}
+        if res_key not in all_res[pkey]:
+            all_res[pkey][res_key] = {
+                "id": res_id,
+                "type": res_type,
+                'x': int((x - min_x) * draw_w / (max_x - min_x)),
+                'z': draw_h - int((z - min_z) * draw_h / (max_z - min_z)),
+                'quantity': item['quantity'],
+                'image': await get_mysekai_res_icon(res_key),
+                'small_icon': False,
+                'del': False,
+            }
+        else:
+            all_res[pkey][res_key]['quantity'] += item['quantity']
+
+    for pkey in all_res:
+        # 删除固定数量常规掉落(石头木头)
+        is_cotton_flower = False
+        has_material_drop = False
+        for res_key, item in all_res[pkey].items():
+            if res_key in ['mysekai_material_1', 'mysekai_material_6'] and item['quantity'] == 6:
+                all_res[pkey][res_key]['del'] = True
+            if res_key in ['mysekai_material_21', 'mysekai_material_22']:
+                is_cotton_flower = True
+            if res_key.startswith("mysekai_material"):
+                has_material_drop = True
+        # 设置是否需要使用小图标（1.非素材掉落 2.棉花的其他掉落）
+        for res_key, item in all_res[pkey].items():
+            if not res_key.startswith("mysekai_material") and has_material_drop:
+                all_res[pkey][res_key]['small_icon'] = True
+            if is_cotton_flower and res_key not in ['mysekai_material_21', 'mysekai_material_22']:
+                all_res[pkey][res_key]['small_icon'] = True
+
+    # 绘制
+    with Canvas(bg=FillBg(WHITE)) as canvas:
+        canvas.set_size((draw_w + 2 * canvas_padding, draw_h + 2 * canvas_padding))
+
+        site_image_path = f"mysekai/site_image_{site_id}.png"
+        try: site_image = res.misc_images.get(site_image_path)
+        except: site_image = None
+        if site_image:
+            ImageBox(site_image, size=(draw_w + 2 * canvas_padding, draw_h + 2 * canvas_padding))
+        
+        with Frame().set_padding(canvas_padding):
+            # 绘制资源点
+            for point in harvest_points:
+                point_img_size = 150
+                offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.6))
+                if point['image']:
+                    ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
+
+            # 获取所有资源掉落绘制
+            res_draw_calls = []
+            for pkey in all_res:
+                pres = sorted(list(all_res[pkey].values()), key=lambda x: (-x['quantity'], x['id']))
+
+                # 统计两种数量
+                small_total, large_total = 0, 0
+                for item in pres:
+                    if item['del']: continue
+                    if item['small_icon']:  small_total += 1
+                    else:                   large_total += 1
+                small_idx, large_idx = 0, 0
+
+                for item in pres:
+                    if item['del']: continue
+
+                    # 大小和位置
+                    large_size, small_size = 30, 14
+                    if item['small_icon']:
+                        res_img_size = small_size
+                        offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
+                        offsetz = int(item['z'] - 0.4 * large_size + 1.1 * small_size * small_idx)
+                        small_idx += 1
+                    else:
+                        res_img_size = large_size
+                        offsetx = int(item['x'] - 0.5 * large_size * large_total + large_size * large_idx)
+                        offsetz = int(item['z'] - 0.5 * large_size)
+                        large_idx += 1
+
+                    # 绘制顺序 小图标>稀有资源>其他
+                    if item['small_icon']:
+                        draw_order = len(res_draw_calls) + 1000000
+                    if res_key in MOST_RARE_MYSEKAI_RES:
+                        draw_order = len(res_draw_calls) + 100000
+                    else:
+                        draw_order = len(res_draw_calls)
+
+                    if item['image']:
+                        res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
+            
+            # 排序资源掉落
+            res_draw_calls.sort(key=lambda x: x[-1])
+
+            # 绘制资源
+            for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
+                ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
+                if not small_icon:
+                    TextBox(
+                        f"{res_quantity}", 
+                        TextStyle(font=DEFAULT_BOLD_FONT, size=10, color=(100, 100, 100, 200))
+                    ).set_offset((offsetx, offsetz))
+
+    return await run_in_pool(canvas.get_img)
+
 # 合成mysekai资源图片
-async def compose_mysekai_res_image(qid):
+async def compose_mysekai_res_image(qid, show_harvested):
     uid = get_user_bind_uid(qid)
     basic_profile = await get_basic_profile(uid)
     mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
+
+    upload_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
+    if upload_time < get_mysekai_last_refresh_time():
+        raise ReplyException(f"数据已过期({upload_time.strftime('%Y-%m-%d %H:%M:%S')})，请重新上传")
+
+    # 天气预报图片
+    schedule = mysekai_info['mysekaiPhenomenaSchedules']
+    phenom_imgs, phenom_idx = [], None
+    phenom_texts = ["4:00", "16:00", "4:00", "16:00"]
+    for i, item in enumerate(schedule):
+        refresh_time = datetime.fromtimestamp(item['scheduleDate'] / 1000)
+        phenom_id = item['mysekaiPhenomenaId']
+        if not phenom_idx and datetime.now() >= refresh_time: 
+            phenom_idx = i
+        asset_name = find_by(await res.mysekai_phenomenas.get(), "id", phenom_id)['iconAssetbundleName']
+        phenom_imgs.append(await get_asset(f"mysekai/thumbnail/phenomena/{asset_name}_rip/{asset_name}.png"))
 
     # 计算资源数量
     site_res_num = {}
@@ -1503,38 +1746,53 @@ async def compose_mysekai_res_image(qid):
             res_id = res_drop['resourceId']
             res_status = res_drop['mysekaiSiteHarvestResourceDropStatus']
             res_quantity = res_drop['quantity']
+            res_key = f"{res_type}_{res_id}"
 
-            if res_type != "mysekai_material": continue
-            if res_status != "before_drop": continue
+            if not show_harvested and res_status != "before_drop": continue
 
             if site_id not in site_res_num:
                 site_res_num[site_id] = {}
-            if res_id not in site_res_num[site_id]:
-                site_res_num[site_id][res_id] = 0
-            site_res_num[site_id][res_id] += res_quantity
+            if res_key not in site_res_num[site_id]:
+                site_res_num[site_id][res_key] = 0
+            site_res_num[site_id][res_key] += res_quantity
 
-    # 获取图片
-    site_imgs, res_imgs = {}, {}
-    for site_id in site_res_num:
-        site_imgs[site_id] = await get_asset(f"mysekai/site/sitemap/texture_rip/img_harvest_site_{site_id}.png")
-        for res_id in site_res_num[site_id]:
-            if res_id not in res_imgs:
-                icon_name = find_by(await res.mysekai_materials.get(), "id", res_id)['iconAssetbundleName']
-                res_imgs[res_id] = await get_asset(f"mysekai/thumbnail/material/{icon_name}_rip/{icon_name}.png")
+    # 获取资源地图图片
+    site_imgs = {
+        site_id: await get_asset(f"mysekai/site/sitemap/texture_rip/img_harvest_site_{site_id}.png") 
+        for site_id in site_res_num
+    }
 
     # 排序
     site_res_num = sorted(list(site_res_num.items()), key=lambda x: x[0])
     tmp = site_res_num[1]
     site_res_num[1] = site_res_num[2]
     site_res_num[2] = tmp
+    site_harvest_map_imgs = []
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_res_num[i] = (site_id, sorted(list(res_num.items()), key=lambda x: (-x[1], x[0])))
+
+    # 绘制资源位置图
+    for i in range(len(site_res_num)):
+        site_id, res_num = site_res_num[i]
+        site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
+        site_harvest_map_imgs.append(await compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
     
-    # 绘制
+    # 绘制数量图
     with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
-            await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
+
+            with HSplit().set_sep(32).set_content_align('lb'):
+                await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
+
+                # 天气预报
+                with HSplit().set_sep(8).set_content_align('lb').set_bg(roundrect_bg()).set_padding(10):
+                    for i in range(len(phenom_imgs)):
+                        with Frame():
+                            color = (175, 175, 175) if i != phenom_idx else (0, 0, 0)
+                            with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
+                                TextBox(phenom_texts[i], TextStyle(font=DEFAULT_BOLD_FONT, size=15, color=color)).set_w(60).set_content_align('c')
+                                ImageBox(phenom_imgs[i], size=(None, 50), use_alphablend=True)   
 
             with VSplit().set_content_align('c').set_item_align('c').set_sep(16) as vs:
                 for site_id, res_num in site_res_num:
@@ -1543,13 +1801,21 @@ async def compose_mysekai_res_image(qid):
                         ImageBox(site_imgs[site_id], size=(None, 85))
                         
                         with Grid(col_count=5).set_content_align('lt').set_sep(hsep=5, vsep=5):
-                            for res_id, res_quantity in res_num:
+                            for res_key, res_quantity in res_num:
+                                res_img = await get_mysekai_res_icon(res_key)
+                                if not res_img: continue
                                 with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
-                                    text_color = (100, 100, 100) if res_id not in HIGHLIGHTED_MYSEKAI_RES else (200, 50, 0)
-                                    ImageBox(res_imgs[res_id], size=(40, 40), use_alphablend=True)
+                                    text_color = (150, 150, 150) if res_key not in MOST_RARE_MYSEKAI_RES else (200, 50, 0)
+                                    ImageBox(res_img, size=(40, 40), use_alphablend=True)
                                     TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=text_color)).set_w(80).set_content_align('l')
 
-    return await run_in_pool(canvas.get_img)
+    # 绘制位置图
+    with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(32) as canvas2:
+        with Grid(col_count=2).set_bg(roundrect_bg()).set_sep(16, 16).set_padding(16):
+            for img in site_harvest_map_imgs:
+                ImageBox(img)
+
+    return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -1600,9 +1866,10 @@ async def _(ctx: HandlerContext):
     arg = ctx.get_args().strip().lower()
     if arg not in subs.keys():
         return await ctx.asend_reply_msg(f"需要指定订阅项目: {'/'.join(subs.keys())}")
+    name = subs[arg].name
     if subs[arg].sub(ctx.user_id, ctx.group_id):
-        return await ctx.asend_reply_msg(f"成功订阅{arg}通知")
-    return await ctx.asend_reply_msg(f"已经订阅过{arg}通知")
+        return await ctx.asend_reply_msg(f"成功订阅{name}")
+    return await ctx.asend_reply_msg(f"已经订阅过{name}")
 
 
 # 取消订阅提醒的at通知
@@ -1613,9 +1880,10 @@ async def _(ctx: HandlerContext):
     arg = ctx.get_args().strip().lower()
     if arg not in subs.keys():
         return await ctx.asend_reply_msg(f"需要指定订阅项目: {'/'.join(subs.keys())}")
+    name = subs[arg].name
     if subs[arg].unsub(ctx.user_id, ctx.group_id):
-        return await ctx.asend_reply_msg(f"成功取消订阅{arg}通知")
-    return await ctx.asend_reply_msg(f"未曾订阅过{arg}通知")
+        return await ctx.asend_reply_msg(f"成功取消订阅{name}")
+    return await ctx.asend_reply_msg(f"未曾订阅过{name}")
 
 
 # 铺面查询
@@ -2280,7 +2548,10 @@ pjsk_mysekai_res = CmdHandler([
 pjsk_mysekai_res.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_res.handle()
 async def _(ctx: HandlerContext):
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_mysekai_res_image(ctx.user_id)))
+    return await ctx.asend_multiple_fold_msg([
+        await get_image_cq(img) for img in 
+        await compose_mysekai_res_image(ctx.user_id, False)
+    ], show_cmd=True)
 
 
 # ========================================= 定时任务 ========================================= #
@@ -2450,3 +2721,56 @@ async def new_music_notify():
         notified_appends.add(mid)
     file_db.set("no_append_musics", list(no_append_musics))
     file_db.set("notified_appends", list(notified_appends))
+
+
+# Mysekai资源查询自动推送
+@repeat_with_interval(10, 'Mysekai资源查询自动推送', logger)
+async def msr_auto_push():
+    bot = get_bot()
+
+    upload_times = await download_json(config['mysekai_upload_time_api_url'])
+    need_push_uids = [] # 需要推送的uid（有及时更新数据并且没有距离太久的）
+    last_refresh_time = get_mysekai_last_refresh_time()
+    for item in upload_times:
+        uid = item['id']
+        update_time = datetime.fromtimestamp(item['upload_time'] / 1000)
+        if update_time > last_refresh_time and datetime.now() - update_time < timedelta(hours=1):
+            need_push_uids.append(int(uid))
+            
+    for qid, gid in subs['msr'].get_all():
+        if not gbl.check_id(gid): continue
+        qid = str(qid)
+
+        msr_last_push_time = file_db.get("msr_last_push_time", {})
+
+        uid = get_user_bind_uid(qid, check_bind=False)
+        if uid and int(uid) not in need_push_uids:
+            continue
+
+        # 检查这个qid刷新后是否已经推送过
+        if qid in msr_last_push_time:
+            last_push_time = datetime.fromtimestamp(msr_last_push_time[qid] / 1000)
+            if last_push_time >= last_refresh_time:
+                continue
+
+        msr_last_push_time[qid] = int(datetime.now().timestamp() * 1000)
+        file_db.set("msr_last_push_time", msr_last_push_time)
+
+        if not uid:
+            logger.info(f"用户 {qid} 未绑定游戏id，跳过Mysekai资源查询自动推送")
+            continue
+            
+        try:
+            logger.info(f"在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询")
+            contents = [
+                await get_image_cq(img) for img in 
+                await compose_mysekai_res_image(qid, False)
+            ]
+            username = await get_group_member_name(bot, int(gid), int(uid))
+            contents = [f"{username} 的Mysekai资源查询推送"] + contents
+            await send_group_fold_msg(bot, gid, contents)
+        except:
+            logger.print_exc(f'在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询失败')
+            try: await send_group_msg_by_bot(bot, gid, f"自动推送用户 {qid} 的Mysekai资源查询失败")
+            except: pass
+        

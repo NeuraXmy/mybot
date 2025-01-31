@@ -225,13 +225,18 @@ class Painter:
         self, 
         sub_img: Image.Image,
         pos: Position, 
-        size: Size = None
+        size: Size = None,
+        alpha: float = None
     ) -> Image.Image:
         if size and size != sub_img.size:
             sub_img = sub_img.resize(size)
         pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
         overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
         overlay.paste(sub_img, pos)
+        if alpha is not None:
+            overlay_alpha = overlay.split()[3]
+            overlay_alpha = Image.eval(overlay_alpha, lambda a: int(a * alpha))
+            overlay.putalpha(overlay_alpha)
         self.img = Image.alpha_composite(self.img, overlay)
         return self
 
@@ -1039,7 +1044,7 @@ class TextBox(Widget):
     
 
 class ImageBox(Widget):
-    def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None, use_alphablend=False):
+    def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None, use_alphablend=False, alpha_adjust=1.0):
         super().__init__()
         if isinstance(image, str):
             self.image = Image.open(image)
@@ -1061,6 +1066,11 @@ class ImageBox(Widget):
         self.set_padding(0)
 
         self.set_use_alphablend(use_alphablend)
+        self.set_alpha_adjust(alpha_adjust)
+
+    def set_alpha_adjust(self, alpha_adjust: float):
+        self.alpha_adjust = alpha_adjust
+        return self
 
     def set_use_alphablend(self, use_alphablend):
         self.use_alphablend = use_alphablend
@@ -1101,7 +1111,7 @@ class ImageBox(Widget):
     def _draw_content(self, p: Painter):
         w, h = self._get_content_size()
         if self.use_alphablend:
-            p.paste_with_alphablend(self.image, (0, 0), (w, h))
+            p.paste_with_alphablend(self.image, (0, 0), (w, h), self.alpha_adjust)
         else:
             p.paste(self.image, (0, 0), (w, h))
 
