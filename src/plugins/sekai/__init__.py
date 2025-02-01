@@ -718,12 +718,12 @@ async def get_detailed_profile(qid, raise_exc=False):
         try:
             uid = get_user_bind_uid(qid)
         except Exception as e:
-            logger.info(f"获取{qid}抓包数据失败: 未绑定游戏账号")
+            logger.info(f"获取 {qid} 抓包数据失败: 未绑定游戏账号")
             raise e
         
         hide_list = file_db.get("hide_list", [])
         if qid in hide_list:
-            logger.info(f"获取{qid}抓包数据失败: 用户已隐藏抓包信息")
+            logger.info(f"获取 {qid} 抓包数据失败: 用户已隐藏抓包信息")
             raise Exception("已隐藏抓包信息")
         
         cache_path = f"data/sekai/profile_cache/{uid}.json"
@@ -733,22 +733,22 @@ async def get_detailed_profile(qid, raise_exc=False):
             profile = await download_json(url)
         except Exception as e:
             if int(e.args[0]) == 403:
-                logger.info(f"获取{qid}抓包数据失败: 上传抓包数据时未选择公开可读")
+                logger.info(f"获取 {qid} 抓包数据失败: 上传抓包数据时未选择公开可读")
                 raise Exception("上传抓包数据时未选择公开可读")
             elif int(e.args[0]) == 404:
-                logger.info(f"获取{qid}抓包数据失败: 未上传过抓包数据")
+                logger.info(f"获取 {qid} 抓包数据失败: 未上传过抓包数据")
                 raise Exception("未上传过抓包数据")
             else:
-                logger.info(f"获取{qid}抓包数据失败: {e}")
+                logger.info(f"获取 {qid} 抓包数据失败: {e}")
                 raise Exception(f"HTTP ERROR {e}")
         if not profile:
-            logger.info(f"获取{qid}抓包数据失败: 找不到ID为{uid}的玩家")
-            raise Exception(f"找不到ID为{uid}的玩家")
+            logger.info(f"获取 {qid} 抓包数据失败: 找不到ID为 {uid} 的玩家")
+            raise Exception(f"找不到ID为 {uid} 的玩家")
         
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=4)
-        logger.info(f"获取{qid}抓包数据成功，数据已缓存")
+        logger.info(f"获取 {qid} 抓包数据成功，数据已缓存")
         
     except Exception as e:
         if cache_path and os.path.exists(cache_path):
@@ -757,7 +757,7 @@ async def get_detailed_profile(qid, raise_exc=False):
             logger.info(f"从缓存获取{qid}抓包数据")
             return profile, str(e) + "(使用先前的缓存数据)"
         else:
-            logger.info(f"未找到{qid}的缓存抓包数据")
+            logger.info(f"未找到 {qid} 的缓存抓包数据")
 
         if raise_exc:
             raise Exception(f"获取抓包数据失败: {e}")
@@ -808,7 +808,7 @@ async def get_mysekai_info(qid, raise_exc=False):
         try:
             uid = get_user_bind_uid(qid)
         except Exception as e:
-            logger.info(f"获取{qid}mysekai抓包数据失败: 未绑定游戏账号")
+            logger.info(f"获取 {qid} mysekai抓包数据失败: 未绑定游戏账号")
             raise e
         
         cache_path = f"data/sekai/mysekai_cache/{uid}.json"
@@ -818,28 +818,28 @@ async def get_mysekai_info(qid, raise_exc=False):
             mysekai_info = await download_json(url)
         except Exception as e:
             if int(e.args[0]) == 404:
-                logger.info(f"获取{qid}mysekai抓包数据失败: 未上传过mysekai数据")
+                logger.info(f"获取 {qid} mysekai抓包数据失败: 未上传过mysekai数据")
                 raise Exception("未上传过mysekai数据")
             else:
-                logger.info(f"获取{qid}mysekai抓包数据失败: {e}")
+                logger.info(f"获取 {qid} mysekai抓包数据失败: {e}")
                 raise Exception(f"HTTP ERROR {e}")
         if not mysekai_info:
-            logger.info(f"获取{qid}mysekai抓包数据失败: 找不到ID为{uid}的玩家")
-            raise Exception(f"找不到ID为{uid}的玩家")
+            logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
+            raise Exception(f"找不到ID为 {uid} 的玩家")
         
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(mysekai_info, f, ensure_ascii=False, indent=4)
-        logger.info(f"获取{qid}mysekai抓包数据成功，数据已缓存")
+        logger.info(f"获取 {qid} mysekai抓包数据成功，数据已缓存")
 
     except Exception as e:
         if cache_path and os.path.exists(cache_path):
             with open(cache_path, "r", encoding="utf-8") as f:
                 mysekai_info = json.load(f)
-                logger.info(f"从缓存获取{qid}mysekai抓包数据")
+                logger.info(f"从缓存获取 {qid} mysekai抓包数据")
             return mysekai_info, str(e) + "(使用先前的缓存数据)"
         else:
-            logger.info(f"未找到{qid}的缓存mysekai抓包数据")
+            logger.info(f"未找到 {qid} 的缓存mysekai抓包数据")
 
         if raise_exc:
             raise Exception(f"获取mysekai数据失败: {e}")
@@ -1725,15 +1725,15 @@ async def compose_mysekai_res_image(qid, show_harvested):
 
     # 天气预报图片
     schedule = mysekai_info['mysekaiPhenomenaSchedules']
-    phenom_imgs, phenom_idx = [], None
+    phenom_imgs = []
     phenom_texts = ["4:00", "16:00", "4:00", "16:00"]
     for i, item in enumerate(schedule):
         refresh_time = datetime.fromtimestamp(item['scheduleDate'] / 1000)
         phenom_id = item['mysekaiPhenomenaId']
-        if not phenom_idx and datetime.now() >= refresh_time: 
-            phenom_idx = i
         asset_name = find_by(await res.mysekai_phenomenas.get(), "id", phenom_id)['iconAssetbundleName']
         phenom_imgs.append(await get_asset(f"mysekai/thumbnail/phenomena/{asset_name}_rip/{asset_name}.png"))
+    current_hour = datetime.now().hour
+    phenom_idx = 1 if current_hour < 4 or current_hour >= 16 else 0
 
     # 计算资源数量
     site_res_num = {}
@@ -1816,6 +1816,131 @@ async def compose_mysekai_res_image(qid, show_harvested):
                 ImageBox(img)
 
     return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
+
+# 获取mysekai家具分类名称和图片
+async def get_mysekai_fixture_genre_name_and_image(gid, is_main_genre):
+    genres = await res.mysekai_fixture_maingenres.get() if is_main_genre else await res.mysekai_fixture_subgenres.get()
+    genre = find_by(genres, "id", gid)
+    asset_name = genre['assetbundleName']
+    image = await get_asset(f"mysekai/icon/category_icon/{asset_name}_rip/{asset_name}.png")
+    return genre['name'], image
+
+# 合成mysekai家具列表图片
+async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
+    # 获取玩家已获得的蓝图对应的家具ID
+    obtained_fids = None
+    if qid:
+        uid = get_user_bind_uid(qid)
+        basic_profile = await get_basic_profile(uid)
+        mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
+
+        obtained_fids = set()
+        for item in mysekai_info['updatedResources']['userMysekaiBlueprints']:
+            bid = item['mysekaiBlueprintId']
+            blueprint = find_by(await res.mysekai_blueprints.get(), "id", bid)
+            if blueprint['mysekaiCraftType'] == 'mysekai_fixture':
+                fid = blueprint['craftTargetId']
+                obtained_fids.add(fid)
+
+    # 获取所有可合成的家具ID
+    craftable_fids = None
+    if only_craftable:
+        craftable_fids = set()
+        for item in await res.mysekai_blueprints.get():
+            if item['mysekaiCraftType'] =='mysekai_fixture':
+                craftable_fids.add(item['id'])
+
+    # 获取需要的家具信息
+    fixtures = {}
+    icon_args = []
+    for item in await res.mysekai_fixtures.get():
+        fid = item['id']
+        if craftable_fids and fid not in craftable_fids:
+            continue
+        
+        ftype = item['mysekaiFixtureType']
+        suface_type = item.get('mysekaiSettableLayoutType', None)
+        main_genre_id = item['mysekaiFixtureMainGenreId']
+        sub_genre_id = item.get('mysekaiFixtureSubGenreId', -1)
+        asset_name = item['assetbundleName']
+
+        if ftype == "gate": continue
+
+        # 处理错误归类
+        if fid == 4: 
+            sub_genre_id = 14
+
+        if main_genre_id not in fixtures:
+            fixtures[main_genre_id] = {}
+        if sub_genre_id not in fixtures[main_genre_id]:
+            fixtures[main_genre_id][sub_genre_id] = []
+
+        obtained = not obtained_fids or fid in obtained_fids
+        fixtures[main_genre_id][sub_genre_id].append((fid, obtained))
+        icon_args.append((fid, ftype, suface_type, asset_name))
+    
+    # 异步获取家具图标
+    fixture_icons = {}
+    async def get_fixture_icon(fid, ftype, suface_type, asset_name):
+        try:
+            image = None
+            if ftype == "surface_appearance":
+                image = await get_asset(f"mysekai/thumbnail/surface_appearance/{asset_name}_rip/tex_{asset_name}_{suface_type}.png")
+            else:
+                image = await get_asset(f"mysekai/thumbnail/fixture/{asset_name}_rip/{asset_name}.png")
+            return fid, image
+        except Exception as e:
+            logger.print_exc(f"获取家具{fid}的图标失败")
+            return fid, None
+    task_result = await asyncio.gather(*[asyncio.create_task(get_fixture_icon(*arg)) for arg in icon_args])
+    for fid, icon in task_result:
+        fixture_icons[fid] = icon
+    
+    # 绘制
+    with Canvas(bg=FillBg(fill=(220, 240, 255, 255))).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            if qid:
+                await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
+
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+                # 一级分类
+                for main_genre_id in sorted(fixtures.keys()):
+                    if count_dict(fixtures[main_genre_id], 2) == 0: continue
+
+                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
+                        # 标签
+                        main_genre_name, main_genre_image = await get_mysekai_fixture_genre_name_and_image(main_genre_id, True)
+                        with HSplit().set_content_align('c').set_item_align('c').set_sep(5):
+                            ImageBox(main_genre_image, size=(None, 30), use_alphablend=True).set_bg(RoundRectBg(fill=(200,200,200,255), radius=2))
+                            TextBox(main_genre_name, TextStyle(font=DEFAULT_HEAVY_FONT, size=20, color=(150, 150, 150)))
+
+                        # 二级分类
+                        for sub_genre_id in sorted(fixtures[main_genre_id].keys()):
+                            if len(fixtures[main_genre_id][sub_genre_id]) == 0: continue
+
+                            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
+                                # 标签
+                                if sub_genre_id != -1 and len(fixtures[main_genre_id]) > 1:  # 无二级分类或只有1个二级分类的不加标签
+                                    sub_genre_name, sub_genre_image = await get_mysekai_fixture_genre_name_and_image(sub_genre_id, False)
+                                    with HSplit().set_content_align('c').set_item_align('c').set_sep(5):
+                                        ImageBox(sub_genre_image, size=(None, 23), use_alphablend=True).set_bg(RoundRectBg(fill=(200,200,200,255), radius=2))
+                                        TextBox(sub_genre_name, TextStyle(font=DEFAULT_BOLD_FONT, size=15, color=(150, 150, 150)))
+
+                                # 家具列表
+                                with Grid(col_count=15).set_content_align('lt').set_sep(hsep=3, vsep=3):
+                                    for fid, obtained in fixtures[main_genre_id][sub_genre_id]:
+                                        f_sz = 30
+                                        image = fixture_icons.get(fid)
+                                        if not image: continue
+                                        with Frame():
+                                            with VSplit().set_content_align('c').set_item_align('c').set_sep(2):
+                                                ImageBox(image, size=(None, f_sz), use_alphablend=True)
+                                                if show_id:
+                                                    TextBox(f"{fid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
+                                            if not obtained:
+                                                Spacer(w=f_sz, h=f_sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+    
+    return await run_in_pool(canvas.get_img)
 
 
 # ========================================= 会话逻辑 ========================================= #
@@ -2554,6 +2679,35 @@ async def _(ctx: HandlerContext):
     ], show_cmd=True)
 
 
+# 查询mysekai蓝图
+pjsk_mysekai_blueprint = CmdHandler([
+    "/pjsk mysekai blueprint", "/pjsk_mysekai_blueprint", 
+    "/mysekai blueprint", "/mysekai_blueprint",
+    "/msb", "/mysekai蓝图"
+], logger)
+pjsk_mysekai_blueprint.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_blueprint.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_mysekai_fixture_list_image(qid=ctx.user_id, show_id='id' in args, only_craftable=True)
+    ))
+
+
+# 查询mysekai家具
+pjsk_mysekai_furniture = CmdHandler([
+    "/pjsk mysekai furniture", "/pjsk_mysekai_furniture", 
+    "/mysekai furniture", "/mysekai_furniture",
+    "/msf", "/mysekai家具"
+], logger)
+pjsk_mysekai_furniture.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_furniture.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_mysekai_fixture_list_image(qid=None, show_id='id' in args, only_craftable=False)
+    ))
+
 # ========================================= 定时任务 ========================================= #
 
 # live自动提醒
@@ -2766,8 +2920,8 @@ async def msr_auto_push():
                 await get_image_cq(img) for img in 
                 await compose_mysekai_res_image(qid, False)
             ]
-            username = await get_group_member_name(bot, int(gid), int(uid))
-            contents = [f"{username} 的Mysekai资源查询推送"] + contents
+            username = await get_group_member_name(bot, int(gid), int(qid))
+            contents = [f"@{username} 的Mysekai资源查询推送"] + contents
             await send_group_fold_msg(bot, gid, contents)
         except:
             logger.print_exc(f'在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询失败')

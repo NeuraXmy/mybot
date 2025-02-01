@@ -678,7 +678,7 @@ class HSplit(Widget):
             unit_w = 0
             for r, item in zip(ratios, self.items):
                 iw, ih = item._get_self_size()
-                unit_w = max(unit_w, iw / r)
+                if r > 0: unit_w = max(unit_w, iw / r)
         ret = []
         h = max([item._get_self_size()[1] for item in self.items])
         for r, item in zip(ratios, self.items):
@@ -773,7 +773,7 @@ class VSplit(Widget):
             unit_h = 0
             for r, item in zip(ratios, self.items):
                 iw, ih = item._get_self_size()
-                unit_h = max(unit_h, ih / r)
+                if r > 0: unit_h = max(unit_h, ih / r)
         ret = []
         w = max([item._get_self_size()[0] for item in self.items])
         for r, item in zip(ratios, self.items):

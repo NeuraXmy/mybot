@@ -59,6 +59,12 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+def count_dict(d, level):
+    if level == 1:
+        return len(d)
+    else:
+        return sum(count_dict(v, level-1) for v in d.values())
+
 def create_folder(folder_path):
     folder_path = str(folder_path)
     os.makedirs(folder_path, exist_ok=True)

@@ -23,6 +23,8 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk box` box查询](#pjsk-box)
 - [`/pjsk sk` 榜线预测查询](#pjsk-sk)
 - [`/pjsk mysekai res` 烤森资源查询](#pjsk-mysekai-res)
+- [`/pjsk mysekai blueprint` 烤森蓝图查询](#pjsk-mysekai-blueprint)
+- [`/pjsk mysekai furniture` 烤森家具查询](#pjsk-mysekai-furniture)
 
 ### 管理指令
 
@@ -330,6 +332,38 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/msr`
 
+
+## `/pjsk mysekai blueprint`
+```
+查询自己已经获得的烤森蓝图，需要绑定并上传抓包数据
+加上id参数可以展示家具id
+```
+
+- **指令别名**
+
+    `/msb`
+
+- **示例**
+
+    `/msb`
+    
+    `/msb id`
+
+## `/pjsk mysekai furniture`
+```
+查询烤森家具列表
+加上id参数可以展示家具id
+```
+
+- **指令别名**
+
+    `/msf`
+
+- **示例**
+
+    `/msf`
+
+    `/msf id`
 
 --- 
 
