@@ -84,13 +84,8 @@ async def parse_instruction(group_id, user_id, user_instruction):
 
     for retry_count in range(MAX_RETIRES):
         try:
-            res = await session.get_response(
-                model_name=MODEL_NAME,
-                usage="cron",
-                group_id=group_id,
-                user_id=user_id,
-            )   
-            task = json.loads(res['result'])
+            resp = await session.get_response(model_name=MODEL_NAME)   
+            task = json.loads(resp.result)
             params = task['parameters']
             for key in params:
                 params[key] = str(params[key])

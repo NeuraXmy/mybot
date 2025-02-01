@@ -167,7 +167,7 @@ class Translator:
             # merge
             with Timer() as t_merge:
                 if self.merge_method == 'llm':
-                     # query llm to merge
+                    # query llm to merge
                     @retry(reraise=True, stop=stop_after_attempt(self.llm_retry), wait=wait_fixed(3))
                     async def query_merge():
                         session = ChatSession()
@@ -176,12 +176,7 @@ class Translator:
                             [get_image_b64(img_w_ocr_boxes)],
                             verbose=False
                         )
-                        response = await session.get_response(
-                            model_name=self.model_name,
-                            usage='translator_merge',
-                            user_id=user_id,
-                            group_id=group_id,
-                        )
+                        response = dict(await session.get_response(model_name=self.model_name))
                         response['data'] = self.load_json_from_response(response['result'])
                         return response
 
@@ -253,12 +248,7 @@ class Translator:
                         [get_image_b64(img_w_merged_boxes)],
                         verbose=False
                     )
-                    response = await session.get_response(
-                        model_name=self.model_name,
-                        usage='translator_trans',
-                        user_id=user_id,
-                        group_id=group_id,
-                    )
+                    response = dict(await session.get_response(model_name=self.model_name))
                     response['data'] = self.load_json_from_response(response['result'])
                     if debug:
                         logger.info(f'翻译任务{tid}LLM翻译结果: {response["data"]}')
@@ -284,12 +274,7 @@ class Translator:
                         [get_image_b64(img_w_merged_boxes)],
                         verbose=False
                     )
-                    response = await session.get_response(
-                        model_name=self.model_name,
-                        usage='translator_correct',
-                        user_id=user_id,
-                        group_id=group_id,
-                    )
+                    response = dict(await session.get_response(model_name=self.model_name))
                     response['data'] = self.load_json_from_response(response['result'])
                     if debug:
                         logger.info(f'翻译任务{tid}LLM校对结果: {response["data"]}')

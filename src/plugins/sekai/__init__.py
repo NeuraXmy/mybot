@@ -207,6 +207,21 @@ alias_add_history = {}
 
 # ========================================= 工具函数 ========================================= #
 
+# 分离用户名和颜色代码
+def separate_username_and_color(s: str, default_color=None):
+    result = re.match(r'<#([0-9a-fA-F]{3,6})>(.*)', s)
+    if result:
+        code, name = result.groups()
+        r, g, b = None, None, None
+        if len(code) == 6:
+            r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
+        elif len(code) == 3:
+            r, g, b = int(code[0], 16)*17, int(code[1], 16)*17, int(code[2], 16)*17
+        else:
+            return s, default_color
+        return name, (r, g, b)
+    return s, default_color
+
 # 获取资源路径
 def res_path(path):
     return osp.join("data/sekai/res", path)
@@ -794,7 +809,8 @@ async def get_detailed_profile_card(profile, msg) -> Frame:
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                    TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
+                    TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=namecolor))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if msg:
@@ -859,7 +875,8 @@ async def get_mysekai_info_card(mysekai_info, basic_profile, msg) -> Frame:
                     mysekai_game_data = mysekai_info['updatedResources']['userMysekaiGamedata']
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
-                        TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                        name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
+                        TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=namecolor))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -1031,7 +1048,8 @@ async def compose_profile_image(basic_profile):
                     ImageBox(avatar_img, size=(128, 128), image_size_mode='fill')
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
-                        TextBox(f"{game_data['name']}", TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
+                        name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
+                        TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=namecolor))
                         TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(res.misc_images.get("lv_rank_bg.png"), size=(180, None))

@@ -82,7 +82,7 @@ def process_sc_query_text(text):
 # 查询符卡
 async def query_sc(text, num):
     global sc_embs
-    qemb = np.array(await get_text_embedding(text, "touhou sc"))
+    qemb = np.array(await get_text_embedding(text))
     scores = []
     for emb, df, idx in sc_embs:
         scores.append((np.linalg.norm(qemb - emb), df, idx))

@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, download_image_to_b64, tts, get_rest_quota, check_modelname, get_all_modelname
+from ..llm import ChatSession, download_image_to_b64, tts
 from ..utils import *
 from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
@@ -82,14 +82,14 @@ def get_model_name(event):
     
 # 修改某个群组当前的模型名
 def change_group_model_name(group_id, model_name):
-    check_modelname(model_name)
+    ChatSession.check_model_name(model_name)
     group_model_dict = file_db.get("group_model_dict", {})
     group_model_dict[str(group_id)] = model_name
     file_db.set("group_model_dict", group_model_dict)
 
 # 修改某个用户的私聊当前的模型名
 def change_private_model_name(user_id, model_name):
-    check_modelname(model_name)
+    ChatSession.check_model_name(model_name)
     private_model_dict = file_db.get("private_model_dict", {})
     private_model_dict[str(user_id)] = model_name
     file_db.set("private_model_dict", private_model_dict)
@@ -168,7 +168,7 @@ async def _(bot: Bot, event: MessageEvent):
                 return await send_reply_msg(chat_request, event.message_id, "非超级用户不允许自定义模型")
             model_name = query_text.split("model:")[1].strip().split(" ")[0]
             try:
-                check_modelname(model_name)
+                ChatSession.check_model_name(model_name)
             except Exception as e:
                 return await send_reply_msg(chat_request, event.message_id, str(e))
             query_text = query_text.replace(f"model:{model_name}", "").strip()
@@ -246,21 +246,18 @@ async def _(bot: Bot, event: MessageEvent):
 
         total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
         tools_additional_info = ""
+        rest_quota = 0
 
         # 进行询问
         for _ in range(3):
             t = datetime.now()
-            res = await session.get_response(
-                model_name=model_name,
-                usage="chat", 
-                group_id=(event.group_id if is_group_msg(event) else None),
-                user_id=event.user_id,
-            )
-            res_text = res["result"]
-            total_ptokens += res['prompt_tokens']
-            total_ctokens += res['completion_tokens']
-            total_cost += res['cost']
+            resp = await session.get_response(model_name=model_name,)
+            res_text = resp.result
+            total_ptokens += resp.prompt_tokens
+            total_ctokens += resp.completion_tokens
+            total_cost += resp.cost
             total_seconds += (datetime.now() - t).total_seconds()
+            rest_quota = resp.quota
 
             # 如果回复时关闭则取消回复
             if not gwl.check(event, allow_private=True, allow_super=True): return
@@ -289,14 +286,14 @@ async def _(bot: Bot, event: MessageEvent):
         ret = truncate(f"会话失败: {error}", 128)
         return await send_reply_msg(chat_request, event.message_id, ret)
     
+    # 添加额外信息
     additional_info = f"{model_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
-    if (rest_quota := get_rest_quota()) > 0:
+    if rest_quota > 0:
         if total_cost >= 0.0001 or total_cost == 0.0:
             additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
         else:
             additional_info += f" | <0.0001/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
-
     final_text = tools_additional_info + res_text + additional_info
 
     # 进行回复
@@ -333,7 +330,7 @@ all_model = on_command("/chat_model_list", block=False, priority=0)
 async def _(bot: Bot, event: MessageEvent):
     if not gwl.check(event, allow_private=True, allow_super=True): return
     if not (await chat_cd.check(event)): return
-    return await send_reply_msg(all_model, event.message_id, f"可用的模型: {', '.join(get_all_modelname())}")
+    return await send_reply_msg(all_model, event.message_id, f"可用的模型: {', '.join(ChatSession.get_all_model_names())}")
 
 
 # TTS
@@ -350,13 +347,7 @@ async def _(bot: Bot, event: MessageEvent):
     audio_file_path = None
 
     try:
-        audio_file_path = await tts(
-            text=text, 
-            usage="tts", 
-            group_id=event.group_id if is_group_msg(event) else None, 
-            user_id=event.user_id
-        )
-
+        audio_file_path = await tts(text)
         return await send_msg(tts_request, get_audio_cq(audio_file_path))
     
     except Exception as e:
