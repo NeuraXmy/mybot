@@ -132,10 +132,12 @@ class ChatSession:
 
         # 请求回复
         response = await provider.get_client().chat.completions.create(
-            model=model.name,
+            model=model.get_model_id(),
             messages=self.content,
             max_tokens=CHAT_MAX_TOKENS
         )
+        if hasattr(response, "error") and response.error is not None:
+            raise Exception(str(response.error))
         result              = response.choices[0].message.content
         prompt_tokens       = response.usage.prompt_tokens
         completion_tokens   = response.usage.completion_tokens
@@ -147,7 +149,7 @@ class ChatSession:
 
         # 计算并更新额度
         cost = model.calc_price(prompt_tokens, completion_tokens)
-        quota = await provider.aupdate_quota(cost)
+        quota = await provider.aupdate_quota(-cost)
 
         return ChatSessionResponse(
             result=result,
@@ -181,7 +183,7 @@ async def get_text_embedding(text: str):
     tokens = response.usage.prompt_tokens
     cost = model_meta['input_pricing'] * tokens
 
-    await provider.aupdate_quota(cost)
+    await provider.aupdate_quota(-cost)
     return embedding
 
 # 文本检索工具

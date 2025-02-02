@@ -1594,8 +1594,8 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             continue
 
         x, z = item['positionX'], item['positionZ']
-        x = max(min_x - 0.2, min(max_x + 0.2, x))
-        z = max(min_z - 0.2, min(max_z + 0.2, z))
+        x = max(min_x - 0.5, min(max_x + 0.5, x))
+        z = max(min_z - 0.5, min(max_z + 0.5, z))
 
         try: 
             image_name = MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME[int(fid)]

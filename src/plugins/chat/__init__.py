@@ -252,12 +252,17 @@ async def _(bot: Bot, event: MessageEvent):
 
         # 如果未指定模型，根据配置和消息类型获取模型
         if not model_name:
-            model_name = get_model_name(event, "mm" if session.has_multimodal_content() else "text")
+            mode = "text"
+            if need_tools:
+                mode = "tool"
+            elif session.has_multimodal_content():
+                mode = "mm"
+            model_name = get_model_name(event, mode)
         
         # 进行询问
         total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
         tools_additional_info = ""
-        rest_quota = 0
+        rest_quota, provider_name = 0, None
 
         for _ in range(3):
             t = datetime.now()
@@ -268,6 +273,7 @@ async def _(bot: Bot, event: MessageEvent):
             total_cost += resp.cost
             total_seconds += (datetime.now() - t).total_seconds()
             rest_quota = resp.quota
+            provider_name = resp.provider.name
 
             # 如果回复时关闭则取消回复
             if not gwl.check(event, allow_private=True, allow_super=True): return
@@ -297,7 +303,7 @@ async def _(bot: Bot, event: MessageEvent):
         return await send_reply_msg(chat_request, event.message_id, ret)
     
     # 添加额外信息
-    additional_info = f"{model_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
+    additional_info = f"{model_name}@{provider_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if rest_quota > 0:
         if total_cost >= 0.0001 or total_cost == 0.0:
             additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
@@ -326,7 +332,8 @@ async def _(ctx: HandlerContext):
     if not args:
         text_model_name = get_model_name(ctx.event, "text")
         mm_model_name = get_model_name(ctx.event, "mm")
-        return await ctx.asend_reply_msg(f"当前文本模型: {text_model_name}\n当前多模态模型: {mm_model_name}")
+        tool_model_name = get_model_name(ctx.event, "tool")
+        return await ctx.asend_reply_msg(f"当前文本模型: {text_model_name}\n当前多模态模型: {mm_model_name}\n当前工具模型: {tool_model_name}")
     # 修改
     else:
         # 群聊中只有超级用户可以修改模型
@@ -343,13 +350,25 @@ async def _(ctx: HandlerContext):
             args = args.replace("mm", "").strip()
             change_model_name(ctx.event, args, "mm")
             return await ctx.asend_reply_msg(f"已切换多模态模型: {last_model_name} -> {args}")
+        # 只修改工具模型
+        elif "tool" in args:
+            last_model_name = get_model_name(ctx.event, "tool")
+            args = args.replace("tool", "").strip()
+            change_model_name(ctx.event, args, "tool")
+            return await ctx.asend_reply_msg(f"已切换工具模型: {last_model_name} -> {args}")
         # 同时修改文本和多模态模型
         else:
-            last_mm_model_name = get_model_name(ctx.event, "mm")
+            msg = ""
+            try:
+                last_mm_model_name = get_model_name(ctx.event, "mm")
+                change_model_name(ctx.event, args, "mm")  
+                msg += f"已切换多模态模型: {last_mm_model_name} -> {args}\n"
+            except Exception as e:
+                msg += f"{e}, 仅切换文本模型\n"
             last_text_model_name = get_model_name(ctx.event, "text")
-            change_model_name(ctx.event, args, "mm")    # 先修改多模态模型，避免切换失败
             change_model_name(ctx.event, args, "text")
-            return await ctx.asend_reply_msg(f"已切换文本模型: {last_text_model_name} -> {args}\n已切换多模态模型: {last_mm_model_name} -> {args}")
+            msg += f"已切换文本模型: {last_text_model_name} -> {args}"
+            return await ctx.asend_reply_msg(msg.strip())
 
 
 # 获取所有可用的模型名
