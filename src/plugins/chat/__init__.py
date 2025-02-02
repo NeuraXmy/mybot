@@ -8,6 +8,7 @@ from ..utils import *
 from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
 import openai
+import copy
 
 
 config = get_config('chat')
@@ -63,44 +64,49 @@ async def use_tool(handle, session, type, data, event):
         raise Exception(f"unknown tool type")
 
 
+# ------------------------------------------ 模型选择逻辑 ------------------------------------------ #
+
 # 获取某个群组当前的模型名
-def get_group_model_name(group_id):
-    group_model_dict = file_db.get("group_model_dict", {})
-    return group_model_dict.get(str(group_id), DEFAULT_GROUP_MODEL_NAME)
+def get_group_model_name(group_id, mode):
+    group_model_dict = file_db.get("group_chat_model_dict", {})
+    return group_model_dict.get(str(group_id), DEFAULT_GROUP_MODEL_NAME)[mode]
 
 # 获取某个用户私聊当前的模型名
-def get_private_model_name(user_id):
-    private_model_dict = file_db.get("private_model_dict", {})
-    return private_model_dict.get(str(user_id), DEFAULT_PRIVATE_MODEL_NAME)
+def get_private_model_name(user_id, mode):
+    private_model_dict = file_db.get("private_chat_model_dict", {})
+    return private_model_dict.get(str(user_id), DEFAULT_PRIVATE_MODEL_NAME)[mode]
 
 # 获取某个event的模型名
-def get_model_name(event):
+def get_model_name(event, mode):
     if is_group_msg(event):
-        return get_group_model_name(event.group_id)
+        return get_group_model_name(event.group_id, mode)
     else:
-        return get_private_model_name(event.user_id)
+        return get_private_model_name(event.user_id, mode)
     
 # 修改某个群组当前的模型名
-def change_group_model_name(group_id, model_name):
-    ChatSession.check_model_name(model_name)
-    group_model_dict = file_db.get("group_model_dict", {})
-    group_model_dict[str(group_id)] = model_name
-    file_db.set("group_model_dict", group_model_dict)
+def change_group_model_name(group_id, model_name, mode):
+    ChatSession.check_model_name(model_name, mode)
+    group_model_dict = file_db.get("group_chat_model_dict", {})
+    if str(group_id) not in group_model_dict:
+        group_model_dict[str(group_id)] = copy.deepcopy(DEFAULT_GROUP_MODEL_NAME)
+    group_model_dict[str(group_id)][mode] = model_name
+    file_db.set("group_chat_model_dict", group_model_dict)
 
 # 修改某个用户的私聊当前的模型名
-def change_private_model_name(user_id, model_name):
-    ChatSession.check_model_name(model_name)
-    private_model_dict = file_db.get("private_model_dict", {})
-    private_model_dict[str(user_id)] = model_name
-    file_db.set("private_model_dict", private_model_dict)
+def change_private_model_name(user_id, model_name, mode):
+    ChatSession.check_model_name(model_name, mode)
+    private_model_dict = file_db.get("private_chat_model_dict", {})
+    if str(user_id) not in private_model_dict:
+        private_model_dict[str(user_id)] = copy.deepcopy(DEFAULT_PRIVATE_MODEL_NAME)
+    private_model_dict[str(user_id)][mode] = model_name
+    file_db.set("private_chat_model_dict", private_model_dict)
 
 # 根据event修改模型名
-def change_model_name(event, model_name):
+def change_model_name(event, model_name, mode):
     if is_group_msg(event):
-        change_group_model_name(event.group_id, model_name)
+        change_group_model_name(event.group_id, model_name, mode)
     else:
-        change_private_model_name(event.user_id, model_name)
-
+        change_private_model_name(event.user_id, model_name, mode)
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
@@ -162,7 +168,8 @@ async def _(bot: Bot, event: MessageEvent):
         # 用于备份的session_id
         session_id_backup = None
 
-        # 获取对话的模型名
+        model_name = None
+        # 如果在对话中指定模型名
         if "model:" in query_text:
             if is_group_msg(event) and not check_superuser(event): 
                 return await send_reply_msg(chat_request, event.message_id, "非超级用户不允许自定义模型")
@@ -171,9 +178,7 @@ async def _(bot: Bot, event: MessageEvent):
                 ChatSession.check_model_name(model_name)
             except Exception as e:
                 return await send_reply_msg(chat_request, event.message_id, str(e))
-            query_text = query_text.replace(f"model:{model_name}", "").strip()
-        else:
-            model_name = get_model_name(event)
+            query_text = query_text.replace(f"model:{model_name}", "").strip()       
 
         # 是否是cleanchat
         if any([word in query_text for word in CLEANCHAT_TRIGGER_WORDS]):
@@ -241,17 +246,22 @@ async def _(bot: Bot, event: MessageEvent):
         else:
             session = ChatSession(system_prompt)
 
+        # 推入询问内容
         query_imgs = [await download_image_to_b64(img) for img in query_imgs]
         session.append_user_content(query_text, query_imgs)
 
+        # 如果未指定模型，根据配置和消息类型获取模型
+        if not model_name:
+            model_name = get_model_name(event, "mm" if session.has_multimodal_content() else "text")
+        
+        # 进行询问
         total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
         tools_additional_info = ""
         rest_quota = 0
 
-        # 进行询问
         for _ in range(3):
             t = datetime.now()
-            resp = await session.get_response(model_name=model_name,)
+            resp = await session.get_response(model_name=model_name)
             res_text = resp.result
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens
@@ -307,57 +317,63 @@ async def _(bot: Bot, event: MessageEvent):
 
 
 # 获取或修改当前私聊或群聊使用的模型
-change_model = on_command("/chat_model", block=False, priority=0)
+change_model = CmdHandler(["/chat_model"], logger, priority=100)
+change_model.check_cdrate(chat_cd).check_wblist(gwl)
 @change_model.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not gwl.check(event, allow_private=True, allow_super=True): return
-    if is_group_msg(event) and not check_superuser(event): return
-    if not (await chat_cd.check(event)): return
-    try:
-        model_name = event.get_plaintext().replace("/chat_model", "").strip()
-        if not model_name:
-            return await send_reply_msg(change_model, event.message_id, f"当前模型: {get_model_name(event)}")
-        pre_model_name = get_model_name(event)
-        change_model_name(event, model_name)
-        return await send_reply_msg(change_model, event.message_id, f"已切换模型: {pre_model_name} -> {model_name}")
-    except Exception as e:
-        return await send_reply_msg(change_model, event.message_id, f"获取或切换模型失败: {e}")
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    # 查看
+    if not args:
+        text_model_name = get_model_name(ctx.event, "text")
+        mm_model_name = get_model_name(ctx.event, "mm")
+        return await ctx.asend_reply_msg(f"当前文本模型: {text_model_name}\n当前多模态模型: {mm_model_name}")
+    # 修改
+    else:
+        # 群聊中只有超级用户可以修改模型
+        if is_group_msg(ctx.event) and not check_superuser(ctx.event): return
+        # 只修改文本模型
+        if "text" in args:
+            last_model_name = get_model_name(ctx.event, "text")
+            args = args.replace("text", "").strip()
+            change_model_name(ctx.event, args, "text")
+            return await ctx.asend_reply_msg(f"已切换文本模型: {last_model_name} -> {args}")
+        # 只修改多模态模型
+        elif "mm" in args:
+            last_model_name = get_model_name(ctx.event, "mm")
+            args = args.replace("mm", "").strip()
+            change_model_name(ctx.event, args, "mm")
+            return await ctx.asend_reply_msg(f"已切换多模态模型: {last_model_name} -> {args}")
+        # 同时修改文本和多模态模型
+        else:
+            last_mm_model_name = get_model_name(ctx.event, "mm")
+            last_text_model_name = get_model_name(ctx.event, "text")
+            change_model_name(ctx.event, args, "mm")    # 先修改多模态模型，避免切换失败
+            change_model_name(ctx.event, args, "text")
+            return await ctx.asend_reply_msg(f"已切换文本模型: {last_text_model_name} -> {args}\n已切换多模态模型: {last_mm_model_name} -> {args}")
 
 
 # 获取所有可用的模型名
-all_model = on_command("/chat_model_list", block=False, priority=0)
+all_model = CmdHandler(["/chat_model_list"], logger, priority=101)
+all_model.check_cdrate(chat_cd).check_wblist(gwl)
 @all_model.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not gwl.check(event, allow_private=True, allow_super=True): return
-    if not (await chat_cd.check(event)): return
-    return await send_reply_msg(all_model, event.message_id, f"可用的模型: {', '.join(ChatSession.get_all_model_names())}")
+async def _(ctx: HandlerContext):
+    return await ctx.asend_reply_msg(f"可用的模型: {', '.join(ChatSession.get_all_model_names())}")
 
 
 # TTS
-tts_request = on_command("/tts", block=False, priority=0)
+tts_request = CmdHandler(["/tts"], logger)
+tts_request.check_cdrate(tts_cd).check_wblist(gwl)
 @tts_request.handle()
-async def _(bot: Bot, event: MessageEvent):
-    if not check_superuser(event): return
-    if not gwl.check(event, allow_private=True, allow_super=True): return
-    if not (await tts_cd.check(event)): return
-
-    text = event.get_plaintext().replace("/tts", "").strip()
+async def _(ctx: HandlerContext):
+    text = ctx.get_args().strip()
     if not text: return
-
     audio_file_path = None
-
     try:
         audio_file_path = await tts(text)
         return await send_msg(tts_request, get_audio_cq(audio_file_path))
-    
-    except Exception as e:
-        logger.print_exc(f'TTS失败')
-        return await send_reply_msg(tts_request, event.message_id, f"TTS失败:{e}")
-
     finally:
         if audio_file_path and os.path.exists(audio_file_path):
             os.remove(audio_file_path)
-
 
 
 translator = Translator()

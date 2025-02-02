@@ -55,11 +55,12 @@ class ChatSession:
             ret.add(model.name)
         return list(ret)
 
-    # 检查模型名，不存在抛出异常
+    # 检查模型名，不存在或不支持多模态抛出异常
     @staticmethod
-    def check_model_name(model_name):
-        api_provider_mgr.find_model(model_name, raise_exc=True)
-
+    def check_model_name(model_name, mode="text"):
+        provider, model = api_provider_mgr.find_model(model_name, raise_exc=True)
+        if mode == "mm" and not model.is_multimodal:
+            raise Exception(f"模型 {model_name} 不支持多模态输入")
 
     def __init__(self, system_prompt=None):
         global session_id_top
@@ -114,6 +115,10 @@ class ChatSession:
         logger.info(f"会话{self.id}清空消息")
         self.content = []
         self.has_image = False
+
+    # 是否存在多模态消息
+    def has_multimodal_content(self):
+        return self.has_image
 
     # 获取回复 并且自动添加回复到消息列表
     async def get_response(self, model_name):
