@@ -9,7 +9,7 @@
 - [鸟类查询服务 (bird)](./bird.md)
 - [骰子服务 (bobing)](./bobing.md)
 - [广播服务 (broadcast)](./broadcast.md)
-- [GPT聊天服务 (chat)](./chat.md)
+- [大模型聊天服务 (chat)](./chat.md)
 - [定时任务服务 (cron)](./cron.md)
 - [科学计算服务 (eval)](./eval.md)
 - [搜图服务 (imgexp)](./imgexp.md)
@@ -20,7 +20,6 @@
 - [群消息记录服务 (record)](./record.md)
 - [代码运行服务 (run_code)](./run_code.md)
 - [群消息统计服务 (sta)](./sta.md)
-- [东方Project服务 (touhou)](./touhou.md)
 - [水群查询服务 (water)](./water.md)
 - [加退群通知服务 (welcome)](./welcome.md)
 

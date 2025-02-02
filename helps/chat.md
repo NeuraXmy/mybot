@@ -1,16 +1,16 @@
-# GPT聊天服务 (chat)
+# 大模型聊天服务 (chat)
 
-提供 OpenAI 的聊天服务。
+提供大模型聊天服务。
 
 ### 用户指令
 
 - [`聊天` AI聊天](#聊天)
+- [`/chat_model_list` 查询支持的聊天模型](#chat_model_list)
+- [`/tts` 文本转语音](#tts)
 
 ### 管理指令
 
 - [`/chat_model` 查询或修改聊天模型](#chat_model)
-- [`/chat_model_list` 查询支持的聊天模型](#chat_model_list)
-- [`/tts` 文本转语音](#tts)
 
 ---
 
@@ -40,21 +40,6 @@
     `@bot model:gpt-4o 你好` 指定模型询问
 
 
----
-
-## `/chat_model`
-
-```
-查询或修改当前私聊或群聊使用的聊天模型，在群聊中需要超级用户权限
-```
-
-- **示例**
-
-    `/chat_model` 查询聊天模型
-
-    `/chat_model gpt-4o` 修改聊天模型为 gpt-4o
-
-
 ## `/chat_model_list`
 
 ```
@@ -76,6 +61,23 @@
 
     `/tts 文本`
 
+
+---
+
+## `/chat_model`
+
+```
+查询或修改当前私聊或群聊使用的聊天模型，在群聊中需要超级用户权限
+默认修改/查询文本和多模态模型，加上text或mm参数可单独修改文本或多模态模型
+```
+
+- **示例**
+
+    `/chat_model` 查询聊天模型
+
+    `/chat_model gpt-4o` 修改文本和多模态模型为 gpt-4o
+
+    `/chat_model text o1-mini` 只修改文本模型为 o1-mini
 
 
 --- 
