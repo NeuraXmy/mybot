@@ -25,6 +25,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk mysekai res` 烤森资源查询](#pjsk-mysekai-res)
 - [`/pjsk mysekai blueprint` 烤森蓝图查询](#pjsk-mysekai-blueprint)
 - [`/pjsk mysekai furniture` 烤森家具查询](#pjsk-mysekai-furniture)
+- [`/pjsk mysekai photo` 烤森照片查询](#pjsk-mysekai-photo)
 
 ### 管理指令
 
@@ -364,6 +365,20 @@ Project Sekai（世界计划）日服游戏相关服务
     `/msf`
 
     `/msf id`
+
+
+## `/pjsk mysekai photo`
+```
+获取烤森照片和拍摄时间，编号从1开始
+```
+
+- **指令别名**
+
+    `/msp`
+
+- **示例**
+
+    `/msp 1` 获取第1张烤森照片
 
 --- 
 

@@ -1960,6 +1960,25 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
     
     return await run_in_pool(canvas.get_img)
 
+# 获取mysekai照片和拍摄时间
+async def get_mysekai_photo_and_time(qid, seq) -> Tuple[Image.Image, datetime]:
+    qid, seq = int(qid), int(seq)
+    assert_and_reply(seq > 0, "请输入正确的照片编号（从1开始）")
+
+    mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
+    photos = mysekai_info['updatedResources']['userMysekaiPhotos']
+    assert_and_reply(seq <= len(photos), f"照片编号大于照片数量({len(photos)})")
+    
+    photo = photos[seq-1]
+    photo_path = photo['imagePath']
+    photo_time = datetime.fromtimestamp(photo['obtainedAt'] / 1000)
+    url = config['mysekai_photo_api_url'].format(photo_path=photo_path)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, verify_ssl=False) as response:
+            if response.status != 200:
+                raise Exception(f"下载失败: {response.status}")
+            return Image.open(io.BytesIO(await response.read())), photo_time
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -2725,6 +2744,25 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(await get_image_cq(
         await compose_mysekai_fixture_list_image(qid=None, show_id='id' in args, only_craftable=False)
     ))
+
+
+# 下载mysekai照片
+pjsk_mysekai_photo = CmdHandler([
+    "/pjsk mysekai photo", "/pjsk_mysekai_photo", 
+    "/mysekai photo", "/mysekai_photo",
+    "/msp", "/mysekai照片"
+], logger)
+pjsk_mysekai_photo.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_photo.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try: seq = int(args)
+    except: raise Exception("请输入正确的照片编号（从1开始）")
+
+    photo, time = await get_mysekai_photo_and_time(ctx.user_id, seq)
+    msg = await get_image_cq(photo) + f"拍摄时间: {time.strftime('%Y-%m-%d %H:%M')}"
+
+    return await ctx.asend_reply_msg(msg)
 
 # ========================================= 定时任务 ========================================= #
 

@@ -122,13 +122,13 @@ def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration
 
 # 下载图片 返回PIL.Image对象
 @retry(stop_max_attempt_number=3, wait_fixed=1000)
-async def download_image(image_url):
-    if image_url.startswith("https"):
+async def download_image(image_url, force_http=True):
+    if force_http and image_url.startswith("https"):
         image_url = image_url.replace("https", "http")
     async with aiohttp.ClientSession() as session:
-        async with session.get(image_url) as resp:
+        async with session.get(image_url, verify_ssl=False) as resp:
             if resp.status != 200:
-                raise Exception(f"Failed to download image {image_url}: {resp.status} {resp.reason}")
+                raise Exception(f"下载图片 {image_url} 失败: {resp.status} {resp.reason}")
             image = await resp.read()
             return Image.open(io.BytesIO(image))
 
