@@ -190,11 +190,13 @@ async def _(ctx: HandlerContext):
             else:
                 start_date = datetime.strptime(args, "%Y-%m-%d")
                 end_date = datetime.now()
-        else:
+        elif len(args) == 2:
             st = args[0].strip().replace('/', '-')
             ed = args[1].strip().replace('/', '-')
             start_date = datetime.strptime(st, "%Y-%m-%d")
             end_date = datetime.strptime(ed, "%Y-%m-%d")
+        else:
+            raise ValueError
 
     except:
         assert_and_reply(True, f"""

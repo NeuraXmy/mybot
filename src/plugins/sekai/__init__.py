@@ -1963,10 +1963,12 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
 # 获取mysekai照片和拍摄时间
 async def get_mysekai_photo_and_time(qid, seq) -> Tuple[Image.Image, datetime]:
     qid, seq = int(qid), int(seq)
-    assert_and_reply(seq > 0, "请输入正确的照片编号（从1开始）")
+    assert_and_reply(seq != 0, "请输入正确的照片编号（从1或-1开始）")
 
     mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
     photos = mysekai_info['updatedResources']['userMysekaiPhotos']
+    if seq < 0:
+        seq = len(photos) + seq + 1
     assert_and_reply(seq <= len(photos), f"照片编号大于照片数量({len(photos)})")
     
     photo = photos[seq-1]
@@ -2757,7 +2759,7 @@ pjsk_mysekai_photo.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     try: seq = int(args)
-    except: raise Exception("请输入正确的照片编号（从1开始）")
+    except: raise Exception("请输入正确的照片编号（从1或-1开始）")
 
     photo, time = await get_mysekai_photo_and_time(ctx.user_id, seq)
     msg = await get_image_cq(photo) + f"拍摄时间: {time.strftime('%Y-%m-%d %H:%M')}"

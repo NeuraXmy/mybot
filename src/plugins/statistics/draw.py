@@ -24,7 +24,7 @@ matplotlib.rcParams['axes.unicode_minus']=False
 
 def pil_fig_to_image(fig) -> Image.Image:
     buf = io.BytesIO()
-    fig.savefig(buf)
+    fig.savefig(buf, transparent=True)
     buf.seek(0)
     return Image.open(buf)
 
@@ -178,7 +178,7 @@ def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
 
     wc = wordcloud.WordCloud(
         font_path=FONT_PATH,
-        background_color='white',
+        background_color=None,
         width=WC_W,
         height=WC_H,
         max_words=100,
@@ -186,6 +186,7 @@ def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
         min_font_size=FONT_SIZE_MIN,
         random_state=42,
         color_func=random_color,
+        mode='RGBA',
     )
 
     wc.generate_from_frequencies(all_words)
@@ -233,22 +234,23 @@ def draw_all(recs, interval, topk1, topk2, user, name, path, date_str):
 
     wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
 
-    with Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10) as canvas:
+    bg_color = LinearGradient(c1=(210, 200, 255, 255), c2=(200, 230, 255, 255), p1=(1, 1), p2=(0, 0))
+    with Canvas(bg=FillBg(bg_color)).set_padding(10) as canvas:
         with VSplit().set_sep(10).set_padding(10):
-            bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
+            bg = RoundRectBg(fill=(255, 255, 255, 200), radius=10)
 
             title = TextBox(f"{date_str} 群聊消息统计 总消息数: {len(recs)}条")
             title.set_bg(bg).set_padding(10).set_w(850)
             title.set_style(TextStyle(size=24, color=(0, 0, 0, 255), font=DEFAULT_FONT))
 
-            ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_w(850)
-            ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(32).set_w(850)
+            ImageBox(pie_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_w(850)
+            ImageBox(wordcloud_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_padding(32).set_w(850)
 
             wrt = TextBox(word_rank_text, line_count=3)
             wrt.set_bg(bg).set_padding(16).set_w(850)
             wrt.set_style(TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT))
 
-            ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
+            ImageBox(plot_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_padding(16).set_w(850)
 
     canvas.get_img().save(path)
     logger.info(f"绘制完成")
@@ -367,9 +369,10 @@ def draw_all_long(recs, interval, topk1, topk2, user, name, path, date_str):
 
     wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
 
-    with Canvas(bg=FillBg((200, 200, 200, 255))).set_padding(10) as canvas:
+    bg_color = LinearGradient(c1=(210, 200, 255, 255), c2=(200, 230, 255, 255), p1=(1, 1), p2=(0, 0))
+    with Canvas(bg=FillBg(bg_color)).set_padding(10) as canvas:
         with VSplit().set_sep(10).set_padding(10):
-            bg = RoundRectBg(fill=(255, 255, 255, 255), radius=10)
+            bg = RoundRectBg(fill=(255, 255, 255, 200), radius=10)
 
             title = TextBox(f"{date_str} 群聊消息统计 总消息数: {len(recs)}条")
             title.set_bg(bg).set_padding(10).set_w(850 + 850 + 10)
@@ -377,16 +380,16 @@ def draw_all_long(recs, interval, topk1, topk2, user, name, path, date_str):
 
             with HSplit().set_sep(10):
                 with VSplit().set_sep(10):
-                    ImageBox(pie_image, image_size_mode='fit').set_bg(bg).set_w(850)
-                    ImageBox(wordcloud_image, image_size_mode='fit').set_bg(bg).set_padding(32).set_w(850)
+                    ImageBox(pie_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_w(850)
+                    ImageBox(wordcloud_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_padding(32).set_w(850)
 
                     wrt = TextBox(word_rank_text, line_count=3)
                     wrt.set_bg(bg).set_padding(16).set_w(850)
                     wrt.set_style(TextStyle(size=20, color=(100, 100, 100, 255), font=DEFAULT_FONT))
                 
                 with VSplit().set_sep(10):
-                    ImageBox(plot_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
-                    ImageBox(date_count_image, image_size_mode='fit').set_bg(bg).set_padding(16).set_w(850)
+                    ImageBox(plot_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_padding(16).set_w(850)
+                    ImageBox(date_count_image, image_size_mode='fit', use_alphablend=True).set_bg(bg).set_padding(16).set_w(850)
 
     canvas.get_img().save(path)
     logger.info(f"绘制完成")
