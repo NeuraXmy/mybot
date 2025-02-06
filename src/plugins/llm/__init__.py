@@ -275,6 +275,7 @@ def get_text_retriever(name) -> TextRetriever:
         text_retrievers[name] = TextRetriever(name)
     return text_retrievers[name]
         
+        
 # -------------------------------- TTS相关 -------------------------------- #
 
 # TTS

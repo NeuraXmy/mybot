@@ -18,8 +18,14 @@ FONT_NAME = "Source Han Sans CN"
 FONT_PATH = "data/utils/fonts/SourceHanSansCN-Regular.otf"
 
 plt.switch_backend('agg')
-matplotlib.rcParams['font.family']=[FONT_NAME]
-matplotlib.rcParams['axes.unicode_minus']=False   
+matplotlib.rcParams['font.family'] = [FONT_NAME]
+matplotlib.rcParams['axes.unicode_minus'] = False   
+
+
+def get_colors():
+    cmap = plt.get_cmap('Set3')
+    colors = [cmap(i) for i in range(cmap.N) if i not in [9]]
+    return colors
 
 
 def pil_fig_to_image(fig) -> Image.Image:
@@ -46,7 +52,8 @@ def draw_pie(ax, recs, topk_user, topk_name):
     other_image_count = sum([user_image_count.get(user) for user in user_count.keys() if user not in topk_user])
     labels = [f'{topk_name[i]} ({topk_user_count[i]},{user_image_count.get(topk_user[i])})' for i in range(topk)] 
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
-    ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90)
+
+    ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90, colors=get_colors())
 
 # 绘制折线图
 def draw_plot(ax, recs, interval, topk_user, topk_name):
@@ -76,7 +83,7 @@ def draw_plot(ax, recs, interval, topk_user, topk_name):
     for i in range(0, topk):
         offset = timedelta(minutes=interval) / 2
         tx = [xi + offset for xi in x[1:-1]]
-        ax.plot(tx, cnts[i][1:-1], label=topk_name[i], linewidth=0.7)
+        ax.plot(tx, cnts[i][1:-1], label=topk_name[i], linewidth=0.7, color=get_colors()[i])
 
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%k'))
@@ -296,7 +303,7 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
     date_topk_count += [[sum([user_date_counts[i][user_id] for user_id in other_users]) for i in range(n)]]
     bottom = [0] * n
     for i in range(k):
-        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom, width=1)
+        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom, width=1, color=get_colors()[i])
         bottom = [bottom[j] + date_topk_count[i][j] for j in range(n)]
     ax2.bar(dates, date_topk_count[k], label='其他', bottom=bottom, width=1)
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
@@ -340,7 +347,7 @@ def draw_long_sta_date_count_plot(ax: plt.Axes, topk_user, topk_name, recs):
     # 绘制图
     ax.bar(dates, counts, label='日消息数', color='#bbbbbb', width=1)
     for i in range(len(topk_user)):
-        ax.plot(dates, user_counts[i], label=topk_name[i], color=f'C{i}')
+        ax.plot(dates, user_counts[i], label=topk_name[i], color=get_colors()[i])
 
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
