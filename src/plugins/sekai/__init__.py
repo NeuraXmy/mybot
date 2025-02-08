@@ -124,6 +124,7 @@ ASSET_DB_URL_AND_MAPS = [
 
 MOST_RARE_MYSEKAI_RES = [
     "mysekai_material_5", "mysekai_material_12", "mysekai_material_20", "mysekai_material_24",
+    "mysekai_fixture_121",
 ]
 MYSEKAI_SITE_MAP_IMAGE_ANCHOR = {
     5: [-21, 16, -18, 19],

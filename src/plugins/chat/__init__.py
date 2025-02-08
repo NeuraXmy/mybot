@@ -263,10 +263,11 @@ async def _(bot: Bot, event: MessageEvent):
         total_seconds, total_ptokens, total_ctokens, total_cost = 0, 0, 0, 0
         tools_additional_info = ""
         rest_quota, provider_name = 0, None
+        reasoning = None
 
         for _ in range(3):
             t = datetime.now()
-            resp = await session.get_response(model_name=model_name)
+            resp = await session.get_response(model_name=model_name, enable_reasoning=True)
             res_text = resp.result
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens
@@ -274,6 +275,7 @@ async def _(bot: Bot, event: MessageEvent):
             total_seconds += (datetime.now() - t).total_seconds()
             rest_quota = resp.quota
             provider_name = resp.provider.name
+            reasoning = resp.reasoning
 
             # 如果回复时关闭则取消回复
             if not gwl.check(event, allow_private=True, allow_super=True): return
@@ -301,6 +303,11 @@ async def _(bot: Bot, event: MessageEvent):
             sessions[session_id_backup] = session
         ret = truncate(f"会话失败: {error}", 128)
         return await send_reply_msg(chat_request, event.message_id, ret)
+
+    # 思考内容
+    reasoning_text = ""
+    if reasoning:
+        reasoning_text = f"【思考】\n{reasoning}\n【回答】\n"
     
     # 添加额外信息
     additional_info = f"{model_name}@{provider_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
@@ -310,7 +317,7 @@ async def _(bot: Bot, event: MessageEvent):
         else:
             additional_info += f" | <0.0001/{rest_quota:.2f}$"
     additional_info = f"\n({additional_info})"
-    final_text = tools_additional_info + res_text + additional_info
+    final_text = tools_additional_info + reasoning_text + res_text + additional_info
 
     # 进行回复
     ret = await send_fold_msg_adaptive(bot, chat_request, event, final_text, FOLD_LENGTH_THRESHOLD)

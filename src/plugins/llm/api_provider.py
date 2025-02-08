@@ -25,6 +25,7 @@ class LlmModel:
     max_token: int
     model_id: Optional[str] = None
     data: Optional[dict] = None
+    include_reasoning: bool = False
 
     def calc_price(self, input_tokens: int, output_tokens: int) -> float:
         return input_tokens * self.input_pricing + output_tokens * self.output_pricing

@@ -14,6 +14,7 @@ file_db = get_file_db("data/llm/db.json", logger)
 
 # -------------------------------- GPT聊天相关 -------------------------------- #
 
+CHAT_TIMEOUT = 300
 CHAT_MAX_TOKENS = config['chat_max_tokens']
 session_id_top = 0
 
@@ -44,6 +45,7 @@ class ChatSessionResponse:
     completion_tokens: int
     cost: float
     quota: float
+    reasoning: Optional[str] = None
 
 # 会话类型
 class ChatSession:
@@ -121,7 +123,7 @@ class ChatSession:
         return self.has_image
 
     # 获取回复 并且自动添加回复到消息列表
-    async def get_response(self, model_name):
+    async def get_response(self, model_name, enable_reasoning=False):
         logger.info(f"会话{self.id}请求回复, 使用模型: {model_name}")
 
         provider, model = api_provider_mgr.find_model(model_name)
@@ -130,19 +132,53 @@ class ChatSession:
         
         provider.check_qps_limit()
 
+        # 推理附加新的prompt
+        use_reasoning = enable_reasoning and model.include_reasoning
+        content = self.content.copy()
+        if use_reasoning:
+            reasoning_prompt = "\n（请进行适当思考）"
+            if isinstance(content[-1]['content'], str):
+                content[-1]['content'] += reasoning_prompt
+            else:
+                content[-1]['content'].append({
+                    "type": "text",
+                    "text": reasoning_prompt
+                })
+
         # 请求回复
-        response = await provider.get_client().chat.completions.create(
-            model=model.get_model_id(),
-            messages=self.content,
-            max_tokens=CHAT_MAX_TOKENS
-        )
-        if hasattr(response, "error") and response.error is not None:
-            raise Exception(str(response.error))
-        result              = response.choices[0].message.content
-        prompt_tokens       = response.usage.prompt_tokens
-        completion_tokens   = response.usage.completion_tokens
+        client = provider.get_client()
+        url = f"{client.base_url}chat/completions"
+        headers = {
+            "Authorization": f"Bearer {client.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model.get_model_id(),
+            "messages": content,
+            "include_reasoning": use_reasoning,
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload, timeout=CHAT_TIMEOUT) as resp:
+                if resp.status != 200:
+                    raise Exception(f"请求失败: {resp.status} {resp.reason}")
+                response = await resp.json()
+                if "error" in response:
+                    raise Exception(f"请求失败: {response['error']}")
+
+        # 解析回复
+        message             = response['choices'][0]['message']
+        prompt_tokens       = response['usage']['prompt_tokens']
+        completion_tokens   = response['usage']['completion_tokens']
+
+        result = message['content']
+        reasoning = None
+        if 'reasoning_content' in message:
+            reasoning = message['reasoning_content']
+        elif 'reasoning' in message:
+            reasoning = message['reasoning']
         
-        logger.info(f"会话{self.id}获取回复: {truncate(result, 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
+        logger.info(f"会话{self.id}获取回复: {truncate(result, 64)}, 思考:{truncate(reasoning or '无', 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
 
         # 添加到对话记录
         self.append_bot_content(result, verbose=False)
@@ -158,7 +194,8 @@ class ChatSession:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cost=cost,
-            quota=quota
+            quota=quota,
+            reasoning=reasoning,
         )
 
 
