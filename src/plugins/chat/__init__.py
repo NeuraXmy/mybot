@@ -312,7 +312,9 @@ async def _(bot: Bot, event: MessageEvent):
     # 添加额外信息
     additional_info = f"{model_name}@{provider_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if rest_quota > 0:
-        if total_cost >= 0.0001 or total_cost == 0.0:
+        if total_cost == 0.0:
+            additional_info += f" | 0/{rest_quota:.2f}$"
+        elif total_cost >= 0.0001:
             additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
         else:
             additional_info += f" | <0.0001/{rest_quota:.2f}$"

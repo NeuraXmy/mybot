@@ -136,7 +136,8 @@ class ChatSession:
         use_reasoning = enable_reasoning and model.include_reasoning
         content = self.content.copy()
         if use_reasoning:
-            reasoning_prompt = "\n（请进行适当思考）"
+            with open("data/llm/reasoning_prompt.txt", "r", encoding="utf-8") as f:
+                reasoning_prompt = f.read()
             if isinstance(content[-1]['content'], str):
                 content[-1]['content'] += reasoning_prompt
             else:
