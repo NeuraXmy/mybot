@@ -126,6 +126,10 @@ MOST_RARE_MYSEKAI_RES = [
     "mysekai_material_5", "mysekai_material_12", "mysekai_material_20", "mysekai_material_24",
     "mysekai_fixture_121",
 ]
+RARE_MYSEKAI_RES = [
+    "mysekai_material_32", "mysekai_material_33", "mysekai_material_34", "mysekai_material_61",
+]
+
 MYSEKAI_SITE_MAP_IMAGE_ANCHOR = {
     5: [-21, 16, -18, 19],
     7: [-19, 23, -24, 18],
@@ -1725,10 +1729,10 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
                 ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
                 if not small_icon:
-                    TextBox(
-                        f"{res_quantity}", 
-                        TextStyle(font=DEFAULT_BOLD_FONT, size=10, color=(100, 100, 100, 200))
-                    ).set_offset((offsetx, offsetz))
+                    style = TextStyle(font=DEFAULT_BOLD_FONT, size=10, color=(100, 100, 100, 200))
+                    if res_quantity > 1:
+                        style = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(255, 50, 0, 200))
+                    TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
     return await run_in_pool(canvas.get_img)
 
@@ -1824,7 +1828,11 @@ async def compose_mysekai_res_image(qid, show_harvested):
                                 res_img = await get_mysekai_res_icon(res_key)
                                 if not res_img: continue
                                 with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
-                                    text_color = (150, 150, 150) if res_key not in MOST_RARE_MYSEKAI_RES else (200, 50, 0)
+                                    text_color = (150, 150, 150) 
+                                    if res_key in MOST_RARE_MYSEKAI_RES:
+                                        text_color = (200, 50, 0)
+                                    elif res_key in RARE_MYSEKAI_RES:
+                                        text_color = (50, 0, 200)
                                     ImageBox(res_img, size=(40, 40), use_alphablend=True)
                                     TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=text_color)).set_w(80).set_content_align('l')
 
@@ -2713,9 +2721,11 @@ pjsk_mysekai_res = CmdHandler([
 pjsk_mysekai_res.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_res.handle()
 async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    show_harvested = 'all' in args
     return await ctx.asend_multiple_fold_msg([
         await get_image_cq(img) for img in 
-        await compose_mysekai_res_image(ctx.user_id, False)
+        await compose_mysekai_res_image(ctx.user_id, show_harvested)
     ], show_cmd=True)
 
 
