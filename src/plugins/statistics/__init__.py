@@ -57,7 +57,7 @@ async def get_day_statistic(bot, group_id, date=None):
             topk_name.append(str(user))
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.png"
-    await run_in_pool(draw_all, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
+    await run_in_pool(draw_all, group_id, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
     # 发送图片
     return await get_image_cq(path)
 
@@ -90,7 +90,7 @@ async def get_long_statistic(bot, group_id, start_date: datetime, end_date: date
     # 画图
     path = PLOT_PATH + f"plot_{group_id}.png"
     date = f"{start_date.strftime('%Y-%m-%d')}~{end_date.strftime('%Y-%m-%d')}"
-    await run_in_pool(draw_all_long, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
+    await run_in_pool(draw_all_long, group_id, recs, PLOT_INTERVAL, PLOT_TOPK1, PLOT_TOPK2, topk_user, topk_name, path, date)
     # 发送图片
     return await get_image_cq(path)
 

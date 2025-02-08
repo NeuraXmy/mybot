@@ -31,6 +31,7 @@ SYSTEM_PROMPT_TOOLS_PATH = "data/chat/system_prompt_tools.txt"
 TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
 SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
 CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
+NOTHINK_TRIGGER_WORDS = ['nothink', 'noreason']
 
 FORWARD_MSG_INPUT_LIMIT = 10
 
@@ -202,6 +203,13 @@ async def _(bot: Bot, event: MessageEvent):
                     current_date=datetime.now().strftime("%Y-%m-%d")
                 )
 
+        # 是否关闭思考
+        enable_reasoning = True
+        if any([word in query_text for word in NOTHINK_TRIGGER_WORDS]):
+            for word in NOTHINK_TRIGGER_WORDS:
+                query_text = query_text.replace(word, "")
+            enable_reasoning = False
+
         reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
         if reply_msg_obj is not None:
             # 回复模式，检测是否在历史会话中
@@ -267,7 +275,7 @@ async def _(bot: Bot, event: MessageEvent):
 
         for _ in range(3):
             t = datetime.now()
-            resp = await session.get_response(model_name=model_name, enable_reasoning=True)
+            resp = await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
             res_text = resp.result
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens

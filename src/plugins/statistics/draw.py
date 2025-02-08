@@ -28,6 +28,41 @@ def get_colors():
     return colors
 
 
+# 获取群聊-日期的主题颜色
+def get_theme_color_info(gid, date):
+    rng = random.Random(f"{gid}-{date}")
+    hue = rng.uniform(0, 1)
+    h1 = (hue + 0.05) % 1.0
+    h2 = (hue - 0.05 + 1.0) % 1.0
+    if rng.random() < 0.5:
+        h1, h2 = h2, h1
+    s, l = 0.85, 0.85
+    c1 = colorsys.hls_to_rgb(h1, l, s)
+    c2 = colorsys.hls_to_rgb(h2, l, s)
+    c1 = [int(255*c) for c in c1] + [255]
+    c2 = [int(255*c) for c in c2] + [255]
+    return {
+        "hue": hue,
+        "colors": [c1, c2],
+        "rng": rng
+    }
+
+# 获取图标配色
+def get_cmap(gid, date, n=10, hue_range=0.2):
+    info = get_theme_color_info(gid, date)
+    hue = info["hue"]
+    ret = []
+    for i in range(n):
+        s, l = 0.8, 0.9
+        if i % 2 == 0:
+            s, l = 0.8, 0.8
+        h_delta = hue_range * i / n
+        h = (hue + h_delta + 1.0) % 1.0
+        c = colorsys.hls_to_rgb(h, l, s)
+        ret.append(c)
+    return ret
+
+
 def pil_fig_to_image(fig) -> Image.Image:
     buf = io.BytesIO()
     fig.savefig(buf, transparent=True)
@@ -35,7 +70,7 @@ def pil_fig_to_image(fig) -> Image.Image:
     return Image.open(buf)
 
 # 绘制饼图
-def draw_pie(ax, recs, topk_user, topk_name):
+def draw_pie(gid, date_str, ax, recs, topk_user, topk_name):
     logger.info(f"开始绘制饼图")
     topk = len(topk_user)
     user_count, user_image_count = Counter(), Counter()
@@ -53,10 +88,10 @@ def draw_pie(ax, recs, topk_user, topk_name):
     labels = [f'{topk_name[i]} ({topk_user_count[i]},{user_image_count.get(topk_user[i])})' for i in range(topk)] 
     labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
 
-    ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90, colors=get_colors())
+    ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90, colors=get_cmap(gid, date_str))
 
 # 绘制折线图
-def draw_plot(ax, recs, interval, topk_user, topk_name):
+def draw_plot(gid, date_str, ax, recs, interval, topk_user, topk_name):
     logger.log(f"开始绘制折线图")
     topk = len(topk_user)
     cnts = [[0] * int(24*60/interval) for _ in range(topk + 1)]
@@ -77,13 +112,14 @@ def draw_plot(ax, recs, interval, topk_user, topk_name):
 
     x = [datetime.strptime("00:00", "%H:%M") + timedelta(minutes=interval*i) for i in range(int(24*60/interval))]
 
-    ax.bar(x[1:-1], all[1:-1], width=timedelta(minutes=interval), align='edge', color='#bbbbbb')
-    ax.bar(x[1:-1], img_all[1:-1], width=timedelta(minutes=interval), align='edge', color='#dddddd')
+    ax.bar(x[1:-1], all[1:-1], width=timedelta(minutes=interval), align='edge', color='#bbbbbb', label='消息数')
+    ax.bar(x[1:-1], img_all[1:-1], width=timedelta(minutes=interval), align='edge', color='#dddddd', label='图片消息数')
 
-    for i in range(0, topk):
-        offset = timedelta(minutes=interval) / 2
-        tx = [xi + offset for xi in x[1:-1]]
-        ax.plot(tx, cnts[i][1:-1], label=topk_name[i], linewidth=0.7, color=get_colors()[i])
+    # cmap = get_cmap(gid, date_str)
+    # for i in range(0, topk):
+    #     offset = timedelta(minutes=interval) / 2
+    #     tx = [xi + offset for xi in x[1:-1]]
+    #     ax.plot(tx, cnts[i][1:-1], label=topk_name[i], linewidth=0.7, color=cmap[i])
 
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%k'))
@@ -123,7 +159,7 @@ def init_jieba():
     if not jieba_inited: reset_jieba()
 
 # 绘制词云图 返回图片和前WORD_TOPK个词的前WORD_USER_TOPK个用户以及他们的比例文本
-def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
+def draw_wordcloud(gid, date_str, recs, users, names) -> Tuple[Image.Image, str]:
     logger.info(f"开始绘制词云图")
     init_jieba()
 
@@ -168,7 +204,7 @@ def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
     WC_W = 400
     WC_H = 200
 
-    main_h = random.uniform(0.0, 1.0)
+    main_h = get_theme_color_info(gid, date_str)["hue"]
 
     # 随机颜色
     def random_color(word, font_size, position, orientation, random_state=None, **kwargs):
@@ -225,23 +261,24 @@ def draw_wordcloud(recs, users, names) -> Tuple[Image.Image, str]:
 
 
 # 绘制所有图
-def draw_all(recs, interval, topk1, topk2, user, name, path, date_str):
+def draw_all(gid, recs, interval, topk1, topk2, user, name, path, date_str):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_pie(ax, recs, user[:topk1], name[:topk1])
+    draw_pie(gid, date_str, ax, recs, user[:topk1], name[:topk1])
     pie_image = pil_fig_to_image(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_plot(ax, recs, interval, user[:topk2], name[:topk2])
+    draw_plot(gid, date_str, ax, recs, interval, user[:topk2], name[:topk2])
     plot_image = pil_fig_to_image(fig)
 
-    wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
+    wordcloud_image, word_rank_text = draw_wordcloud(gid, date_str, recs, user, name)
 
-    bg_color = LinearGradient(c1=(210, 200, 255, 255), c2=(200, 230, 255, 255), p1=(1, 1), p2=(0, 0))
+    c1, c2 = get_theme_color_info(gid, date_str)["colors"]
+    bg_color = LinearGradient(c1=c1, c2=c2, p1=(1, 1), p2=(0, 0))
     with Canvas(bg=FillBg(bg_color)).set_padding(10) as canvas:
         with VSplit().set_sep(10).set_padding(10):
             bg = RoundRectBg(fill=(255, 255, 255, 200), radius=10)
@@ -303,7 +340,7 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
     date_topk_count += [[sum([user_date_counts[i][user_id] for user_id in other_users]) for i in range(n)]]
     bottom = [0] * n
     for i in range(k):
-        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom, width=1, color=get_colors()[i])
+        ax2.bar(dates, date_topk_count[i], label=topk_name[i], bottom=bottom, width=1)
         bottom = [bottom[j] + date_topk_count[i][j] for j in range(n)]
     ax2.bar(dates, date_topk_count[k], label='其他', bottom=bottom, width=1)
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
@@ -320,7 +357,7 @@ def draw_word_count_plot(dates, topk_user, topk_name, user_counts, user_date_cou
 
 
 # 绘制长时间统计的群总聊天数关于时间的折线图
-def draw_long_sta_date_count_plot(ax: plt.Axes, topk_user, topk_name, recs):
+def draw_long_sta_date_count_plot(gid, date_str, ax: plt.Axes, topk_user, topk_name, recs):
     logger.info(f"开始绘制长时间统计的群总聊天数关于时间的折线图")
 
     # 计算起止时间
@@ -345,9 +382,10 @@ def draw_long_sta_date_count_plot(ax: plt.Axes, topk_user, topk_name, recs):
         user_counts[topk_user.index(user_id)][index] += 1
 
     # 绘制图
+    # cmap = get_cmap(gid, date_str)
     ax.bar(dates, counts, label='日消息数', color='#bbbbbb', width=1)
-    for i in range(len(topk_user)):
-        ax.plot(dates, user_counts[i], label=topk_name[i], color=get_colors()[i])
+    # for i in range(len(topk_user)):
+    #     ax.plot(dates, user_counts[i], label=topk_name[i], color=cmap[i])
 
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
@@ -355,28 +393,29 @@ def draw_long_sta_date_count_plot(ax: plt.Axes, topk_user, topk_name, recs):
 
 
 # 绘制所有图（长时间统计版本）
-def draw_all_long(recs, interval, topk1, topk2, user, name, path, date_str):
+def draw_all_long(gid, recs, interval, topk1, topk2, user, name, path, date_str):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_pie(ax, recs, user[:topk1], name[:topk1])
+    draw_pie(gid, date_str, ax, recs, user[:topk1], name[:topk1])
     pie_image = pil_fig_to_image(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_plot(ax, recs, interval, user[:topk2], name[:topk2])
+    draw_plot(gid, date_str, ax, recs, interval, user[:topk2], name[:topk2])
     plot_image = pil_fig_to_image(fig)
 
     fig, ax = plt.subplots(figsize=(8, 5), nrows=1, ncols=1)
     fig.tight_layout()
-    draw_long_sta_date_count_plot(ax, user[:topk2], name[:topk2], recs)
+    draw_long_sta_date_count_plot(gid, date_str, ax, user[:topk2], name[:topk2], recs)
     date_count_image = pil_fig_to_image(fig)
 
-    wordcloud_image, word_rank_text = draw_wordcloud(recs, user, name)
+    wordcloud_image, word_rank_text = draw_wordcloud(gid, date_str, recs, user, name)
 
-    bg_color = LinearGradient(c1=(210, 200, 255, 255), c2=(200, 230, 255, 255), p1=(1, 1), p2=(0, 0))
+    c1, c2 = get_theme_color_info(gid, date_str)["colors"]
+    bg_color = LinearGradient(c1=c1, c2=c2, p1=(1, 1), p2=(0, 0))
     with Canvas(bg=FillBg(bg_color)).set_padding(10) as canvas:
         with VSplit().set_sep(10).set_padding(10):
             bg = RoundRectBg(fill=(255, 255, 255, 200), radius=10)
