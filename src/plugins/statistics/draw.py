@@ -56,7 +56,7 @@ def get_cmap(gid, date, n=10, hue_range=0.2):
         s, l = 0.8, 0.9
         if i % 2 == 0:
             s, l = 0.8, 0.8
-        h_delta = hue_range * i / n
+        h_delta = hue_range * (i / n - 0.5)
         h = (hue + h_delta + 1.0) % 1.0
         c = colorsys.hls_to_rgb(h, l, s)
         ret.append(c)
@@ -69,26 +69,103 @@ def pil_fig_to_image(fig) -> Image.Image:
     buf.seek(0)
     return Image.open(buf)
 
+
 # 绘制饼图
-def draw_pie(gid, date_str, ax, recs, topk_user, topk_name):
+def draw_pie(gid, date_str, recs, topk_user, topk_name):
     logger.info(f"开始绘制饼图")
-    topk = len(topk_user)
+
+    # 统计数量
+    topk_user_set = set(topk_user)
     user_count, user_image_count = Counter(), Counter()
+    other_count, other_image_count = 0, 0
     for rec in recs:
-        user_count.inc(rec['user_id'])
-        if has_image(rec['msg']):
-            user_image_count.inc(rec['user_id'])
-    sorted_user_count = sorted(user_count.items(), key=lambda x: x[1], reverse=True)
+        if rec['user_id'] not in topk_user_set:
+            other_count += 1
+            if has_image(rec['msg']):
+                other_image_count += 1
+        else:
+            user_count.inc(rec['user_id'])
+            if has_image(rec['msg']):
+                user_image_count.inc(rec['user_id'])
 
-    topk_user = [user for user, _ in sorted_user_count[:topk]]
-    topk_user_count = [count for _, count in sorted_user_count[:topk]]
-    topk_user.append("其他")
-    topk_user_count.append(sum([count for _, count in sorted_user_count[topk:]]))
-    other_image_count = sum([user_image_count.get(user) for user in user_count.keys() if user not in topk_user])
-    labels = [f'{topk_name[i]} ({topk_user_count[i]},{user_image_count.get(topk_user[i])})' for i in range(topk)] 
-    labels += [f'其他 ({topk_user_count[topk]},{other_image_count})']
+    topk_user_count = [user_count.get(user) for user in topk_user]
+    topk_user_image_count = [user_image_count.get(user) for user in topk_user]
+    total_count = sum(topk_user_count) + other_count
+    
+    # 计算其他数量（比例小于多少的用户并入其他）
+    rate_threshold = 0.03
+    while topk_user_count and topk_user_count[-1] / total_count < rate_threshold:
+        other_count += topk_user_count.pop()
+        other_image_count += topk_user_image_count.pop()
+        topk_user.pop()
+        topk_name.pop()
 
-    ax.pie(topk_user_count, labels=labels, autopct='%1.1f%%', shadow=False, startangle=90, colors=get_cmap(gid, date_str))
+    if other_count > 0:
+        topk_user_count.append(other_count)
+        topk_user_image_count.append(other_image_count)
+        topk_user.append("其他")
+        topk_name.append("其他")
+    
+    rates = [count/total_count for count in topk_user_count]
+    start_angles, end_angles, cur_angle = [], [], -90
+    for i in range(len(rates)):
+        start_angles.append(cur_angle)
+        end_angles.append(cur_angle - rates[i] * 360)
+        cur_angle -= rates[i] * 360
+
+    canvas_w, canvas_h = 800, 400
+    with Canvas(w=canvas_w, h=canvas_h) as canvas:
+        cx, cy = int(canvas_w / 2), int(canvas_h / 2)
+        radius = int(canvas_h * 0.8 / 2)
+        cmap = get_cmap(gid, date_str)
+
+        # 绘制饼图扇形
+        for i in range(len(topk_user)):
+            pos, size = (0, 0), (radius * 2, radius * 2)
+            color = tuple([int(255*c) for c in cmap[i]] + [255])
+            p = Painter(Image.new('RGBA', size, TRANSPARENT))
+            p.pieslice(pos, size, end_angles[i], start_angles[i], color, stroke=None, stroke_width=0)
+            img = p.get()
+            ImageBox(img).set_offset((cx, cy)).set_offset_anchor('c')
+
+        # 添加百分比
+        for i in range(len(topk_user)):
+            mid_angle = (start_angles[i] + end_angles[i]) / 2
+            x = int(cx + radius * 0.6 * math.cos(math.radians(mid_angle)))
+            y = int(cy + radius * 0.6 * math.sin(math.radians(mid_angle)))
+            text = f"{int(rates[i]*100)}% ({topk_user_count[i]})"
+            TextBox(text, style=TextStyle(size=16, font=DEFAULT_FONT, color=(50, 50, 50, 255))).set_offset((x, y)).set_offset_anchor('c')
+
+        # 添加标签
+        for i in range(len(topk_user)):
+            mid_angle = (start_angles[i] + end_angles[i]) / 2
+            x = int(cx + radius * math.cos(math.radians(mid_angle)))
+            y = int(cy + radius * math.sin(math.radians(mid_angle)))
+            label_offset = 10
+            if x < cx: 
+                x -= label_offset
+                offset_anchor = 'r'
+            else:      
+                x += label_offset
+                offset_anchor = 'l'
+
+            with HSplit().set_offset_anchor(offset_anchor).set_offset((x, y)).set_sep(0) as hs:
+                if topk_user[i] != "其他":
+                    try:
+                        ImageBox(download_avatar(topk_user[i], circle=True), size=(None, 40))
+                    except:
+                        logger.print_exc(f"获取{topk_user[i]}头像失败")
+                with Frame().set_bg(RoundRectBg(fill=(240, 240, 240, 170), radius=4)).set_padding(5).set_content_align('l'):
+                    color = cmap[i]
+                    h, l, s = colorsys.rgb_to_hls(*color)
+                    r, g, b = colorsys.hls_to_rgb(h, l * 0.7, s)
+                    color = (int(r * 255), int(g * 255), int(b * 255), 255)
+                    TextBox(f"{truncate(topk_name[i], 16)}", style=TextStyle(size=20, font=DEFAULT_BOLD_FONT, color=color)).set_offset((0, -2))
+                if x < cx: 
+                    hs.items.reverse()
+
+    return canvas.get_img()
+
 
 # 绘制折线图
 def draw_plot(gid, date_str, ax, recs, interval, topk_user, topk_name):
@@ -265,10 +342,7 @@ def draw_all(gid, recs, interval, topk1, topk2, user, name, path, date_str):
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
 
-    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
-    fig.tight_layout()
-    draw_pie(gid, date_str, ax, recs, user[:topk1], name[:topk1])
-    pie_image = pil_fig_to_image(fig)
+    pie_image = draw_pie(gid, date_str, recs, user[:topk1], name[:topk1])
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
@@ -397,10 +471,7 @@ def draw_all_long(gid, recs, interval, topk1, topk2, user, name, path, date_str)
     logger.info(f"开始绘制所有图到{path}")
     plt.subplots_adjust(wspace=0.0, hspace=0.0)
 
-    fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
-    fig.tight_layout()
-    draw_pie(gid, date_str, ax, recs, user[:topk1], name[:topk1])
-    pie_image = pil_fig_to_image(fig)
+    pie_image = draw_pie(gid, date_str, recs, user[:topk1], name[:topk1])
 
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()

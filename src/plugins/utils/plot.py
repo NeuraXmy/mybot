@@ -315,6 +315,45 @@ class Painter:
         
         return self
 
+    def pieslice(
+        self,
+        pos: Position,
+        size: Size,
+        start_angle: float,
+        end_angle: float,
+        fill: Color,
+        stroke: Color=None,
+        stroke_width: int=1,
+    ):
+        if isinstance(fill, Gradient):
+            gradient = fill
+            fill = BLACK
+        else:
+            gradient = None
+
+        pos = (pos[0] + self.offset[0], pos[1] + self.offset[1])
+        pos = pos + (pos[0] + size[0], pos[1] + size[1])
+
+        if fill[3] == 255 and not gradient:
+            draw = ImageDraw.Draw(self.img)
+            draw.pieslice(pos, start_angle, end_angle, fill=fill, width=stroke_width, outline=stroke)
+            return self
+        else:
+            overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(overlay)
+            if stroke:
+                draw.pieslice(pos, start_angle, end_angle, fill=fill, width=stroke_width, outline=stroke)
+            else:
+                draw.pieslice(pos, start_angle, end_angle, fill=fill)
+
+            if gradient:
+                mask = overlay.crop((pos[0], pos[1], pos[2] + 1, pos[3] + 1))
+                gradient_img = gradient.get_img((size[0] + 1, size[1] + 1), mask)
+                overlay.paste(gradient_img, pos[:2], gradient_img)
+
+            self.img = Image.alpha_composite(self.img, overlay)
+        
+        return self
 
 # =========================== 布局类型 =========================== #
 
@@ -419,9 +458,13 @@ class Widget:
         self.h = None
         self.bg = None
         self.offset = (0, 0)
+        self.offset_xanchor = 'l'
+        self.offset_yanchor = 't'
 
         self._calc_w = None
         self._calc_h = None
+        
+        self.draw_funcs = []
 
         if Widget.get_current_widget():
             Widget.get_current_widget().add_item(self)
@@ -502,11 +545,16 @@ class Widget:
     def set_offset(self, offset: Tuple[int, int]):
         self.offset = offset
         return self
+    
+    def set_offset_anchor(self, anchor: str):
+        if anchor not in ALIGN_MAP:
+            raise ValueError('Invalid anchor')
+        self.offset_xanchor, self.offset_yanchor = ALIGN_MAP[anchor]
+        return self
 
     def set_bg(self, bg: WidgetBg):
         self.bg = bg
         return self
-
 
     def _get_content_size(self):
         return (0, 0)
@@ -554,14 +602,38 @@ class Widget:
         
         if self.bg:
             self.bg.draw(p)
+
+        for draw_func in self.draw_funcs:
+            draw_func(self, p)
     
     def _draw_content(self, p: Painter):
         pass
+
+    def add_draw_func(self, func):
+        self.draw_funcs.append(func)
+        return self
+    
+    def clear_draw_funcs(self):
+        self.draw_funcs.clear()
+        return self
     
     def draw(self, p: Painter):
         assert p.size == self._get_self_size()
 
-        p.move_region(self.offset)
+        if self.offset_xanchor == 'l': 
+            offset_x = self.offset[0]
+        elif self.offset_xanchor == 'r':
+            offset_x = self.offset[0] - p.w
+        else:
+            offset_x = self.offset[0] - p.w // 2
+        if self.offset_yanchor == 't':
+            offset_y = self.offset[1]
+        elif self.offset_yanchor == 'b':
+            offset_y = self.offset[1] - p.h
+        else:
+            offset_y = self.offset[1] - p.h // 2
+
+        p.move_region((offset_x, offset_y))
         p.shrink_region((self.hmargin, self.vmargin))
         self._draw_self(p)
 

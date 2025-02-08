@@ -28,6 +28,7 @@ import re
 from .plot import *
 from .trans_gif import save_transparent_gif as _save_transparent_gif
 import math
+import requests
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
@@ -470,6 +471,20 @@ def get_avatar_url(user_id):
 # 获取高清头像url
 def get_avatar_url_large(user_id):
     return f"http://q1.qlogo.cn/g?b=qq&nk={user_id}&s=640"
+
+
+# 下载头像（非异步）
+def download_avatar(user_id, circle=False) -> Image.Image:
+    url = get_avatar_url(user_id)
+    response = requests.get(url)
+    img = Image.open(io.BytesIO(response.content))
+    if circle:
+        r = img.width // 2
+        circle_img = Image.new('L', (img.width, img.height), 0)
+        draw = ImageDraw.Draw(circle_img)
+        draw.ellipse((0, 0, r * 2, r * 2), fill=255)
+        img.putalpha(circle_img)
+    return img
 
 
 # 获取群聊中的用户名 如果有群名片则返回群名片 否则返回昵称
