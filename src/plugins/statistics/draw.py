@@ -130,24 +130,31 @@ def draw_pie(gid, date_str, recs, topk_user, topk_name):
 
         # 添加百分比
         for i in range(len(topk_user)):
+            if topk_user[i] == "其他" and rates[i] < 0.03 and rates[i - 1] < 0.03:
+                continue
             mid_angle = (start_angles[i] + end_angles[i]) / 2
             x = int(cx + radius * 0.6 * math.cos(math.radians(mid_angle)))
             y = int(cy + radius * 0.6 * math.sin(math.radians(mid_angle)))
-            text = f"{int(rates[i]*100)}% ({topk_user_count[i]})"
+            text = f"{int(rates[i]*100+0.5)}% ({topk_user_count[i]})"
             TextBox(text, style=TextStyle(size=16, font=DEFAULT_FONT, color=(50, 50, 50, 255))).set_offset((x, y)).set_offset_anchor('c')
 
         # 添加标签
-        for i in range(len(topk_user)):
-            mid_angle = (start_angles[i] + end_angles[i]) / 2
-            x = int(cx + radius * math.cos(math.radians(mid_angle)))
-            y = int(cy + radius * math.sin(math.radians(mid_angle)))
-            label_offset = 10
-            if x < cx: 
-                x -= label_offset
-                offset_anchor = 'r'
-            else:      
-                x += label_offset
-                offset_anchor = 'l'
+        for i in range(len(topk_user) - 1, -1, -1):
+            if topk_user[i] != "其他":
+                mid_angle = (start_angles[i] + end_angles[i]) / 2
+                x = int(cx + radius * math.cos(math.radians(mid_angle)))
+                y = int(cy + radius * math.sin(math.radians(mid_angle)))
+                label_offset = 10
+                if x < cx: 
+                    x -= label_offset
+                    offset_anchor = 'r'
+                else:      
+                    x += label_offset
+                    offset_anchor = 'l'
+            else:
+                x = cx
+                y = cy - radius
+                offset_anchor = 'b'
 
             with HSplit().set_offset_anchor(offset_anchor).set_offset((x, y)).set_sep(0) as hs:
                 if topk_user[i] != "其他":
