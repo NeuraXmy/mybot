@@ -314,7 +314,7 @@ async def _(bot: Bot, event: MessageEvent):
 
     # 思考内容
     reasoning_text = ""
-    if reasoning:
+    if reasoning and reasoning.strip():
         reasoning_text = f"【思考】\n{reasoning}\n【回答】\n"
     
     # 添加额外信息

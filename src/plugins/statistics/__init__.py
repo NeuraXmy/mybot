@@ -195,7 +195,8 @@ async def _(ctx: HandlerContext):
             ed = args[1].strip().replace('/', '-')
             start_date = datetime.strptime(st, "%Y-%m-%d")
             end_date = datetime.strptime(ed, "%Y-%m-%d")
-        else:
+        
+        if not start_date or not end_date:
             raise ValueError
 
     except:

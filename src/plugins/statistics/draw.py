@@ -135,25 +135,31 @@ def draw_pie(gid, date_str, recs, topk_user, topk_name):
             mid_angle = (start_angles[i] + end_angles[i]) / 2
             x = int(cx + radius * 0.6 * math.cos(math.radians(mid_angle)))
             y = int(cy + radius * 0.6 * math.sin(math.radians(mid_angle)))
-            text = f"{int(rates[i]*100+0.5)}% ({topk_user_count[i]})"
-            TextBox(text, style=TextStyle(size=16, font=DEFAULT_FONT, color=(50, 50, 50, 255))).set_offset((x, y)).set_offset_anchor('c')
+            text1 = f"{int(rates[i]*100+0.5)}%"
+            text2 = f"({topk_user_count[i]})"
+            if abs(x - cx) > abs(y - cy):
+                text = text1 + ' ' + text2
+                line_count = 1
+            else:
+                text = text1 + '\n' + text2
+                line_count = 2
+            TextBox(text, style=TextStyle(size=16, font=DEFAULT_FONT, color=(50, 50, 50, 255)), line_count=line_count).set_offset((x, y)).set_offset_anchor('c')
 
         # 添加标签
         for i in range(len(topk_user) - 1, -1, -1):
-            if topk_user[i] != "其他":
-                mid_angle = (start_angles[i] + end_angles[i]) / 2
-                x = int(cx + radius * math.cos(math.radians(mid_angle)))
-                y = int(cy + radius * math.sin(math.radians(mid_angle)))
-                label_offset = 10
-                if x < cx: 
-                    x -= label_offset
-                    offset_anchor = 'r'
-                else:      
-                    x += label_offset
-                    offset_anchor = 'l'
+            mid_angle = (start_angles[i] + end_angles[i]) / 2
+            x = int(cx + radius * math.cos(math.radians(mid_angle)))
+            y = int(cy + radius * math.sin(math.radians(mid_angle)))
+            label_offset = 10
+            if x < cx - 20:
+                x -= label_offset
+                offset_anchor = 'r'
+            elif x > cx + 20:     
+                x += label_offset
+                offset_anchor = 'l'
+            elif y > cy:
+                offset_anchor = 't'
             else:
-                x = cx
-                y = cy - radius
                 offset_anchor = 'b'
 
             with HSplit().set_offset_anchor(offset_anchor).set_offset((x, y)).set_sep(0) as hs:
@@ -293,7 +299,7 @@ def draw_wordcloud(gid, date_str, recs, users, names) -> Tuple[Image.Image, str]
     # 随机颜色
     def random_color(word, font_size, position, orientation, random_state=None, **kwargs):
         l = 1.0 - (font_size - FONT_SIZE_MIN) / (FONT_SIZE_MAX - FONT_SIZE_MIN)
-        l = 0.4 + l * 0.6
+        l = 0.4 + l * 0.5
         h = main_h + random.uniform(-0.05, 0.05)
         h = h % 1.0
         s = 1.0 - l
