@@ -195,12 +195,10 @@ async def _(ctx: HandlerContext):
             ed = args[1].strip().replace('/', '-')
             start_date = datetime.strptime(st, "%Y-%m-%d")
             end_date = datetime.strptime(ed, "%Y-%m-%d")
-        
-        if not start_date or not end_date:
+        else:
             raise ValueError
-
     except:
-        assert_and_reply(True, f"""
+        assert_and_reply(False, f"""
 使用方式: 
 /sta_sum [起始日期] [结束日期]
 /sta_sum [起始日期]
