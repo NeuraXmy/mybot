@@ -148,19 +148,16 @@ def draw_pie(gid, date_str, recs, topk_user, topk_name):
         # 添加标签
         for i in range(len(topk_user) - 1, -1, -1):
             mid_angle = (start_angles[i] + end_angles[i]) / 2
-            x = int(cx + radius * math.cos(math.radians(mid_angle)))
-            y = int(cy + radius * math.sin(math.radians(mid_angle)))
-            label_offset = 10
-            if x < cx - 20:
-                x -= label_offset
-                offset_anchor = 'r'
-            elif x > cx + 20:     
-                x += label_offset
-                offset_anchor = 'l'
-            elif y > cy:
-                offset_anchor = 't'
+            x = int(cx + (radius + 20) * math.cos(math.radians(mid_angle)))
+            y = int(cy + (radius + 20) * math.sin(math.radians(mid_angle)))
+            if x > cx:
+                offset_anchor = 'lt'
+                x -= 20
+                y -= 20
             else:
-                offset_anchor = 'b'
+                offset_anchor = 'rb'
+                x += 20
+                y += 20
 
             with HSplit().set_offset_anchor(offset_anchor).set_offset((x, y)).set_sep(0) as hs:
                 if topk_user[i] != "其他":
