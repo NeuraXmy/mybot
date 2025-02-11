@@ -150,7 +150,7 @@ def draw_pie(gid, date_str, recs, topk_user, topk_name):
             mid_angle = (start_angles[i] + end_angles[i]) / 2
             x = int(cx + (radius + 20) * math.cos(math.radians(mid_angle)))
             y = int(cy + (radius + 20) * math.sin(math.radians(mid_angle)))
-            if x > cx:
+            if x >= cx:
                 offset_anchor = 'lt'
                 x -= 20
                 y -= 20

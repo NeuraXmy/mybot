@@ -54,6 +54,11 @@ Color = Tuple[int, int, int, int]
 Position = Tuple[int, int]
 Size = Tuple[int, int]
 
+def lerp_color(c1, c2, t):
+    ret = []
+    for i in range(len(c1)):
+        ret.append(int(c1[i] * (1 - t) + c2[i] * t))
+    return tuple(ret)
 
 def get_font(path: str, size: int) -> Font:
     paths = [path]

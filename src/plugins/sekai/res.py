@@ -191,8 +191,12 @@ mysekai_fixtures                    = SekaiJsonRes("Mysekai家具数据", res_db
 mysekai_musicrecords                = SekaiJsonRes("Mysekai唱片数据", res_db_collection.specify("mysekaiMusicRecords.json"))
 mysekai_phenomenas                  = SekaiJsonRes("Mysekai天气数据", res_db_collection.specify("mysekaiPhenomenas.json"))
 mysekai_blueprints                  = SekaiJsonRes("Mysekai蓝图数据", res_db_collection.specify("mysekaiBlueprints.json"))
-mysekai_fixture_maingenres          = SekaiJsonRes("Mysekai主要家具类型数据",   res_db_collection.specify("mysekaiFixtureMainGenres.json"))
-mysekai_fixture_subgenres           = SekaiJsonRes("Mysekai次要家具类型数据",   res_db_collection.specify("mysekaiFixtureSubGenres.json"))
+mysekai_fixture_maingenres          = SekaiJsonRes("Mysekai主要家具类型数据", res_db_collection.specify("mysekaiFixtureMainGenres.json"))
+mysekai_fixture_subgenres           = SekaiJsonRes("Mysekai次要家具类型数据", res_db_collection.specify("mysekaiFixtureSubGenres.json"))
+mysekai_character_talks             = SekaiJsonRes("Mysekai角色对话数据", res_db_collection.specify("mysekaiCharacterTalks.json"))
+mysekai_game_character_unit_groups  = SekaiJsonRes("Mysekai角色组单位数据", res_db_collection.specify("mysekaiGameCharacterUnitGroups.json"))
+game_character_units                = SekaiJsonRes("角色单位数据", res_db_collection.specify("gameCharacterUnits.json"))
+mysekai_material_chara_relations    = SekaiJsonRes("Mysekai素材角色关系数据", res_db_collection.specify("mysekaiMaterialGameCharacterRelations.json"))
 
 music_cn_titles     = SekaiJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json")
 

@@ -109,7 +109,13 @@ BOARD_RANK_LIST = [
     4000, 5000, 10000, 20000, 30000,
     40000, 50000, 100000,
 ]
-
+GROUP_COLOR = {
+    1: (68,85,221,255),
+    2: (136,221,68,255),
+    3: (238,17,102,255),
+    4: (255,153,0,255),
+    5: (136,68,153,255),
+}
 
 ASSET_DB_URL_AND_MAPS = [
     (
@@ -1758,6 +1764,31 @@ async def compose_mysekai_res_image(qid, show_harvested):
     current_hour = datetime.now().hour
     phenom_idx = 1 if current_hour < 4 or current_hour >= 16 else 0
 
+    # 获取到访角色和对话记录
+    chara_visit_data = mysekai_info['userMysekaiGateCharacterVisit']
+    gate_id = chara_visit_data['userMysekaiGate']['mysekaiGateId']
+    gate_level = chara_visit_data['userMysekaiGate']['mysekaiGateLevel']
+    visit_cids = []
+    reservation_cid = None
+    for item in chara_visit_data['userMysekaiGateCharacters']:
+        cgid = item['mysekaiGameCharacterUnitGroupId']
+        group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
+        if len(group) == 2:
+            visit_cids.append(cgid)
+            if item['isReservation']:
+                reservation_cid = cgid
+    read_cids = set()
+    for item in chara_visit_data['mysekaiCharacterTalkWithReadHistories']:
+        if not item['isRead']: 
+            continue
+        tid = item['mysekaiCharacterTalkId']
+        talk = find_by(await res.mysekai_character_talks.get(), "id", tid)
+        cgid = talk['mysekaiGameCharacterUnitGroupId']
+        group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
+        for k, v in group.items():
+            if k != 'id':
+                read_cids.add(v)
+
     # 计算资源数量
     site_res_num = {}
     harvest_maps = mysekai_info['updatedResources']['userMysekaiHarvestMaps']
@@ -1802,7 +1833,8 @@ async def compose_mysekai_res_image(qid, show_harvested):
         site_harvest_map_imgs.append(await compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
     
     # 绘制数量图
-    with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(BG_PADDING) as canvas:
+    bg_color = LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
+    with Canvas(bg=FillBg(fill=bg_color)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
 
             with HSplit().set_sep(32).set_content_align('lb'):
@@ -1816,8 +1848,31 @@ async def compose_mysekai_res_image(qid, show_harvested):
                             with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
                                 TextBox(phenom_texts[i], TextStyle(font=DEFAULT_BOLD_FONT, size=15, color=color)).set_w(60).set_content_align('c')
                                 ImageBox(phenom_imgs[i], size=(None, 50), use_alphablend=True)   
+            
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+                # 到访角色列表
+                with HSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_padding(16).set_sep(16):
+                    gate_color = lerp_color(GROUP_COLOR[gate_id], WHITE, 0.4)
+                    gate_icon_colored = Image.new('RGBA', (64, 64), gate_color)
+                    gate_icon = res.misc_images.get('mysekai/gate_icon.png').resize((64, 64))
+                    gate_icon_colored.putalpha(gate_icon.split()[3])
+                    with Frame().set_size((64, 64)).set_margin((16, 0)).set_content_align('rb'):
+                        ImageBox(gate_icon_colored, size=(64, 64), use_alphablend=True)
+                        TextBox(f"Lv.{gate_level}", TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=gate_color)).set_content_align('c')
 
-            with VSplit().set_content_align('c').set_item_align('c').set_sep(16) as vs:
+                    for cid in visit_cids:
+                        chara_icon = await get_asset(f"character_sd_l_rip/chr_sp_{cid}.png")
+                        with Frame().set_content_align('lt'):
+                            ImageBox(chara_icon, size=(80, None), use_alphablend=True)
+                            if cid not in read_cids:
+                                gcid = find_by(await res.game_character_units.get(), "id", cid)['gameCharacterId']
+                                chara_item_icon = await get_asset(f"mysekai/item_preview/material/item_memoria_{gcid}_rip/item_memoria_{gcid}.png")
+                                ImageBox(chara_item_icon, size=(40, None), use_alphablend=True).set_offset((80 - 40, 80 - 40))
+                            if cid == reservation_cid:
+                                invitation_icon = res.misc_images.get('mysekai/invitationcard.png')
+                                ImageBox(invitation_icon, size=(25, None), use_alphablend=True).set_offset((10, 80 - 30))
+
+                # 每个地区的资源
                 for site_id, res_num in site_res_num:
                     if not res_num: continue
                     with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(16):
@@ -1924,7 +1979,8 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
         fixture_icons[fid] = icon
     
     # 绘制
-    with Canvas(bg=FillBg(fill=(220, 240, 255, 255))).set_padding(BG_PADDING) as canvas:
+    bg_color = LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
+    with Canvas(bg=FillBg(fill=bg_color)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
             if qid:
                 await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
