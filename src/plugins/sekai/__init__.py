@@ -1775,19 +1775,37 @@ async def compose_mysekai_res_image(qid, show_harvested):
         group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
         if len(group) == 2:
             visit_cids.append(cgid)
-            if item['isReservation']:
+            if item.get('isReservation'):
                 reservation_cid = cgid
     read_cids = set()
-    for item in chara_visit_data['mysekaiCharacterTalkWithReadHistories']:
-        if not item['isRead']: 
-            continue
-        tid = item['mysekaiCharacterTalkId']
-        talk = find_by(await res.mysekai_character_talks.get(), "id", tid)
-        cgid = talk['mysekaiGameCharacterUnitGroupId']
-        group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
-        for k, v in group.items():
-            if k != 'id':
-                read_cids.add(v)
+    all_user_read_cids = file_db.get('all_user_read_cids', {})
+    if phenom_idx == 0:
+        all_user_read_cids[qid] = {
+            "time": int(datetime.now().timestamp()),
+            "cids": visit_cids
+        }
+        file_db.set('all_user_read_cids', all_user_read_cids)
+    else:
+        read_info = all_user_read_cids.get(qid)
+        if read_info:
+            read_time = datetime.fromtimestamp(read_info['time'])
+            if (datetime.now() - read_time).days < 1:
+                read_cids = set(read_info['cids'])
+
+    # read_cids = set()
+    # for item in chara_visit_data['mysekaiCharacterTalkWithReadHistories']:
+    #     if not item['isRead']: 
+    #         continue
+    #     tid = item['mysekaiCharacterTalkId']
+    #     talk = find_by(await res.mysekai_character_talks.get(), "id", tid)
+    #     condition_id = talk['mysekaiCharacterTalkConditionGroupId']
+    #     if condition_id >= 1000: 
+    #         continue
+    #     cgid = talk['mysekaiGameCharacterUnitGroupId']
+    #     group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
+    #     for k, v in group.items():
+    #         if k != 'id':
+    #             read_cids.add(v)
 
     # 计算资源数量
     site_res_num = {}
@@ -1871,6 +1889,7 @@ async def compose_mysekai_res_image(qid, show_harvested):
                             if cid == reservation_cid:
                                 invitation_icon = res.misc_images.get('mysekai/invitationcard.png')
                                 ImageBox(invitation_icon, size=(25, None), use_alphablend=True).set_offset((10, 80 - 30))
+                    Spacer(w=16, h=1)
 
                 # 每个地区的资源
                 for site_id, res_num in site_res_num:
