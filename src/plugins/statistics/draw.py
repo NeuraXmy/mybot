@@ -171,7 +171,7 @@ def draw_pie(gid, date_str, recs, topk_user, topk_name):
                     r, g, b = colorsys.hls_to_rgb(h, l * 0.7, s)
                     color = (int(r * 255), int(g * 255), int(b * 255), 255)
                     TextBox(f"{truncate(topk_name[i], 16)}", style=TextStyle(size=20, font=DEFAULT_BOLD_FONT, color=color)).set_offset((0, -2))
-                if x < cx: 
+                if offset_anchor == 'rb':
                     hs.items.reverse()
 
     return canvas.get_img()
