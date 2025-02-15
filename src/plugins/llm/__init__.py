@@ -157,6 +157,7 @@ class ChatSession:
             "model": model.get_model_id(),
             "messages": content,
             "include_reasoning": use_reasoning,
+            "reasoning_effort": "high",
         }
 
         async with aiohttp.ClientSession() as session:

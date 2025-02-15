@@ -72,6 +72,12 @@ def get_message(s: str) -> Message:
             msg.type = 'chat'
             msg.data = {'player': player, 'content': content}
 
+    # 服务器广播
+    elif '[minecraft/MinecraftServer]:' in s:
+        content = s[s.index('[minecraft/MinecraftServer]:')+len('[minecraft/MinecraftServer]: '):].strip()
+        msg.type = 'server'
+        msg.data = {'content': content }
+
     # RCON聊天
     elif '[Not Secure] [Rcon]'in s:
         s = s[s.index('[Not Secure] [Rcon]') + len('[Not Secure] [Rcon] '):]
@@ -151,7 +157,6 @@ async def get_data(client_id: str):
     if len(ret) > 0:
         print(f"[监听] 客户端 {client_id} 的查询: 响应消息 {len(ret)} 条")
     return ret
-
 
 
 if __name__ == '__main__':

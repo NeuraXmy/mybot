@@ -980,13 +980,13 @@ async def compose_full_honor_image(profile_honor, is_main, profile=None):
         bg_asset_name = group.get('backgroundAssetbundleName', None)
         gtype = group['honorType']
         gname = group['name']
-
-        dir_name, file_name = 'honor', f'rank_{ms}.png'
-        if gtype == 'rank_match':
-            dir_name, file_name = 'rank_live/honor', f"{ms}.png"
         
-        img = await get_asset(f"{dir_name}/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-        rank_img = await get_asset(f"{dir_name}/{asset_name}_rip/{file_name}", allow_error=True)
+        if gtype == 'rank_match':
+            img = await get_asset(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
+            rank_img = await get_asset(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True)
+        else:
+            img = await get_asset(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
+            rank_img = await get_asset(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True)
 
         add_frame(img, rarity)
         if rank_img:
@@ -998,7 +998,7 @@ async def compose_full_honor_image(profile_honor, is_main, profile=None):
                 img.paste(rank_img, (190, 0) if is_main else (34, 42), rank_img)
 
         if hid in HONOR_DIFF_SCORE_MAP.keys():
-            scroll_img = await get_asset(f"{dir_name}/{asset_name}_rip/scroll.png", allow_error=True)
+            scroll_img = await get_asset(f"honor/{asset_name}_rip/scroll.png", allow_error=True)
             if scroll_img:
                 img.paste(scroll_img, (215, 3) if is_main else (37, 3), scroll_img)
             add_fcap_lv(img, profile)
@@ -1939,7 +1939,7 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
         for item in mysekai_info['updatedResources']['userMysekaiBlueprints']:
             bid = item['mysekaiBlueprintId']
             blueprint = find_by(await res.mysekai_blueprints.get(), "id", bid)
-            if blueprint['mysekaiCraftType'] == 'mysekai_fixture':
+            if blueprint and blueprint['mysekaiCraftType'] == 'mysekai_fixture':
                 fid = blueprint['craftTargetId']
                 obtained_fids.add(fid)
 
@@ -1988,7 +1988,7 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
             if ftype == "surface_appearance":
                 image = await get_asset(f"mysekai/thumbnail/surface_appearance/{asset_name}_rip/tex_{asset_name}_{suface_type}.png")
             else:
-                image = await get_asset(f"mysekai/thumbnail/fixture/{asset_name}_rip/{asset_name}.png")
+                image = await get_asset(f"mysekai/thumbnail/fixture/{asset_name}_1_rip/{asset_name}_1.png")
             return fid, image
         except Exception as e:
             logger.print_exc(f"获取家具{fid}的图标失败")
