@@ -44,7 +44,7 @@ def get_message(s: str) -> Message:
     )
 
     # 服务器启动
-    if ': Server Started!' in s:
+    if 'Starting Minecraft server on' in s:
         msg.type = 'common'
         msg.data = {'content': '服务器已启动'}
         global server_started
@@ -79,8 +79,8 @@ def get_message(s: str) -> Message:
         msg.data = {'content': content }
 
     # RCON聊天
-    elif '[Not Secure] [Rcon]'in s:
-        s = s[s.index('[Not Secure] [Rcon]') + len('[Not Secure] [Rcon] '):]
+    elif '[Rcon]'in s:
+        s = s[s.index('[Rcon]') + len('[Rcon] '):]
         player = s[s.index('[')+1:s.index(']')].strip()
         if player:
             content = s[s.index(']')+1:].strip()

@@ -126,6 +126,8 @@ class ServerData:
             url = f'{self.url}/query?client_id={client_id}'
             async with session.get(url, verify_ssl=False) as resp:
                 data = await resp.text()
+                if resp.status != 200:
+                    raise Exception(f'{data}')
                 json_data = json.loads(data)
                 return json_data
 
@@ -194,6 +196,13 @@ class ServerData:
                     player = item['data']['player']
                     logger.info(f'群聊 {self.group_id} 的服务器: {player} 离开了游戏')
                     self.queue.append(f'{player} 离开了游戏')
+
+                elif msg_type == 'server':
+                    content = item['data']['content']
+                    if 'has made the advancement' in content:
+                        content = content.replace('has made the advancement', '达成了进度')
+                        logger.info(f'群聊 {self.group_id} 的服务器: {content}')
+                        self.queue.append(content)
 
         if self.listen_mode == 'dynamicmap':
             mute = self.first_update
