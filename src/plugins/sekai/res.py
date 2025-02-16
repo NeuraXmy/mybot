@@ -8,7 +8,7 @@ file_db = get_file_db("data/sekai/db.json", logger)
 
 # ================================ Json资源 ================================ #
 
-class DatabaseCollection:
+class MasterDbCollection:
     def __init__(self, db_and_version_urls, version_update_interval: int):
         self.db_and_version_urls = db_and_version_urls
         self.newest_db_url = None
@@ -22,7 +22,7 @@ class DatabaseCollection:
         async def get_version(db_url, version_url):
             version = "0.0.0.0"
             try:
-                version_data = await download_json(db_url + version_url)
+                version_data = await download_json(version_url)
                 version = version_data.get('assetVersion', "0.0.0.0")
                 logger.info(f"数据库 {db_url} 的版本为 {version}")
             except:
@@ -45,12 +45,12 @@ class DatabaseCollection:
             await self.update()
         return self.newest_db_url
 
-    def specify(self, res_url) -> 'DbBasedUrl':
-        u = DbBasedUrl(self, res_url)
+    def specify(self, res_url) -> 'MasterDbUrl':
+        u = MasterDbUrl(self, res_url)
         return u
     
-class DbBasedUrl:
-    def __init__(self, res_db: DatabaseCollection, url: str):
+class MasterDbUrl:
+    def __init__(self, res_db: MasterDbCollection, url: str):
         self.res_db = res_db
         self.url = url
 
@@ -58,9 +58,19 @@ class DbBasedUrl:
         return await self.res_db.get_newest_db_url() + self.url
     
 
-res_db_collection = DatabaseCollection([
-    ("https://database.pjsekai.moe/", "version.json"),
-    ("https://sekai-world.github.io/sekai-master-db-diff/", "versions.json"),
+master_dbs = MasterDbCollection([
+    (
+        "https://database.pjsekai.moe/", 
+        "https://database.pjsekai.moe/version.json"
+    ),
+    (
+        "https://sekai-world.github.io/sekai-master-db-diff/", 
+        "https://sekai-world.github.io/sekai-master-db-diff/versions.json"
+    ),
+    (
+        "https://raw.githubusercontent.com/Team-Haruki/haruki-sekai-master/refs/heads/main/master/master/", 
+        "https://raw.githubusercontent.com/Team-Haruki/haruki-sekai-master/refs/heads/main/versions/current"
+    ),
 ], version_update_interval=60 * 60)
 
 sekai_json_res_list = []
@@ -78,7 +88,7 @@ class SekaiJsonRes:
     async def update(self):
         t = datetime.now()
         url = self.url
-        if isinstance(url, DbBasedUrl):
+        if isinstance(url, MasterDbUrl):
             url = await url.get()
         self.data = await download_json(url)
         if self.map_fn:
@@ -170,33 +180,33 @@ def vlives_map_fn(vlives):
     return all_ret
 
 
-musics                              = SekaiJsonRes("曲目数据", res_db_collection.specify("musics.json"))
-music_diffs                         = SekaiJsonRes("曲目难度数据", res_db_collection.specify("musicDifficulties.json"))
-vlives                              = SekaiJsonRes("虚拟Live数据", res_db_collection.specify("virtualLives.json"), map_fn=vlives_map_fn)
-events                              = SekaiJsonRes("活动数据", res_db_collection.specify("events.json"))
-event_stories                       = SekaiJsonRes("活动故事数据", res_db_collection.specify("eventStories.json"))
-event_story_units                   = SekaiJsonRes("活动故事团数据", res_db_collection.specify("eventStoryUnits.json"))
-characters                          = SekaiJsonRes("角色数据", res_db_collection.specify("gameCharacters.json"))
-characters_2ds                      = SekaiJsonRes("角色模型数据", res_db_collection.specify("character2ds.json"))
-stamps                              = SekaiJsonRes("表情数据", res_db_collection.specify("stamps.json"))
-cards                               = SekaiJsonRes("卡牌数据", res_db_collection.specify("cards.json"))
-card_supplies                       = SekaiJsonRes("卡牌供给数据", res_db_collection.specify("cardSupplies.json"))
-skills                              = SekaiJsonRes("技能数据", res_db_collection.specify("skills.json"))
-honors                              = SekaiJsonRes("头衔数据", res_db_collection.specify("honors.json"))
-honor_groups                        = SekaiJsonRes("头衔组数据", res_db_collection.specify("honorGroups.json"))
-bonds_honnors                       = SekaiJsonRes("羁绊头衔数据", res_db_collection.specify("bondsHonors.json"))
-mysekai_materials                   = SekaiJsonRes("Mysekai素材数据", res_db_collection.specify("mysekaiMaterials.json"))
-mysekai_items                       = SekaiJsonRes("Mysekai道具数据", res_db_collection.specify("mysekaiItems.json"))
-mysekai_fixtures                    = SekaiJsonRes("Mysekai家具数据", res_db_collection.specify("mysekaiFixtures.json"))
-mysekai_musicrecords                = SekaiJsonRes("Mysekai唱片数据", res_db_collection.specify("mysekaiMusicRecords.json"))
-mysekai_phenomenas                  = SekaiJsonRes("Mysekai天气数据", res_db_collection.specify("mysekaiPhenomenas.json"))
-mysekai_blueprints                  = SekaiJsonRes("Mysekai蓝图数据", res_db_collection.specify("mysekaiBlueprints.json"))
-mysekai_fixture_maingenres          = SekaiJsonRes("Mysekai主要家具类型数据", res_db_collection.specify("mysekaiFixtureMainGenres.json"))
-mysekai_fixture_subgenres           = SekaiJsonRes("Mysekai次要家具类型数据", res_db_collection.specify("mysekaiFixtureSubGenres.json"))
-mysekai_character_talks             = SekaiJsonRes("Mysekai角色对话数据", res_db_collection.specify("mysekaiCharacterTalks.json"))
-mysekai_game_character_unit_groups  = SekaiJsonRes("Mysekai角色组单位数据", res_db_collection.specify("mysekaiGameCharacterUnitGroups.json"))
-game_character_units                = SekaiJsonRes("角色单位数据", res_db_collection.specify("gameCharacterUnits.json"))
-mysekai_material_chara_relations    = SekaiJsonRes("Mysekai素材角色关系数据", res_db_collection.specify("mysekaiMaterialGameCharacterRelations.json"))
+musics                              = SekaiJsonRes("曲目数据", master_dbs.specify("musics.json"))
+music_diffs                         = SekaiJsonRes("曲目难度数据", master_dbs.specify("musicDifficulties.json"))
+vlives                              = SekaiJsonRes("虚拟Live数据", master_dbs.specify("virtualLives.json"), map_fn=vlives_map_fn)
+events                              = SekaiJsonRes("活动数据", master_dbs.specify("events.json"))
+event_stories                       = SekaiJsonRes("活动故事数据", master_dbs.specify("eventStories.json"))
+event_story_units                   = SekaiJsonRes("活动故事团数据", master_dbs.specify("eventStoryUnits.json"))
+characters                          = SekaiJsonRes("角色数据", master_dbs.specify("gameCharacters.json"))
+characters_2ds                      = SekaiJsonRes("角色模型数据", master_dbs.specify("character2ds.json"))
+stamps                              = SekaiJsonRes("表情数据", master_dbs.specify("stamps.json"))
+cards                               = SekaiJsonRes("卡牌数据", master_dbs.specify("cards.json"))
+card_supplies                       = SekaiJsonRes("卡牌供给数据", master_dbs.specify("cardSupplies.json"))
+skills                              = SekaiJsonRes("技能数据", master_dbs.specify("skills.json"))
+honors                              = SekaiJsonRes("头衔数据", master_dbs.specify("honors.json"))
+honor_groups                        = SekaiJsonRes("头衔组数据", master_dbs.specify("honorGroups.json"))
+bonds_honnors                       = SekaiJsonRes("羁绊头衔数据", master_dbs.specify("bondsHonors.json"))
+mysekai_materials                   = SekaiJsonRes("Mysekai素材数据", master_dbs.specify("mysekaiMaterials.json"))
+mysekai_items                       = SekaiJsonRes("Mysekai道具数据", master_dbs.specify("mysekaiItems.json"))
+mysekai_fixtures                    = SekaiJsonRes("Mysekai家具数据", master_dbs.specify("mysekaiFixtures.json"))
+mysekai_musicrecords                = SekaiJsonRes("Mysekai唱片数据", master_dbs.specify("mysekaiMusicRecords.json"))
+mysekai_phenomenas                  = SekaiJsonRes("Mysekai天气数据", master_dbs.specify("mysekaiPhenomenas.json"))
+mysekai_blueprints                  = SekaiJsonRes("Mysekai蓝图数据", master_dbs.specify("mysekaiBlueprints.json"))
+mysekai_fixture_maingenres          = SekaiJsonRes("Mysekai主要家具类型数据", master_dbs.specify("mysekaiFixtureMainGenres.json"))
+mysekai_fixture_subgenres           = SekaiJsonRes("Mysekai次要家具类型数据", master_dbs.specify("mysekaiFixtureSubGenres.json"))
+mysekai_character_talks             = SekaiJsonRes("Mysekai角色对话数据", master_dbs.specify("mysekaiCharacterTalks.json"))
+mysekai_game_character_unit_groups  = SekaiJsonRes("Mysekai角色组单位数据", master_dbs.specify("mysekaiGameCharacterUnitGroups.json"))
+game_character_units                = SekaiJsonRes("角色单位数据", master_dbs.specify("gameCharacterUnits.json"))
+mysekai_material_chara_relations    = SekaiJsonRes("Mysekai素材角色关系数据", master_dbs.specify("mysekaiMaterialGameCharacterRelations.json"))
 
 music_cn_titles     = SekaiJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json")
 
