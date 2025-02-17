@@ -8,6 +8,7 @@ from ..record import record_hook
 from .sql import query_by_phash, query_by_msg_id, insert_phash, query_by_img_unique
 from PIL import Image
 import requests
+from asyncio import CancelledError
 
 config = get_config("water")
 logger = get_logger("Water")
@@ -168,8 +169,10 @@ async def handle_task():
         while task_queue.qsize() > MAX_TASK_NUM:
             task_queue.get_nowait()
             logger.info(f'任务队列大小超过限制: {task_queue.qsize()}>{MAX_TASK_NUM} 丢弃任务')
-
-        task = await task_queue.get()
+        try:
+            task = await task_queue.get()
+        except CancelledError:
+            break
         if not task: break 
         current_q_size = task_queue.qsize()
 
