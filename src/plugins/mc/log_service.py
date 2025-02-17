@@ -67,16 +67,10 @@ def get_message(s: str) -> Message:
     # 玩家聊天
     elif '<' in s:
         player = s[s.index('<')+1:s.index('>')].strip()
-        if player:
+        if player and player != 'init':
             content = s[s.index('>')+1:].strip()
             msg.type = 'chat'
             msg.data = {'player': player, 'content': content}
-
-    # 服务器广播
-    elif '[minecraft/MinecraftServer]:' in s:
-        content = s[s.index('[minecraft/MinecraftServer]:')+len('[minecraft/MinecraftServer]: '):].strip()
-        msg.type = 'server'
-        msg.data = {'content': content }
 
     # RCON聊天
     elif '[Rcon]'in s:
@@ -86,6 +80,12 @@ def get_message(s: str) -> Message:
             content = s[s.index(']')+1:].strip()
             msg.type = 'chat'
             msg.data = {'player': player, 'content': content}
+
+    # 服务器广播
+    elif '[minecraft/MinecraftServer]:' in s:
+        content = s[s.index('[minecraft/MinecraftServer]:')+len('[minecraft/MinecraftServer]: '):].strip()
+        msg.type = 'server'
+        msg.data = {'content': content }
 
     return msg if msg.type else None
 
