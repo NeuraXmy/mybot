@@ -11,6 +11,7 @@
 - [`/cron_unsuball` 取消所有订阅](#cron_unsuball)
 - [`/cron_{mute|unmute}` 关闭/开启提醒](#cron_muteunmute)
 - [`/cron_mysub` 查看自己订阅的提醒](#cron_mysub)
+- [`/cron_edit` 修改定时提醒](#cron_edit)
 
 ### 管理指令
 - [`/cron_clear` 清空定时提醒列表](#cron_clear)
@@ -101,6 +102,16 @@
 - **示例**
 
     `/cron_mysub`
+
+
+## `/cron_edit`
+```
+修改某个定时提醒，只有提醒创建者或超级用户可以修改
+```
+- **示例**
+
+    `/cron_edit 1 每天早上7点叫我起床`
+
 
 ---
 
