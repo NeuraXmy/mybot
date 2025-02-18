@@ -218,20 +218,38 @@ alias_add_history = {}
 
 # ========================================= 工具函数 ========================================= #
 
-# 分离用户名和颜色代码
-def separate_username_and_color(s: str, default_color=None):
-    result = re.match(r'<#([0-9a-fA-F]{3,6})>(.*)', s)
-    if result:
-        code, name = result.groups()
-        r, g, b = None, None, None
-        if len(code) == 6:
-            r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
-        elif len(code) == 3:
-            r, g, b = int(code[0], 16)*17, int(code[1], 16)*17, int(code[2], 16)*17
-        else:
-            return s, default_color
-        return name, (r, g, b)
-    return s, default_color
+# 由带颜色代码的字符串获取彩色文本组件
+def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> HSplit:
+    try:
+        segs = [{ 'text': None, 'color': None }]
+        while True:
+            i = s.find('<#')
+            if i == -1:
+                segs[-1]['text'] = s
+                break
+            j = s.find('>', i)
+            segs[-1]['text'] = s[:i]
+            code = s[i+2:j]
+            if len(code) == 6:
+                r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
+            elif len(code) == 3:
+                r, g, b = int(code[0], 16)*17, int(code[1], 16)*17, int(code[2], 16)*17
+            else:
+                raise ValueError(f"颜色代码格式错误: {code}")
+            segs.append({ 'text': None, 'color': (r, g, b) })
+            s = s[j+1:]
+    except Exception as e:
+        logger.warning(f"解析颜色代码失败: {e}")
+        segs = [{ 'text': s, 'color': None }]
+
+    with HSplit().set_padding(padding) as hs:
+        for seg in segs:
+            text, color = seg['text'], seg['color']
+            if text is not None:
+                color_style = deepcopy(style)
+                if color is not None: color_style.color = color
+                TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
+    return hs
 
 # 获取资源路径
 def res_path(path):
@@ -272,7 +290,7 @@ async def get_asset(path: str, cache=True, allow_error=False) -> Image.Image:
     return None
     
 # 获取资源盒信息
-async def get_res_box_info(purpose, bid) -> list:
+async def get_res_box_info(purpose, bid, image_size) -> list:
     box = (await res.resource_boxes.get())[str(purpose)][int(bid)]
     box_type = box['resourceBoxType']
     ret = []
@@ -286,20 +304,25 @@ async def get_res_box_info(purpose, bid) -> list:
             try:
                 if res_type in ['jewel', 'virtual_coin', 'coin']:
                     res_image = await get_asset(f"thumbnail/common_material_rip/{res_type}.webp")
+                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
 
                 elif res_type == 'boost_item':
                     res_image = await get_asset(f"thumbnail/boost_item_rip/boost_item{res_id}.png")
+                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
                                                 
                 elif res_type == 'material':
                     res_image = await get_asset(f"thumbnail/material_rip/material{res_id}.png")
+                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
 
                 elif res_type == 'honor':
                     asset_name = find_by(await res.honors.get(), "id", res_id)['assetbundleName']
                     res_image = await get_asset(f"honor/{asset_name}_rip/degree_main.png")
+                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
 
                 elif res_type == 'stamp':
                     asset_name = find_by(await res.stamps.get(), "id", res_id)['assetbundleName']
                     res_image = await get_asset(f"stamp/{asset_name}_rip/{asset_name}.png")
+                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
 
             except Exception as e:
                 logger.warning(f"获取资源{res_type}图片失败: {e}")
@@ -312,6 +335,7 @@ async def get_res_box_info(purpose, bid) -> list:
             })
     else:
         raise NotImplementedError()
+    
     return ret
 
 # 从角色昵称获取角色id
@@ -856,8 +880,7 @@ async def get_detailed_profile_card(profile, msg) -> Frame:
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                    name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
-                    TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=namecolor))
+                    colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if msg:
@@ -922,8 +945,7 @@ async def get_mysekai_info_card(mysekai_info, basic_profile, msg) -> Frame:
                     mysekai_game_data = mysekai_info['updatedResources']['userMysekaiGamedata']
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
-                        name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
-                        TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=namecolor))
+                        colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -1095,8 +1117,7 @@ async def compose_profile_image(basic_profile):
                     ImageBox(avatar_img, size=(128, 128), image_size_mode='fill')
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
-                        name, namecolor = separate_username_and_color(game_data['name'], default_color=BLACK)
-                        TextBox(f"{name}", TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=namecolor))
+                        colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
                         TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(res.misc_images.get("lv_rank_bg.png"), size=(180, None))

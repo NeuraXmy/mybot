@@ -78,18 +78,25 @@ def get_text_offset(font: Font, text: str) -> Position:
     bbox = font.getbbox(text)
     return bbox[0], bbox[1]
 
-def resize_keep_ratio(img: Image.Image, max_size: int, long_side=True) -> Image.Image:
+def resize_keep_ratio(img: Image.Image, max_size: int, mode='long', scale=None) -> Image.Image:
+    assert mode in ['long', 'short', 'w', 'h']
     w, h = img.size
-    if long_side:
+    if mode == 'long':
         if w > h:
             ratio = max_size / w
         else:
             ratio = max_size / h
+    elif mode == 'short':
+        if w > h:
+            ratio = max_size / h
+        else:
+            ratio = max_size / w
+    elif mode == 'w':
+        ratio = max_size / w
     else:
-        if w > h:
-            ratio = max_size / h
-        else:
-            ratio = max_size / w
+        ratio = max_size / h
+    if scale:
+        ratio *= scale
     return img.resize((int(w * ratio), int(h * ratio)))
 
 
