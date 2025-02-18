@@ -271,6 +271,49 @@ async def get_asset(path: str, cache=True, allow_error=False) -> Image.Image:
         logger.warning(f"获取资源\"{path}\"失败")
     return None
     
+# 获取资源盒信息
+async def get_res_box_info(purpose, bid) -> list:
+    box = (await res.resource_boxes.get())[str(purpose)][int(bid)]
+    box_type = box['resourceBoxType']
+    ret = []
+    if box_type == 'expand':
+        for item in box['details']:
+            res_type = item['resourceType']
+            res_id = item['resourceId']
+            res_quantity = item['resourceQuantity']
+            res_image = res.misc_images.get(f"unknown.png")
+
+            try:
+                if res_type in ['jewel', 'virtual_coin', 'coin']:
+                    res_image = await get_asset(f"thumbnail/common_material_rip/{res_type}.webp")
+
+                elif res_type == 'boost_item':
+                    res_image = await get_asset(f"thumbnail/boost_item_rip/boost_item{res_id}.png")
+                                                
+                elif res_type == 'material':
+                    res_image = await get_asset(f"thumbnail/material_rip/material{res_id}.png")
+
+                elif res_type == 'honor':
+                    asset_name = find_by(await res.honors.get(), "id", res_id)['assetbundleName']
+                    res_image = await get_asset(f"honor/{asset_name}_rip/degree_main.png")
+
+                elif res_type == 'stamp':
+                    asset_name = find_by(await res.stamps.get(), "id", res_id)['assetbundleName']
+                    res_image = await get_asset(f"stamp/{asset_name}_rip/{asset_name}.png")
+
+            except Exception as e:
+                logger.warning(f"获取资源{res_type}图片失败: {e}")
+
+            ret.append({
+                'type': res_type,
+                'id': res_id,
+                'quantity': res_quantity,
+                'image': res_image,
+            })
+    else:
+        raise NotImplementedError()
+    return ret
+
 # 从角色昵称获取角色id
 def get_cid_by_nickname(nickname):
     for item in CHARACTER_NICKNAMES:
@@ -345,7 +388,7 @@ async def get_music_cn_title(mid):
     return music_cn_titles.get(str(mid), None)
 
 # 更新曲名语义库
-@res.SekaiJsonRes.updated_hook("曲名语义库更新")
+@res.SekaiMasterData.updated_hook("曲名语义库更新")
 async def update_music_name_embs():
     musics = await res.musics.get()
     music_cn_titles = await res.music_cn_titles.get()
@@ -396,7 +439,7 @@ async def get_chart_image(mid, diff):
     return await get_image_cq(cache_dir)
 
 # 更新表情文本语义库
-@res.SekaiJsonRes.updated_hook("表情文本语义库更新")
+@res.SekaiMasterData.updated_hook("表情文本语义库更新")
 async def update_stamp_text_embs():
     stamps = await res.stamps.get()
     for stamp in stamps:
@@ -416,15 +459,6 @@ async def query_stamp_by_text(stamps, cid, text, limit=5):
     scores = [item[1] for item in query_result]
     return result_stamps, scores
 
-# 获取表情图片url
-async def get_stamp_image_url(sid):
-    STAMP_IMG_URL = "https://storage.sekai.best/sekai-jp-assets/stamp/{assetbundleName}_rip/{assetbundleName}.png"
-    stamps = await res.stamps.get()
-    stamp = find_by(stamps, "id", sid)
-    if stamp is None: return None
-    name = stamp['assetbundleName']
-    return STAMP_IMG_URL.format(assetbundleName=name)
-
 # 获取表情图片cq
 async def get_stamp_image_cq(sid):
     save_path = res_path(f"stamps/{sid}.gif")
@@ -434,9 +468,10 @@ async def get_stamp_image_cq(sid):
     except:
         pass
     logger.info(f"下载表情图片: {sid}")
-    url = await get_stamp_image_url(sid)
-    if not url: raise Exception(f"表情{sid}不存在")
-    img = await download_image(url)
+    stamp = find_by(await res.stamps.get(), "id", sid)
+    assert_and_reply(stamp, f"表情{sid}不存在")
+    asset_name = stamp['assetbundleName']
+    img = await get_asset(f"stamp/{asset_name}_rip/{asset_name}.png")
     save_transparent_gif(img, 0, save_path)
     return await get_image_cq(save_path)
 
@@ -449,9 +484,10 @@ async def get_stamp_image(sid):
     except:
         pass
     logger.info(f"下载表情图片: {sid}")
-    url = await get_stamp_image_url(sid)
-    if not url: raise Exception(f"表情{sid}不存在")
-    img = await download_image(url)
+    stamp = find_by(await res.stamps.get(), "id", sid)
+    assert_and_reply(stamp, f"表情{sid}不存在")
+    asset_name = stamp['assetbundleName']
+    img = await get_asset(f"stamp/{asset_name}_rip/{asset_name}.png")
     save_transparent_gif(img, 0, save_path)
     return Image.open(save_path)
 
@@ -2073,7 +2109,7 @@ pjsk_update = CmdHandler(['/pjsk update', '/pjsk_update'], logger)
 pjsk_update.check_superuser()
 @pjsk_update.handle()
 async def _(ctx: HandlerContext):
-    error_lists = await res.SekaiJsonRes.update_all()
+    error_lists = await res.SekaiMasterData.update_all()
     if not error_lists:
         return await ctx.asend_reply_msg("数据更新成功")
     msg = "以下数据更新失败:\n"

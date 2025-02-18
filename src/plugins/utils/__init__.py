@@ -35,6 +35,8 @@ from PIL import Image
 import io
 from retrying import retry
 from dataclasses import dataclass
+import atexit
+
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'
@@ -1316,6 +1318,21 @@ async def run_in_pool(func, *args, pool=None):
 
 def run_in_pool_nowait(func, *args):
     return asyncio.get_event_loop().run_in_executor(pool_executor, func, *args)
+
+
+# 异步加载json
+async def aload_json(path):
+    def load(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return await run_in_pool(load, path)
+
+# 异步保存json
+async def asave_json(path, data):
+    def save(path, data):
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    return await run_in_pool(save, path, data)
 
 
 # 下载json文件，返回json
