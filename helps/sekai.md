@@ -2,6 +2,11 @@
 
 Project Sekai（世界计划）日服游戏相关服务
 
+数据来源
+- ```sekai.best```（大部分图片资源及MasterData）
+- ```MiddleRed/pjsk-mysekai-xray``` (MySekai俯视图)
+- ```自建抓包工具``` & ```Haruki工具箱``` （抓包数据）
+
 ###  用户指令
 
 - [`/pjsk bind` 绑定账号](#pjsk-bind)
