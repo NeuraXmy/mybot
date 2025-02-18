@@ -221,6 +221,7 @@ GROUP_BGS = {
     "ws":   [ImageBg(res.misc_images.get("bg/bg_area_9.png")),  ImageBg(res.misc_images.get("bg/bg_area_20.png"))],
     "25":   [ImageBg(res.misc_images.get("bg/bg_area_10.png")), ImageBg(res.misc_images.get("bg/bg_area_21.png"))],
 }
+DEFAULT_BLUE_GRADIENT_BG = FillBg(LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1)))
 
 def random_bg(group=None):
     if group is None:
@@ -329,27 +330,27 @@ async def get_res_box_info(purpose, bid, image_size) -> list:
     if box_type == 'expand':
         for item in box['details']:
             res_type = item['resourceType']
-            res_id = item['resourceId']
+            res_id = item.get('resourceId')
             res_quantity = item['resourceQuantity']
             res_image = res.misc_images.get(f"unknown.png")
 
             try:
                 if res_type in ['jewel', 'virtual_coin', 'coin']:
                     res_image = await get_asset(f"thumbnail/common_material_rip/{res_type}.webp")
-                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
+                    res_image = resize_keep_ratio(res_image, image_size * 0.6, 'h')
 
                 elif res_type == 'boost_item':
                     res_image = await get_asset(f"thumbnail/boost_item_rip/boost_item{res_id}.png")
-                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
+                    res_image = resize_keep_ratio(res_image, image_size * 0.6, 'h')
                                                 
                 elif res_type == 'material':
                     res_image = await get_asset(f"thumbnail/material_rip/material{res_id}.png")
-                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
+                    res_image = resize_keep_ratio(res_image, image_size * 0.6, 'h')
 
                 elif res_type == 'honor':
                     asset_name = find_by(await res.honors.get(), "id", res_id)['assetbundleName']
                     res_image = await get_asset(f"honor/{asset_name}_rip/degree_main.png")
-                    res_image = resize_keep_ratio(res_image, image_size * 1.0, 'h')
+                    res_image = resize_keep_ratio(res_image, image_size * 0.3, 'h')
 
                 elif res_type == 'stamp':
                     asset_name = find_by(await res.stamps.get(), "id", res_id)['assetbundleName']
@@ -1678,7 +1679,7 @@ async def get_mysekai_res_icon(key: str):
     return mysekai_res_icons[key]
 
 # 合成mysekai资源位置地图
-async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
+async def get_compose_mysekai_harvest_map_image_coroutine(harvest_map, show_harvested):
     site_id = harvest_map['mysekaiSiteId']
     site_image_info = MYSEKAI_SITE_MAP_IMAGE_INFO[site_id]
     site_image: Image.Image = site_image_info['image']
@@ -1826,7 +1827,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                     style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(255, 50, 0, 200))
                 TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
-    return await run_in_pool(canvas.get_img)
+    return run_in_pool(canvas.get_img)
 
 # 合成mysekai资源图片
 async def compose_mysekai_res_image(qid, show_harvested):
@@ -1934,12 +1935,11 @@ async def compose_mysekai_res_image(qid, show_harvested):
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
+        site_harvest_map_imgs.append(await get_compose_mysekai_harvest_map_image_coroutine(site_harvest_map, show_harvested))
     site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
     
     # 绘制数量图
-    bg_color = LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
-    with Canvas(bg=FillBg(fill=bg_color)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
 
             with HSplit().set_sep(32).set_content_align('lb'):
@@ -1998,8 +1998,8 @@ async def compose_mysekai_res_image(qid, show_harvested):
                                     TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=text_color)).set_w(80).set_content_align('l')
 
     # 绘制位置图
-    with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(32) as canvas2:
-        with Grid(col_count=1).set_bg(roundrect_bg()).set_sep(16, 16).set_padding(16):
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(32) as canvas2:
+        with Grid(col_count=1).set_sep(16, 16).set_padding(0):
             for img in site_harvest_map_imgs:
                 ImageBox(img)
 
@@ -2085,8 +2085,7 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
         fixture_icons[fid] = icon
     
     # 绘制
-    bg_color = LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
-    with Canvas(bg=FillBg(fill=bg_color)).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
             if qid:
                 await get_mysekai_info_card(mysekai_info, basic_profile, pmsg)
@@ -2153,6 +2152,100 @@ async def get_mysekai_photo_and_time(qid, seq) -> Tuple[Image.Image, datetime]:
                 raise Exception(f"下载失败: {response.status}")
             return Image.open(io.BytesIO(await response.read())), photo_time
 
+# 获取vlive卡片
+async def get_vlive_card(vlive) -> Frame:
+    vlive["current"] = None
+    vlive["living"] = False
+    for start, end in vlive["schedule"]:
+        if datetime.now() < end:
+            vlive["current"] = (start, end)
+            vlive["living"] = datetime.now() >= start
+            break
+    vlive["rest_num"] = 0
+    for start, end in vlive["schedule"]:
+        if datetime.now() < start:
+            vlive["rest_num"] += 1
+
+    with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
+        with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
+            # 标题
+            TextBox(vlive['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(20, 20, 20)), line_count=2, use_real_line_count=True).set_w(750)
+            Spacer(w=1, h=4)
+
+            with HSplit().set_content_align('c').set_item_align('c').set_sep(8):
+                # 图片
+                asset_name = vlive['asset_name']
+                img = await get_asset(f"virtual_live/select/banner/{asset_name}_rip/{asset_name}.png")
+                ImageBox(img, size=(None, 100), use_alphablend=True)
+
+                # 各种时间
+                with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
+                    start_text  = f"开始于 {get_readable_datetime(vlive['start'])}"
+                    end_text    = f"结束于 {get_readable_datetime(vlive['end'])}"
+                    if vlive['living']:
+                        current_text = "当前Live进行中!"
+                    elif vlive["current"]:
+                        current_text = f"下一场: {get_readable_datetime(vlive['current'][0], show_original_time=False)}"
+                    else:
+                        current_text = "已结束"
+                    rest_text = f" | 剩余场次: {vlive['rest_num']}"
+
+                    TextBox(start_text, TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50)))
+                    TextBox(end_text, TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50)))
+                    TextBox(current_text + rest_text, TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50)))
+
+            with HSplit().set_content_align('t').set_item_align('t').set_sep(16):
+                # 参与奖励
+                res_size = 64
+                res_info_list = []
+                for reward in vlive['rewards']:
+                    if reward['virtualLiveType'] == 'normal':
+                        res_info_list = await get_res_box_info("virtual_live_reward", reward['resourceBoxId'], res_size)
+                        break
+                if res_info_list:
+                    with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
+                        TextBox("参与奖励", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=(50, 50, 50)))
+                        with HSplit().set_content_align('l').set_item_align('l').set_sep(6):
+                            for res_info in res_info_list:
+                                image, quantity = res_info['image'], res_info['quantity']
+                                w, h = max(image.width, res_size), max(image.height, res_size)
+                                with Frame().set_size((w, h)):
+                                    ImageBox(res_info['image'], use_alphablend=True).set_offset((w//2, h//2)).set_offset_anchor('c')
+                                    if quantity > 1:
+                                        t = TextBox(f"x{quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=(50, 50, 50)))
+                                        t.set_offset((w//2, h)).set_offset_anchor('b')
+
+                # 出演角色
+                chara_icons = []
+                for item in vlive['characters']:
+                    if item['virtualLivePerformanceType'] not in ['main_only', 'both']:
+                        continue
+                    cuid = item.get('gameCharacterUnitId')
+                    scid = item.get('subGameCharacter2dId')
+                    if cuid:
+                        cid = find_by(await res.game_character_units.get(), "id", cuid)['gameCharacterId']
+                        nickname = get_nickname_by_cid(cid)
+                        chara_icons.append(res.misc_images.get(f"chara_icon/{nickname}.png"))
+                if chara_icons:
+                    with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
+                        TextBox("出演角色", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=(50, 50, 50)))
+                        with Grid(col_count=10).set_content_align('c').set_sep(4, 4).set_padding(0):
+                            for icon in chara_icons:
+                                ImageBox(icon, size=(30, 30), use_alphablend=True)  
+
+    return f
+
+# 合成vlive列表
+async def compose_vlive_list_image(vlives, title=None, title_style=None) -> Image.Image: 
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            if title and title_style:
+                TextBox(title, title_style)
+            for vlive in vlives:
+                await get_vlive_card(vlive)
+    return await run_in_pool(canvas.get_img)
+
+
 # ========================================= 会话逻辑 ========================================= #
 
 # 立刻更新数据
@@ -2174,23 +2267,11 @@ pjsk_live = CmdHandler(['/pjsk live', '/pjsk_live'], logger)
 pjsk_live.check_cdrate(cd).check_wblist(gbl)
 @pjsk_live.handle()
 async def _(ctx: HandlerContext):
-    msg = "当前的 Virtual Lives:\n"
-    vlives = await res.vlives.get()
+    now = datetime.now()
+    vlives = [vlive for vlive in await res.vlives.get() if now < vlive['end']]
     if len(vlives) == 0:
         return await ctx.asend_reply_msg("当前没有虚拟Live")
-    for vlive in vlives:
-        if datetime.now() > vlive['end']: 
-            continue
-        msg += f"【{vlive['name']}】\n"
-        msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
-        msg += f"开始时间: {vlive['start'].strftime('%Y-%m-%d %H:%M:%S')}\n"
-        msg += f"结束时间: {vlive['end'].strftime('%Y-%m-%d %H:%M:%S')}\n"
-        if vlive["living"]: 
-            msg += f"虚拟Live进行中!\n"
-        elif vlive["current"] is not None:
-            msg += f"下一场: {get_readable_datetime(vlive['current'][0])}\n"
-        msg += f"剩余场次: {vlive['rest_num']}\n"
-    return await ctx.asend_reply_msg(msg.strip())
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_vlive_list_image(vlives)))
 
 
 # 订阅提醒的at通知
@@ -2939,6 +3020,7 @@ async def _(ctx: HandlerContext):
 
     return await ctx.asend_reply_msg(msg)
 
+
 # ========================================= 定时任务 ========================================= #
 
 # live自动提醒
@@ -2959,14 +3041,13 @@ async def vlive_notify():
                 if not (t.total_seconds() < 0 or t.total_seconds() > start_notify_before_minute * 60):
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 开始提醒")
 
-                    msg = f"【{vlive['name']}】\n"
-                    msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
-                    msg += f"将于 {get_readable_datetime(vlive['start'])} 开始"
+                    img = await compose_vlive_list_image([vlive], "Virtual Live 开始提醒", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20)))
+                    msg = await get_image_cq(img)
                     
                     for group_id in live_notify_gwl.get():
                         if not gbl.check_id(group_id): continue
                         try:
-                            group_msg = msg + "\n"
+                            group_msg = deepcopy(msg)
                             for uid, gid in subs['live'].get_all():
                                 if str(gid) == str(group_id):
                                     group_msg += f"[CQ:at,qq={uid}]"
@@ -2985,19 +3066,13 @@ async def vlive_notify():
                 if not (t.total_seconds() < 0 or t.total_seconds() > end_notify_before_minute * 60):
                     logger.info(f"vlive自动提醒: {vlive['id']} {vlive['name']} 结束提醒")
 
-                    msg = f"【{vlive['name']}】\n"
-                    msg += f"{await get_image_cq(vlive['img_url'], allow_error=True, logger=logger)}\n"
-                    msg += f"将于 {get_readable_datetime(vlive['end'])} 结束\n"
-
-                    if vlive["living"]: 
-                        msg += f"当前Live进行中"
-                    elif vlive["current"] is not None:
-                        msg += f"下一场: {get_readable_datetime(vlive['current'][0])}"
+                    img = await compose_vlive_list_image([vlive], "Virtual Live 结束提醒", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20)))
+                    msg = await get_image_cq(img)
 
                     for group_id in live_notify_gwl.get():
                         if not gbl.check_id(group_id): continue
                         try:
-                            group_msg = msg + "\n"
+                            group_msg = deepcopy(msg)
                             for uid, gid in subs['live'].get_all():
                                 if str(gid) == str(group_id):
                                     group_msg += f"[CQ:at,qq={uid}]"

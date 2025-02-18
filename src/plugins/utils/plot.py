@@ -49,6 +49,7 @@ FONT_DIR = "data/utils/fonts/"
 DEFAULT_FONT = "SourceHanSansCN-Regular"
 DEFAULT_BOLD_FONT = "SourceHanSansCN-Bold"
 DEFAULT_HEAVY_FONT = "SourceHanSansCN-Heavy"
+DEFAULT_EMOJI_FONT = "EmojiOneColor-SVGinOT"
 
 Color = Tuple[int, int, int, int]
 Position = Tuple[int, int]
@@ -1007,7 +1008,7 @@ class TextStyle:
 
 
 class TextBox(Widget):
-    def __init__(self, text: str = '', style: TextStyle = None, line_count=1, line_sep=2, wrap=True, overflow='shrink'):
+    def __init__(self, text: str = '', style: TextStyle = None, line_count=1, line_sep=2, wrap=True, overflow='shrink', use_real_line_count=False):
         super().__init__()
         self.text = text
         self.style = style or TextStyle()
@@ -1016,6 +1017,7 @@ class TextBox(Widget):
         self.wrap = wrap
         assert overflow in ('shrink', 'clip')
         self.overflow = overflow
+        self.use_real_line_count = use_real_line_count
 
         self.set_padding(2)
         self.set_margin(0)
@@ -1095,7 +1097,8 @@ class TextBox(Widget):
         for line in lines:
             lw, _ = get_text_size(font, line)
             w = max(w, lw)
-        h = self.line_count * (self.style.size + self.line_sep) - self.line_sep
+        line_count = len(lines) if self.use_real_line_count else self.line_count
+        h = line_count * (self.style.size + self.line_sep) - self.line_sep
         if self.w:
             w = self.w - self.hpadding * 2
         if self.h:
@@ -1201,7 +1204,7 @@ class ImageBox(Widget):
 
 
 class Spacer(Widget):
-    def __init__(self, w: int = None, h: int = None):
+    def __init__(self, w: int = 1, h: int = 1):
         super().__init__()
         self.set_size((w, h))
     

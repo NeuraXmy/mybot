@@ -101,6 +101,8 @@ class SekaiMasterData:
 
         if self.map_fn:
             self.data = await run_in_pool(self.map_fn, self.data)
+            logger.info(f"MasterData [{self.name}] 映射函数执行完成")
+
         elapsed = (datetime.now() - t).total_seconds()
         if use_cache:
             logger.info(f"MasterData [{self.name}] 从本地加载成功")
@@ -160,7 +162,6 @@ SekaiMasterData.create_cron_update_task()
 def vlives_map_fn(vlives):
     all_ret = []
     for vlive in vlives:
-        VLIVE_BANNER_URL = "https://storage.sekai.best/sekai-jp-assets/virtual_live/select/banner/{assetbundleName}_rip/{assetbundleName}.webp"
         ret = {}
         ret["id"]         = vlive["id"]
         ret["name"]       = vlive["name"]
@@ -186,9 +187,11 @@ def vlives_map_fn(vlives):
         ret["rest_num"] = rest_num
         ret["start"] = ret["schedule"][0][0]
         ret["end"]   = ret["schedule"][-1][1]
-        ret["img_url"] = VLIVE_BANNER_URL.format(assetbundleName=vlive["assetbundleName"])
+        ret['asset_name'] = vlive['assetbundleName']
         ret["rewards"] = vlive['virtualLiveRewards']
+        ret["characters"] = vlive['virtualLiveCharacters']
         all_ret.append(ret)
+    all_ret.sort(key=lambda x: x["start"])
     return all_ret
 
 # resource_boxes数据处理

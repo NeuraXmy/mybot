@@ -410,22 +410,29 @@ def is_group_msg(event):
 
 
 # 转换时间点为可读字符串
-def get_readable_datetime(time):
+def get_readable_datetime(t: datetime, show_original_time=True):
     now = datetime.now()
-    diff = time - now
+    diff = t - now
+    text, suffix = "", "后"
     if diff.total_seconds() < 0:
-        return "已经开始"
+        suffix = "前"
+        diff = -diff
     if diff.total_seconds() < 60:
-        return f"{int(diff.total_seconds())}秒后"
-    if diff.total_seconds() < 60 * 60:
-        return f"{int(diff.total_seconds() / 60)}分钟后"
-    if diff.total_seconds() < 60 * 60 * 12:
-        return f"{int(diff.total_seconds() / 60 / 60)}小时{int(diff.total_seconds() / 60 % 60)}分钟后"
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+        text = f"{int(diff.total_seconds())}秒"
+    elif diff.total_seconds() < 60 * 60:
+        text = f"{int(diff.total_seconds() / 60)}分钟"
+    elif diff.total_seconds() < 60 * 60 * 24:
+        text = f"{int(diff.total_seconds() / 60 / 60)}小时{int(diff.total_seconds() / 60 % 60)}分钟"
+    else:
+        text = f"{diff.days}天"
+    text += suffix
+    if show_original_time:
+        text = f"{t.strftime('%Y-%m-%d %H:%M:%S')} ({text})"
+    return text
 
 
 # 转换时间段为可读字符串
-def get_readable_timedelta(delta):
+def get_readable_timedelta(delta: timedelta):
     if delta.total_seconds() < 0:
         return f"0秒"
     if delta.total_seconds() < 60:

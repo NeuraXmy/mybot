@@ -181,6 +181,8 @@ class ServerData:
 
                 elif msg_type == 'chat':
                     player = item['data']['player']
+                    if player == 'init':
+                        continue
                     content = item['data']['content']
                     logger.info(f'群聊 {self.group_id} 的服务器: 新消息: {item}')
                     if content.startswith(self.chatprefix) or content.startswith('['):
