@@ -704,7 +704,7 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-async def get_image_cq(image, allow_error=False, logger=None):
+async def get_image_cq(image, allow_error=False, logger=None, quality=None):
     try:
         if isinstance(image, Image.Image):
             tmp_file_path = 'data/imgtool/tmp/tmp'
@@ -713,7 +713,12 @@ async def get_image_cq(image, allow_error=False, logger=None):
             tmp_file_path += '.gif' if is_g else '.png'
             os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
             if not is_g:
-                image.save(tmp_file_path)
+                if quality:
+                    image = image.convert('RGB')
+                    tmp_file_path.replace('.png', '.jpg')
+                    image.save(tmp_file_path, quality=quality)
+                else:
+                    image.save(tmp_file_path)
             else:
                 save_transparent_gif(get_frames_from_gif(image), get_gif_duration(image), tmp_file_path)
             with open(tmp_file_path, 'rb') as f:

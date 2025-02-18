@@ -136,11 +136,43 @@ RARE_MYSEKAI_RES = [
     "mysekai_material_32", "mysekai_material_33", "mysekai_material_34", "mysekai_material_61",
 ]
 
-MYSEKAI_SITE_MAP_IMAGE_ANCHOR = {
-    5: [-21, 16, -18, 19],
-    7: [-19, 23, -24, 18],
-    6: [-21.5, 24.5, -20, 26],
-    8: [-30, 15, -29.5, 15.5],
+MYSEKAI_SITE_MAP_IMAGE_INFO = {
+    5: {
+        'grid_size': 32.734,
+        'offset_x': 0,
+        'offset_z': -25,
+        'dir_x': -1,
+        'dir_z': -1,
+        'rev_xz': True,
+        'image': res.misc_images.get("mysekai/site/grassland.png"),
+    },
+    7: {
+        'grid_size': 25.5,
+        'offset_x': -50,
+        'offset_z': 12,
+        'dir_x': -1,
+        'dir_z': -1,
+        'rev_xz': True,
+        'image': res.misc_images.get("mysekai/site/flowergarden.png"),
+    },
+    6: {
+        'grid_size': 20.95,
+        'offset_x': 0,
+        'offset_z': 50,
+        'dir_x': 1,
+        'dir_z': -1,
+        'rev_xz': False,
+        'image': res.misc_images.get("mysekai/site/beach.png"),
+    },
+    8: {
+        'grid_size': 20.95,
+        'offset_x': 0,
+        'offset_z': -125,
+        'dir_x': 1,
+        'dir_z': -1,
+        'rev_xz': False,
+        'image': res.misc_images.get("mysekai/site/memorialplace.png"),
+    }
 }
 MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
     1001: "oak.png",
@@ -1647,36 +1679,43 @@ async def get_mysekai_res_icon(key: str):
 
 # 合成mysekai资源位置地图
 async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
-    draw_w, draw_h = 1024, 1024
-    canvas_padding = 32
-
     site_id = harvest_map['mysekaiSiteId']
+    site_image_info = MYSEKAI_SITE_MAP_IMAGE_INFO[site_id]
+    site_image: Image.Image = site_image_info['image']
+    scale = 0.8
+    draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)
+    mid_x, mid_z = draw_w / 2, draw_h / 2
+    grid_size = int(site_image_info['grid_size'] * scale)
+    offset_x, offset_z = int(site_image_info['offset_x'] * scale), int(site_image_info['offset_z'] * scale)
+    dir_x, dir_z = site_image_info['dir_x'], site_image_info['dir_z']
+    rev_xz = site_image_info['rev_xz']
+
+    # 游戏资源位置映射到绘图位置
+    def game_pos_to_draw_pos(x, z) -> Tuple[int, int]:
+        if rev_xz:
+            x, z = z, x
+        x = x * grid_size * dir_x
+        z = z * grid_size * dir_z
+        x += mid_x + offset_x
+        z += mid_z + offset_z
+        x = max(0, min(x, draw_w))
+        z = max(0, min(z, draw_h))
+        return (int(x), int(z))
 
     # 获取所有资源点的位置
-    min_x, max_x, min_z, max_z = MYSEKAI_SITE_MAP_IMAGE_ANCHOR[site_id]
     harvest_points = []
     for item in harvest_map['userMysekaiSiteHarvestFixtures']:
         fid = item['mysekaiSiteHarvestFixtureId']
         fstatus = item['userMysekaiSiteHarvestFixtureStatus']
         if not show_harvested and fstatus != "spawned": 
             continue
-
-        x, z = item['positionX'], item['positionZ']
-        x = max(min_x - 0.5, min(max_x + 0.5, x))
-        z = max(min_z - 0.5, min(max_z + 0.5, z))
-
+        x, z = game_pos_to_draw_pos(item['positionX'], item['positionZ'])
         try: 
             image_name = MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME[int(fid)]
             image = res.misc_images.get(f"mysekai/harvest_fixtures/{image_name}")
         except: 
             image = None
-
-        harvest_points.append({
-            "id": fid,
-            'image': image,
-            'x': int((x - min_x) * draw_w / (max_x - min_x)),
-            'z': draw_h - int((z - min_z) * draw_h / (max_z - min_z)),
-        })
+        harvest_points.append({"id": fid, 'image': image, 'x': x, 'z': z})
     harvest_points.sort(key=lambda x: (x['z'], x['x']))
 
     # 获取高亮资源的位置
@@ -1688,9 +1727,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
         res_status = item['mysekaiSiteHarvestResourceDropStatus']
         if not show_harvested and res_status != "before_drop": continue
 
-        x, z = item['positionX'], item['positionZ']
-        x = max(min_x - 0.2, min(max_x + 0.2, x))
-        z = max(min_z - 0.2, min(max_z + 0.2, z))
+        x, z = game_pos_to_draw_pos(item['positionX'], item['positionZ'])
         pkey = f"{x}_{z}"
         
         if pkey not in all_res:
@@ -1699,8 +1736,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             all_res[pkey][res_key] = {
                 "id": res_id,
                 "type": res_type,
-                'x': int((x - min_x) * draw_w / (max_x - min_x)),
-                'z': draw_h - int((z - min_z) * draw_h / (max_z - min_z)),
+                'x': x, 'z': z,
                 'quantity': item['quantity'],
                 'image': await get_mysekai_res_icon(res_key),
                 'small_icon': False,
@@ -1728,74 +1764,67 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 all_res[pkey][res_key]['small_icon'] = True
 
     # 绘制
-    with Canvas(bg=FillBg(WHITE)) as canvas:
-        canvas.set_size((draw_w + 2 * canvas_padding, draw_h + 2 * canvas_padding))
+    with Canvas(bg=FillBg(WHITE), w=draw_w, h=draw_h) as canvas:
+        ImageBox(site_image, size=(draw_w, draw_h))
 
-        site_image_path = f"mysekai/site_image_{site_id}.png"
-        try: site_image = res.misc_images.get(site_image_path)
-        except: site_image = None
-        if site_image:
-            ImageBox(site_image, size=(draw_w + 2 * canvas_padding, draw_h + 2 * canvas_padding))
+        # 绘制资源点
+        for point in harvest_points:
+            point_img_size = 150 * scale
+            offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.6))
+            if point['image']:
+                ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
+
+        # 获取所有资源掉落绘制
+        res_draw_calls = []
+        for pkey in all_res:
+            pres = sorted(list(all_res[pkey].values()), key=lambda x: (-x['quantity'], x['id']))
+
+            # 统计两种数量
+            small_total, large_total = 0, 0
+            for item in pres:
+                if item['del']: continue
+                if item['small_icon']:  small_total += 1
+                else:                   large_total += 1
+            small_idx, large_idx = 0, 0
+
+            for item in pres:
+                if item['del']: continue
+
+                # 大小和位置
+                large_size, small_size = 30 * scale, 14 * scale
+                if item['small_icon']:
+                    res_img_size = small_size
+                    offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
+                    offsetz = int(item['z'] - 0.4 * large_size + 1.1 * small_size * small_idx)
+                    small_idx += 1
+                else:
+                    res_img_size = large_size
+                    offsetx = int(item['x'] - 0.5 * large_size * large_total + large_size * large_idx)
+                    offsetz = int(item['z'] - 0.5 * large_size)
+                    large_idx += 1
+
+                # 绘制顺序 小图标>稀有资源>其他
+                if item['small_icon']:
+                    draw_order = len(res_draw_calls) + 1000000
+                if res_key in MOST_RARE_MYSEKAI_RES:
+                    draw_order = len(res_draw_calls) + 100000
+                else:
+                    draw_order = len(res_draw_calls)
+
+                if item['image']:
+                    res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
         
-        with Frame().set_padding(canvas_padding):
-            # 绘制资源点
-            for point in harvest_points:
-                point_img_size = 150
-                offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.6))
-                if point['image']:
-                    ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
+        # 排序资源掉落
+        res_draw_calls.sort(key=lambda x: x[-1])
 
-            # 获取所有资源掉落绘制
-            res_draw_calls = []
-            for pkey in all_res:
-                pres = sorted(list(all_res[pkey].values()), key=lambda x: (-x['quantity'], x['id']))
-
-                # 统计两种数量
-                small_total, large_total = 0, 0
-                for item in pres:
-                    if item['del']: continue
-                    if item['small_icon']:  small_total += 1
-                    else:                   large_total += 1
-                small_idx, large_idx = 0, 0
-
-                for item in pres:
-                    if item['del']: continue
-
-                    # 大小和位置
-                    large_size, small_size = 30, 14
-                    if item['small_icon']:
-                        res_img_size = small_size
-                        offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
-                        offsetz = int(item['z'] - 0.4 * large_size + 1.1 * small_size * small_idx)
-                        small_idx += 1
-                    else:
-                        res_img_size = large_size
-                        offsetx = int(item['x'] - 0.5 * large_size * large_total + large_size * large_idx)
-                        offsetz = int(item['z'] - 0.5 * large_size)
-                        large_idx += 1
-
-                    # 绘制顺序 小图标>稀有资源>其他
-                    if item['small_icon']:
-                        draw_order = len(res_draw_calls) + 1000000
-                    if res_key in MOST_RARE_MYSEKAI_RES:
-                        draw_order = len(res_draw_calls) + 100000
-                    else:
-                        draw_order = len(res_draw_calls)
-
-                    if item['image']:
-                        res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
-            
-            # 排序资源掉落
-            res_draw_calls.sort(key=lambda x: x[-1])
-
-            # 绘制资源
-            for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
-                ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
-                if not small_icon:
-                    style = TextStyle(font=DEFAULT_BOLD_FONT, size=10, color=(100, 100, 100, 200))
-                    if res_quantity > 1:
-                        style = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(255, 50, 0, 200))
-                    TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
+        # 绘制资源
+        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
+            ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
+            if not small_icon:
+                style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(100, 100, 100, 200))
+                if res_quantity > 1:
+                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(255, 50, 0, 200))
+                TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
     return await run_in_pool(canvas.get_img)
 
@@ -1905,7 +1934,8 @@ async def compose_mysekai_res_image(qid, show_harvested):
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(await compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
+        site_harvest_map_imgs.append(compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
+    site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
     
     # 绘制数量图
     bg_color = LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1))
@@ -1969,11 +1999,11 @@ async def compose_mysekai_res_image(qid, show_harvested):
 
     # 绘制位置图
     with Canvas(bg=ImageBg(res.misc_images.get('bg/bg_sekai.png'))).set_padding(32) as canvas2:
-        with Grid(col_count=2).set_bg(roundrect_bg()).set_sep(16, 16).set_padding(16):
+        with Grid(col_count=1).set_bg(roundrect_bg()).set_sep(16, 16).set_padding(16):
             for img in site_harvest_map_imgs:
                 ImageBox(img)
 
-    return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
+    return (await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img))
 
 # 获取mysekai家具分类名称和图片
 async def get_mysekai_fixture_genre_name_and_image(gid, is_main_genre):
@@ -2856,7 +2886,7 @@ async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     show_harvested = 'all' in args
     return await ctx.asend_multiple_fold_msg([
-        await get_image_cq(img) for img in 
+        await get_image_cq(img, quality=50) for img in 
         await compose_mysekai_res_image(ctx.user_id, show_harvested)
     ], show_cmd=True)
 
