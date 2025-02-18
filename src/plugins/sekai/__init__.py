@@ -913,7 +913,7 @@ async def get_detailed_profile_card(profile, msg) -> Frame:
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                    colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if msg:
@@ -978,7 +978,7 @@ async def get_mysekai_info_card(mysekai_info, basic_profile, msg) -> Frame:
                     mysekai_game_data = mysekai_info['updatedResources']['userMysekaiGamedata']
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
-                        colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                        colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -1150,7 +1150,7 @@ async def compose_profile_image(basic_profile):
                     ImageBox(avatar_img, size=(128, 128), image_size_mode='fill')
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
-                        colored_text_box(game_data['name'], TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
+                        colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
                         TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(res.misc_images.get("lv_rank_bg.png"), size=(180, None))
@@ -2175,8 +2175,9 @@ async def get_vlive_card(vlive) -> Frame:
             with HSplit().set_content_align('c').set_item_align('c').set_sep(8):
                 # 图片
                 asset_name = vlive['asset_name']
-                img = await get_asset(f"virtual_live/select/banner/{asset_name}_rip/{asset_name}.png")
-                ImageBox(img, size=(None, 100), use_alphablend=True)
+                img = await get_asset(f"virtual_live/select/banner/{asset_name}_rip/{asset_name}.png", allow_error=True)
+                if img:
+                    ImageBox(img, size=(None, 100), use_alphablend=True)
 
                 # 各种时间
                 with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
@@ -2198,10 +2199,13 @@ async def get_vlive_card(vlive) -> Frame:
                 # 参与奖励
                 res_size = 64
                 res_info_list = []
-                for reward in vlive['rewards']:
-                    if reward['virtualLiveType'] == 'normal':
-                        res_info_list = await get_res_box_info("virtual_live_reward", reward['resourceBoxId'], res_size)
-                        break
+                try:
+                    for reward in vlive['rewards']:
+                        if reward['virtualLiveType'] == 'normal':
+                            res_info_list = await get_res_box_info("virtual_live_reward", reward['resourceBoxId'], res_size)
+                            break
+                except:
+                    logger.print_exc(f"获取虚拟Live奖励失败")
                 if res_info_list:
                     with VSplit().set_content_align('l').set_item_align('l').set_sep(8):
                         TextBox("参与奖励", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=(50, 50, 50)))
