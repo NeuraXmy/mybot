@@ -1780,9 +1780,9 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
         
         for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
             if not small_icon:
-                style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(100, 100, 100, 200))
+                style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(50, 50, 50, 200))
                 if res_quantity > 1:
-                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(255, 50, 0, 200))
+                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(200, 20, 0, 200))
                 TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
     return await run_in_pool(canvas.get_img)
