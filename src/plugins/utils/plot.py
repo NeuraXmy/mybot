@@ -55,6 +55,15 @@ Color = Tuple[int, int, int, int]
 Position = Tuple[int, int]
 Size = Tuple[int, int]
 
+def color_code_to_rgb(code: str) -> Color:
+    if code.startswith("#"):
+        code = code[1:]
+    if len(code) == 3:
+        return int(code[0], 16) * 16, int(code[1], 16) * 16, int(code[2], 16) * 16, 255
+    elif len(code) == 6:
+        return int(code[0:2], 16), int(code[2:4], 16), int(code[4:6], 16), 255
+    raise ValueError("Invalid color code")
+
 def lerp_color(c1, c2, t):
     ret = []
     for i in range(len(c1)):

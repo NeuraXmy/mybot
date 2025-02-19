@@ -357,8 +357,8 @@ Project Sekai（世界计划）日服游戏相关服务
 
 ## `/pjsk mysekai furniture`
 ```
-查询烤森家具列表
-加上id参数可以展示家具id
+查询烤森家具列表，默认显示家具ID
+加上id参数可以展示家具详情
 ```
 
 - **指令别名**
@@ -367,9 +367,9 @@ Project Sekai（世界计划）日服游戏相关服务
 
 - **示例**
 
-    `/msf`
+    `/msf` 查询家具列表
 
-    `/msf id`
+    `/msf 123` 查询ID=123的家具详情
 
 
 ## `/pjsk mysekai photo`
