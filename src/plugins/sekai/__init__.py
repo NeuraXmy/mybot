@@ -1659,14 +1659,14 @@ async def get_mysekai_res_icon(key: str):
                 name = find_by(await res.musics.get(), "id", mid)['assetbundleName']
                 mysekai_res_icons[key] = await get_asset(f"music/jacket/{name}_rip/{name}.png")
             else:
-                return None
+                return res.misc_images.get("unknown.png")
         except:
             logger.print_exc(f"获取{key}资源的图标失败")
-            return None
+            return res.misc_images.get("unknown.png")
     return mysekai_res_icons[key]
 
 # 合成mysekai资源位置地图
-async def get_compose_mysekai_harvest_map_image_coroutine(harvest_map, show_harvested):
+async def get_compose_mysekai_harvest_map_image(harvest_map, show_harvested):
     site_id = harvest_map['mysekaiSiteId']
     site_image_info = MYSEKAI_SITE_MAP_IMAGE_INFO[site_id]
     site_image: Image.Image = site_image_info['image']
@@ -1814,7 +1814,7 @@ async def get_compose_mysekai_harvest_map_image_coroutine(harvest_map, show_harv
                     style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(255, 50, 0, 200))
                 TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
-    return run_in_pool(canvas.get_img)
+    return await run_in_pool(canvas.get_img)
 
 # 合成mysekai资源图片
 async def compose_mysekai_res_image(qid, show_harvested, check_time):
@@ -1922,8 +1922,7 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(await get_compose_mysekai_harvest_map_image_coroutine(site_harvest_map, show_harvested))
-    site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
+        site_harvest_map_imgs.append(await get_compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
     
     # 绘制数量图
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
@@ -3216,7 +3215,7 @@ async def msr_auto_push():
             logger.info(f"在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询")
             contents = [
                 await get_image_cq(img) for img in 
-                await compose_mysekai_res_image(qid, False)
+                await compose_mysekai_res_image(qid, False, False)
             ]
             username = await get_group_member_name(bot, int(gid), int(qid))
             contents = [f"@{username} 的Mysekai资源查询推送"] + contents
