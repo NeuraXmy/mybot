@@ -548,8 +548,8 @@ async def get_stamp_image(sid):
     save_transparent_gif(img, 0, save_path)
     return Image.open(save_path)
 
-# 合成某个角色的所有表情 返回PIL Image
-async def compose_character_stamp(cid):
+# 合成某个角色的所有表情图片
+async def compose_character_all_stamp_image(cid):
     stamp_ids = [
         int(k.split()[0]) 
         for k in stamp_text_retriever.keys
@@ -559,32 +559,19 @@ async def compose_character_stamp(cid):
         try: return get_stamp_image(sid)
         except: return None
     stamp_imgs = await asyncio.gather(*[get_image_nothrow(sid) for sid in stamp_ids])
-    
-    def compose():
-        num_per_row = 5
-        scale = 2
-        stamp_w, stamp_h = 296 // scale, 256 // scale + 10
-        font_size = 30
-        row_num = (len(stamp_ids) + num_per_row - 1) // num_per_row
-        img = Image.new('RGBA', (stamp_w * num_per_row, stamp_h * row_num))
-        for i, stamp_img in enumerate(stamp_imgs):
-            if not stamp_img: continue
-            x = (i % num_per_row) * stamp_w
-            y = (i // num_per_row) * stamp_h
-            stamp_img = stamp_img.resize((stamp_w, stamp_h - 10)).convert('RGBA')
-            img.paste(stamp_img, (x, y + 10))
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.load_default(size=font_size)
-        for i, sid in enumerate(stamp_ids):
-            x = (i % num_per_row) * stamp_w
-            y = (i // num_per_row) * stamp_h
-            color = (200, 0, 0, 255)
-            if os.path.exists(f"data/sekai/maker/images/{int(sid):06d}.png"):
-                color = (0, 0, 200, 255)
-            draw.text((x, y), str(sid), font=font, fill=color, stroke_width=2, stroke_fill=(255, 255, 255, 255))
-        return img
-    
-    return await run_in_pool(compose)
+    stamp_id_imgs = [(sid, img) for sid, img in zip(stamp_ids, stamp_imgs) if img]
+
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_sep(8).set_item_align('l'):
+            TextBox(f"蓝色ID支持表情制作", style=TextStyle(font=DEFAULT_FONT, size=20, color=(0, 0, 200, 255)))
+            with Grid(col_count=5).set_sep(4, 4):
+                for sid, img in stamp_id_imgs:
+                    text_color = (0, 0, 200, 255) if os.path.exists(f"data/sekai/maker/images/{int(sid):06d}.png") else (200, 0, 0, 255)
+                    with VSplit().set_padding(4).set_sep(4).set_bg(roundrect_bg()):
+                        ImageBox(img, size=(128, None), use_alphablend=True)
+                        TextBox(str(sid), style=TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=text_color))
+        
+    return await run_in_pool(canvas.get_img)
 
 # 从文本提取卡牌属性 返回(属性名, 文本)
 def extract_card_attr(text, default=None):
@@ -2479,7 +2466,7 @@ async def _(ctx: HandlerContext):
     # 获取角色所有表情
     if cid and not sid and not text:
         logger.info(f"合成角色表情: cid={cid}")
-        msg = f"{await get_image_cq(await compose_character_stamp(cid))}蓝色ID支持表情制作"
+        msg = await get_image_cq(await compose_character_all_stamp_image(cid))
         return await ctx.asend_reply_msg(msg)
     
     # 根据语义获取表情
