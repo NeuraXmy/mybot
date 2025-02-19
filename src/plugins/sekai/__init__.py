@@ -136,44 +136,6 @@ RARE_MYSEKAI_RES = [
     "mysekai_material_32", "mysekai_material_33", "mysekai_material_34", "mysekai_material_61",
 ]
 
-MYSEKAI_SITE_MAP_IMAGE_INFO = {
-    5: {
-        'grid_size': 33.333,
-        'offset_x': 0,
-        'offset_z': -40,
-        'dir_x': -1,
-        'dir_z': -1,
-        'rev_xz': True,
-        'image': res.misc_images.get("mysekai/site/grassland.png"),
-    },
-    7: {
-        'grid_size': 24.806,
-        'offset_x': -62.015,
-        'offset_z': 20.672,
-        'dir_x': -1,
-        'dir_z': -1,
-        'rev_xz': True,
-        'image': res.misc_images.get("mysekai/site/flowergarden.png"),
-    },
-    6: {
-        'grid_size': 20.513,
-        'offset_x': 0,
-        'offset_z': 80,
-        'dir_x': 1,
-        'dir_z': -1,
-        'rev_xz': False,
-        'image': res.misc_images.get("mysekai/site/beach.png"),
-    },
-    8: {
-        'grid_size': 21.333,
-        'offset_x': 0,
-        'offset_z': -106.667,
-        'dir_x': 1,
-        'dir_z': -1,
-        'rev_xz': False,
-        'image': res.misc_images.get("mysekai/site/memorialplace.png"),
-    }
-}
 MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
     1001: "oak.png",
     1002: "pine.png",
@@ -1666,15 +1628,16 @@ async def get_mysekai_res_icon(key: str):
     return mysekai_res_icons[key]
 
 # 合成mysekai资源位置地图
-async def get_compose_mysekai_harvest_map_image(harvest_map, show_harvested):
+async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
     site_id = harvest_map['mysekaiSiteId']
-    site_image_info = MYSEKAI_SITE_MAP_IMAGE_INFO[site_id]
-    site_image: Image.Image = site_image_info['image']
+    with open(f"data/sekai/mysekai_site_map_image_info.json", "r", encoding="utf-8") as f:
+        site_image_info = json.load(f)[str(site_id)]
+    site_image: Image.Image = res.misc_images.get(site_image_info['image'])
     scale = 0.8
     draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)
     mid_x, mid_z = draw_w / 2, draw_h / 2
-    grid_size = int(site_image_info['grid_size'] * scale)
-    offset_x, offset_z = int(site_image_info['offset_x'] * scale), int(site_image_info['offset_z'] * scale)
+    grid_size = site_image_info['grid_size'] * scale
+    offset_x, offset_z = site_image_info['offset_x'] * scale, site_image_info['offset_z'] * scale
     dir_x, dir_z = site_image_info['dir_x'], site_image_info['dir_z']
     rev_xz = site_image_info['rev_xz']
 
@@ -1803,7 +1766,7 @@ async def get_compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                     res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
         
         # 排序资源掉落
-        res_draw_calls.sort(key=lambda x: x[-1])
+        res_draw_calls.sort(key=lambda x: x[-2])
 
         # 绘制资源
         for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
@@ -1922,7 +1885,7 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(await get_compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
+        site_harvest_map_imgs.append(await compose_mysekai_harvest_map_image(site_harvest_map, show_harvested))
     
     # 绘制数量图
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
