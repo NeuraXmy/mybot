@@ -138,36 +138,36 @@ RARE_MYSEKAI_RES = [
 
 MYSEKAI_SITE_MAP_IMAGE_INFO = {
     5: {
-        'grid_size': 32.734,
+        'grid_size': 33.333,
         'offset_x': 0,
-        'offset_z': -25,
+        'offset_z': -40,
         'dir_x': -1,
         'dir_z': -1,
         'rev_xz': True,
         'image': res.misc_images.get("mysekai/site/grassland.png"),
     },
     7: {
-        'grid_size': 25.5,
-        'offset_x': -50,
-        'offset_z': 12,
+        'grid_size': 24.806,
+        'offset_x': -62.015,
+        'offset_z': 20.672,
         'dir_x': -1,
         'dir_z': -1,
         'rev_xz': True,
         'image': res.misc_images.get("mysekai/site/flowergarden.png"),
     },
     6: {
-        'grid_size': 20.95,
+        'grid_size': 20.513,
         'offset_x': 0,
-        'offset_z': 50,
+        'offset_z': 80,
         'dir_x': 1,
         'dir_z': -1,
         'rev_xz': False,
         'image': res.misc_images.get("mysekai/site/beach.png"),
     },
     8: {
-        'grid_size': 20.95,
+        'grid_size': 21.333,
         'offset_x': 0,
-        'offset_z': -125,
+        'offset_z': -106.667,
         'dir_x': 1,
         'dir_z': -1,
         'rev_xz': False,
@@ -1830,13 +1830,13 @@ async def get_compose_mysekai_harvest_map_image_coroutine(harvest_map, show_harv
     return run_in_pool(canvas.get_img)
 
 # 合成mysekai资源图片
-async def compose_mysekai_res_image(qid, show_harvested):
+async def compose_mysekai_res_image(qid, show_harvested, check_time):
     uid = get_user_bind_uid(qid)
     basic_profile = await get_basic_profile(uid)
     mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
 
     upload_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
-    if upload_time < get_mysekai_last_refresh_time():
+    if upload_time < get_mysekai_last_refresh_time() and check_time:
         raise ReplyException(f"数据已过期({upload_time.strftime('%Y-%m-%d %H:%M:%S')})，请重新上传")
 
     # 天气预报图片
@@ -2970,9 +2970,10 @@ pjsk_mysekai_res.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     show_harvested = 'all' in args
+    check_time = not 'force' in args
     return await ctx.asend_multiple_fold_msg([
         await get_image_cq(img, quality=50) for img in 
-        await compose_mysekai_res_image(ctx.user_id, show_harvested)
+        await compose_mysekai_res_image(ctx.user_id, show_harvested, check_time)
     ], show_cmd=True)
 
 
