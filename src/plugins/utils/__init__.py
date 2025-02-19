@@ -711,7 +711,7 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-async def get_image_cq(image, allow_error=False, logger=None, quality=None):
+async def get_image_cq(image, allow_error=False, logger=None, low_quality=False):
     try:
         if isinstance(image, Image.Image):
             tmp_file_path = 'data/imgtool/tmp/tmp'
@@ -720,10 +720,10 @@ async def get_image_cq(image, allow_error=False, logger=None, quality=None):
             tmp_file_path += '.gif' if is_g else '.png'
             os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
             if not is_g:
-                if quality:
+                if low_quality:
                     image = image.convert('RGB')
                     tmp_file_path.replace('.png', '.jpg')
-                    image.save(tmp_file_path, quality=quality)
+                    image.save(tmp_file_path, format='JPEG', quality=90, optimize=True, subsampling=1, progressive=True)
                 else:
                     image.save(tmp_file_path)
             else:

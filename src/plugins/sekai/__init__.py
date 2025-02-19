@@ -1725,6 +1725,12 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             if point['image']:
                 ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
 
+        # 绘制出生点
+        spawn_x, spawn_z = game_pos_to_draw_pos(0, 0)
+        spawn_img = res.misc_images.get("mysekai/mark.png")
+        spawn_size = int(20 * scale)
+        ImageBox(spawn_img, size=(spawn_size, spawn_size)).set_offset((spawn_x, spawn_z)).set_offset_anchor('c')
+
         # 获取所有资源掉落绘制
         res_draw_calls = []
         for pkey in all_res:
@@ -1757,7 +1763,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 # 绘制顺序 小图标>稀有资源>其他
                 if item['small_icon']:
                     draw_order = len(res_draw_calls) + 1000000
-                if res_key in MOST_RARE_MYSEKAI_RES:
+                elif res_key in MOST_RARE_MYSEKAI_RES:
                     draw_order = len(res_draw_calls) + 100000
                 else:
                     draw_order = len(res_draw_calls)
@@ -1766,11 +1772,13 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                     res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
         
         # 排序资源掉落
-        res_draw_calls.sort(key=lambda x: x[-2])
+        res_draw_calls.sort(key=lambda x: x[6])
 
         # 绘制资源
         for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
             ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
+        
+        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
             if not small_icon:
                 style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(100, 100, 100, 200))
                 if res_quantity > 1:
@@ -2920,9 +2928,10 @@ async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     show_harvested = 'all' in args
     check_time = not 'force' in args
+    img1, img2 = await compose_mysekai_res_image(ctx.user_id, show_harvested, check_time)
     return await ctx.asend_multiple_fold_msg([
-        await get_image_cq(img, quality=50) for img in 
-        await compose_mysekai_res_image(ctx.user_id, show_harvested, check_time)
+        await get_image_cq(img1),
+        await get_image_cq(img2, low_quality=True),
     ], show_cmd=True)
 
 
