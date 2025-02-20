@@ -70,6 +70,15 @@ def lerp_color(c1, c2, t):
         ret.append(int(c1[i] * (1 - t) + c2[i] * t))
     return tuple(ret)
 
+def adjust_color(c, r=None, g=None, b=None, a=None):
+    c = list(c)
+    if len(c) == 3: c.append(255)
+    if r is not None: c[0] = r
+    if g is not None: c[1] = g
+    if b is not None: c[2] = b
+    if a is not None: c[3] = a
+    return tuple(c)
+
 def get_font(path: str, size: int) -> Font:
     paths = [path]
     paths.append(os.path.join(FONT_DIR, path))
@@ -479,6 +488,7 @@ class Widget:
         self.w = None
         self.h = None
         self.bg = None
+        self.omit_parent_bg = False
         self.offset = (0, 0)
         self.offset_xanchor = 'l'
         self.offset_yanchor = 't'
@@ -576,6 +586,10 @@ class Widget:
 
     def set_bg(self, bg: WidgetBg):
         self.bg = bg
+        return self
+
+    def set_omit_parent_bg(self, omit: bool):
+        self.omit_parent_bg = omit
         return self
 
     def _get_content_size(self):
@@ -729,6 +743,7 @@ class HSplit(Widget):
         if item_align not in ALIGN_MAP:
             raise ValueError('Invalid align')
         self.item_halign, self.item_valign = ALIGN_MAP[item_align]
+        self.item_bg = None
 
     def set_items(self, items: List[Widget]):
         for item in self.items:
@@ -762,6 +777,10 @@ class HSplit(Widget):
         self.item_size_mode = mode
         return self
 
+    def set_item_bg(self, bg: WidgetBg):
+        self.item_bg = bg
+        return self
+
     def _get_item_sizes(self):
         ratios = self.ratios if self.ratios else [item._get_self_size()[0] for item in self.items]
         if self.item_size_mode == 'expand':
@@ -792,7 +811,10 @@ class HSplit(Widget):
         cur_x = 0
         for item, (w, h) in zip(self.items, sizes):
             iw, ih = item._get_self_size()
-            x, y = cur_x, 0
+            p.move_region((cur_x, 0), (w, h))
+            x, y = 0, 0
+            if self.item_bg and not item.omit_parent_bg:
+                self.item_bg.draw(p)
             if self.item_halign == 'l':
                 x += 0
             elif self.item_halign == 'r':
@@ -807,7 +829,7 @@ class HSplit(Widget):
                 y += (h - ih) // 2
             p.move_region((x, y), (iw, ih))
             item.draw(p)
-            p.restore_region()
+            p.restore_region(2)
             cur_x += w + self.sep
 
 
@@ -824,6 +846,7 @@ class VSplit(Widget):
         if item_align not in ALIGN_MAP:
             raise ValueError('Invalid align')
         self.item_halign, self.item_valign = ALIGN_MAP[item_align]
+        self.item_bg = None
 
     def set_items(self, items: List[Widget]):
         for item in self.items:
@@ -857,6 +880,10 @@ class VSplit(Widget):
         self.item_size_mode = mode
         return self
 
+    def set_item_bg(self, bg: WidgetBg):
+        self.item_bg = bg
+        return self
+
     def _get_item_sizes(self):
         ratios = self.ratios if self.ratios else [item._get_self_size()[1] for item in self.items]
         if self.item_size_mode == 'expand':
@@ -887,7 +914,10 @@ class VSplit(Widget):
         cur_y = 0
         for item, (w, h) in zip(self.items, sizes):
             iw, ih = item._get_self_size()
-            x, y = 0, cur_y
+            p.move_region((0, cur_y), (w, h))
+            if self.item_bg and not item.omit_parent_bg:
+                self.item_bg.draw(p)
+            x, y = 0, 0
             if self.item_halign == 'l':
                 x += 0
             elif self.item_halign == 'r':
@@ -902,7 +932,7 @@ class VSplit(Widget):
                 y += (h - ih) // 2
             p.move_region((x, y), (iw, ih))
             item.draw(p)
-            p.restore_region()
+            p.restore_region(2)
             cur_y += h + self.sep
     
 
@@ -922,6 +952,7 @@ class Grid(Widget):
         if item_align not in ALIGN_MAP:
             raise ValueError('Invalid align')
         self.item_halign, self.item_valign = ALIGN_MAP[item_align]
+        self.item_bg = None
 
     def set_items(self, items: List[Widget]):
         for item in self.items:
@@ -964,6 +995,10 @@ class Grid(Widget):
         self.item_size_mode = mode
         return self
 
+    def set_item_bg(self, bg: WidgetBg):
+        self.item_bg = bg
+        return self
+
     def _get_grid_rc_and_size(self):
         r, c = self.row_count, self.col_count
         assert r and not c or c and not r, 'Either row_count or col_count should be None'
@@ -991,6 +1026,10 @@ class Grid(Widget):
             i, j = idx // c, idx % c
             x = j * (gw + self.hsep)
             y = i * (gh + self.vsep)
+            p.move_region((x, y), (gw, gh))
+            if self.item_bg and not item.omit_parent_bg:
+                self.item_bg.draw(p)
+            x, y = 0, 0
             iw, ih = item._get_self_size()
             if self.item_halign == 'l':
                 x += 0
@@ -1006,7 +1045,7 @@ class Grid(Widget):
                 y += (gh - ih) // 2
             p.move_region((x, y), (iw, ih))
             item.draw(p)
-            p.restore_region()
+            p.restore_region(2)
 
 
 @dataclass

@@ -239,6 +239,8 @@ boost_items                                 = SekaiMasterData("火罐道具数�
 mysekai_fixture_tags                        = SekaiMasterData("Mysekai家具标签数据", master_dbs.specify("mysekaiFixtureTags.json"))
 mysekai_blueprint_material_cost             = SekaiMasterData("Mysekai蓝图材料消耗数据", master_dbs.specify("mysekaiBlueprintMysekaiMaterialCosts.json"))
 mysekai_fixture_only_disassemble_materials  = SekaiMasterData("Mysekai家具唯一拆解材料数据", master_dbs.specify("mysekaiFixtureOnlyDisassembleMaterials.json"))
+music_vocals                                = SekaiMasterData("曲目歌手数据", master_dbs.specify("musicVocals.json"))
+outside_characters                          = SekaiMasterData("外部角色数据", master_dbs.specify("outsideCharacters.json"))
 
 music_cn_titles     = SekaiMasterData("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json")
 

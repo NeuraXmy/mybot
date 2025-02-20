@@ -162,6 +162,16 @@ MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
 }
 mysekai_res_icons = {}
 
+MUSIC_CAPTION_MAP_DICT = {
+    "エイプリルフールver.": "April Fool",
+    "コネクトライブver.": "Connect Live",
+    "バーチャル・シンガーver.": "Virtual Singer",
+    "アナザーボーカルver.": "Another Vocal",
+    "あんさんぶるスターズ！！コラボver.": "Ensemble Stars!! Collab",
+    "セカイver.": "Sekai",
+    "Inst.ver.": "Inst.",
+}
+
 # ========================================= 绘图相关 ========================================= #
 
 FONT_PATH = get_config('font_path')
@@ -1272,8 +1282,8 @@ async def compose_profile_image(basic_profile):
     img = img.resize((int(img.size[0]*scale), int(img.size[1]*scale)))
     return img
     
-# 合成难度排行图片
-async def compose_diff_board_image(diff, lv_musics, qid, show_id):
+# 合成歌曲列表图片
+async def compose_music_list_image(diff, lv_musics, qid, show_id):
     async def get_cover_nothrow(mid):
         try: 
             musics = await res.musics.get()
@@ -1319,18 +1329,16 @@ async def compose_diff_board_image(diff, lv_musics, qid, show_id):
                                             if all_diff_result:
                                                 all_diff_result = all_diff_result.get('userMusicDifficultyStatuses', [])
                                                 diff_result = find_by(all_diff_result, "musicDifficulty", diff)
-                                                if not diff_result or diff_result['musicDifficultyStatus'] != "available":
-                                                    continue
-                                                full_combo, all_prefect = False, False
-                                                for item in diff_result["userMusicResults"]:
-                                                    full_combo = full_combo or item["fullComboFlg"]
-                                                    all_prefect = all_prefect or item["fullPerfectFlg"]
-                                                result_type = "clear" if len(diff_result["userMusicResults"]) > 0 else "not_clear"
-                                                if full_combo: result_type = "fc"
-                                                if all_prefect: result_type = "ap"
-                                                result_img = res.misc_images.get(f"icon_{result_type}.png")
-                                                ImageBox(result_img, size=(16, 16), image_size_mode='fill').set_offset((64 - 10, 64 - 10))
-
+                                                if diff_result and diff_result['musicDifficultyStatus'] == "available":
+                                                    full_combo, all_prefect = False, False
+                                                    for item in diff_result["userMusicResults"]:
+                                                        full_combo = full_combo or item["fullComboFlg"]
+                                                        all_prefect = all_prefect or item["fullPerfectFlg"]
+                                                    result_type = "clear" if len(diff_result["userMusicResults"]) > 0 else "not_clear"
+                                                    if full_combo: result_type = "fc"
+                                                    if all_prefect: result_type = "ap"
+                                                    result_img = res.misc_images.get(f"icon_{result_type}.png")
+                                                    ImageBox(result_img, size=(16, 16), image_size_mode='fill').set_offset((64 - 10, 64 - 10))
                                     if show_id:
                                         TextBox(f"{musics[i]['id']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK)).set_w(64)
                                 
@@ -1878,19 +1886,20 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
             if item.get('isReservation'):
                 reservation_cid = cgid
     read_cids = set()
-    all_user_read_cids = file_db.get('all_user_read_cids', {})
-    if phenom_idx == 0:
-        all_user_read_cids[str(qid)] = {
-            "time": int(datetime.now().timestamp()),
-            "cids": visit_cids
-        }
-        file_db.set('all_user_read_cids', all_user_read_cids)
-    else:
-        read_info = all_user_read_cids.get(str(qid))
-        if read_info:
-            read_time = datetime.fromtimestamp(read_info['time'])
-            if (datetime.now() - read_time).days < 1:
-                read_cids = set(read_info['cids'])
+    if check_time:
+        all_user_read_cids = file_db.get('all_user_read_cids', {})
+        if phenom_idx == 0:
+            all_user_read_cids[str(qid)] = {
+                "time": int(datetime.now().timestamp()),
+                "cids": visit_cids
+            }
+            file_db.set('all_user_read_cids', all_user_read_cids)
+        else:
+            read_info = all_user_read_cids.get(str(qid))
+            if read_info:
+                read_time = datetime.fromtimestamp(read_info['time'])
+                if (datetime.now() - read_time).days < 1:
+                    read_cids = set(read_info['cids'])
 
     # read_cids = set()
     # for item in chara_visit_data['mysekaiCharacterTalkWithReadHistories']:
@@ -2466,6 +2475,118 @@ async def compose_mysekai_fixture_detail_image(fid) -> Image.Image:
             
     return await run_in_pool(canvas.get_img)
 
+# 获取歌曲详细图片
+async def compose_music_detail_image(mid, title=None, title_style=None) -> Frame:
+    music = find_by(await res.musics.get(), "id", mid)
+    assert_and_reply(music, f"歌曲{mid}不存在")
+    asset_name = music['assetbundleName']
+    cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=True, default=UNKNOWN_IMG)
+    name    = music["title"]
+    cn_name = (await res.music_cn_titles.get()).get(str(mid))
+    composer        = music["composer"]
+    lyricist        = music["lyricist"]
+    arranger        = music["arranger"]
+    mv_info         = music['categories']
+    publish_time    = datetime.fromtimestamp(music['publishedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+
+    diff_info   = get_music_diff_info(mid, await res.music_diffs.get())
+    diffs       = ['easy', 'normal', 'hard', 'expert', 'master', 'append']
+    diff_lvs    = [diff_info['level'].get(diff, None) for diff in diffs]
+    diff_counts = [diff_info['note_count'].get(diff, None) for diff in diffs]
+    has_append  = diff_info['has_append']
+
+    caption_vocals = {}
+    for item in find_by(await res.music_vocals.get(), "musicId", mid, 'all'):
+        vocal = {}
+        caption = MUSIC_CAPTION_MAP_DICT[item['caption']]
+        vocal['chara_imgs'] = []
+        vocal['vocal_name'] = None
+        for chara in item['characters']:
+            cid = chara['characterId']
+            if chara['characterType'] == 'game_character':
+                vocal['chara_imgs'].append(await get_chara_icon_by_unit_id(cid))
+            elif chara['characterType'] == 'outside_character':
+                vocal['vocal_name'] = find_by(await res.outside_characters.get(), "id", cid)['name']
+        if caption not in caption_vocals:
+            caption_vocals[caption] = []
+        caption_vocals[caption].append(vocal)
+        
+    with Canvas(bg=ImageBg(res.misc_images.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
+            if title and title_style:
+                TextBox(title, title_style).set_padding(16)
+
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16).set_item_bg(roundrect_bg()):
+                # 标题
+                name_text = f"【{mid}】{name}"
+                if cn_name: name_text += f"  ({cn_name})"
+                TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(20, 20, 20)), use_real_line_count=True).set_padding(16).set_w(800)
+
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
+                    # 封面
+                    ImageBox(cover_img, size=(None, 300)).set_padding(32)
+                    # 信息
+                    style1 = TextStyle(font=DEFAULT_HEAVY_FONT, size=30, color=(50, 50, 50))
+                    style2 = TextStyle(font=DEFAULT_FONT, size=30, color=(70, 70, 70))
+                    with HSplit().set_padding(16).set_sep(32).set_content_align('c').set_item_align('c'):
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
+                            TextBox(f"作曲", style1)
+                            TextBox(f"作词", style1)
+                            TextBox(f"编曲", style1)
+                            TextBox(f"MV", style1)
+                            TextBox(f"发布时间", style1)
+
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
+                            TextBox(composer, style2)
+                            TextBox(lyricist, style2)
+                            TextBox(arranger, style2)
+                            mv_text = ""
+                            for item in mv_info:
+                                if item == 'original': mv_text += "原版MV & "
+                                if item == 'mv': mv_text += "3DMV & "
+                                if item == 'mv_2d': mv_text += "2DMV & "
+                            mv_text = mv_text[:-3]
+                            if not mv_text: mv_text = "无"
+                            TextBox(mv_text, style2)
+                            TextBox(publish_time, style2)
+
+                # 歌手
+                with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16):
+                    for caption, vocals in sorted(caption_vocals.items(), key=lambda x: len(x[1])):
+                        with HSplit().set_padding(0).set_sep(4).set_content_align('c').set_item_align('c'):
+                            TextBox(caption + "  ver.", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
+                            Spacer(w=16)
+                            for vocal in vocals:
+                                with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(4).set_bg(RoundRectBg(fill=(255, 255, 255, 150), radius=8)):
+                                    if vocal['vocal_name']:
+                                        TextBox(vocal['vocal_name'], TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)))
+                                    else:
+                                        for img in vocal['chara_imgs']:
+                                            ImageBox(img, size=(32, 32), use_alphablend=True)
+                                Spacer(w=8)
+
+                # 难度等级/物量
+                hs, vs, gw = 8, 12, 180
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(vs).set_padding(32):
+                    with Grid(col_count=(6 if has_append else 5), item_size_mode='fixed').set_sep(hsep=hs, vsep=vs):
+                        # 难度等级
+                        light_diff_color = []
+                        for i, (diff, color) in enumerate(DIFF_COLORS.items()):
+                            if diff == 'append' and not has_append: continue
+                            t = TextBox(f"{diff.upper()} {diff_lvs[i]}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=WHITE))
+                            t.set_bg(RoundRectBg(fill=color, radius=3)).set_size((gw, 40)).set_content_align('c')
+                            if not isinstance(color, LinearGradient):
+                                light_diff_color.append(adjust_color(lerp_color(color, WHITE, 0.5), a=100))
+                            else:
+                                light_diff_color.append(adjust_color(lerp_color(color.c2, WHITE, 0.5), a=100))       
+                        # 物量
+                        for i, count in enumerate(diff_counts):
+                            if count is None: continue
+                            t = TextBox(f"{count} combo", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=(80, 80, 80, 255)), line_count=1)
+                            t.set_size((gw, 40)).set_content_align('c').set_bg(RoundRectBg(fill=light_diff_color[i], radius=3))                    
+            
+    return await run_in_pool(canvas.get_img)    
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -2584,8 +2705,8 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(msg.strip())
 
 
-# 难度排行
-pjsk_diff_board = CmdHandler(["/pjsk diff board", "/pjsk_diff_board", "/难度排行"], logger)
+# 歌曲列表
+pjsk_diff_board = CmdHandler(["/pjsk music list", "/pjsk_music_list", "/歌曲列表"], logger)
 pjsk_diff_board.check_cdrate(cd).check_wblist(gbl)
 @pjsk_diff_board.handle()
 async def _(ctx: HandlerContext):
@@ -2635,7 +2756,7 @@ async def _(ctx: HandlerContext):
 
     lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
 
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_diff_board_image(diff, lv_musics, ctx.user_id, show_id)))
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_music_list_image(diff, lv_musics, ctx.user_id, show_id)))
 
 
 # 表情查询/制作
@@ -2929,13 +3050,9 @@ async def _(ctx: HandlerContext):
     search_ret = await search_music(query, max_num=4)
     music, search_type, candidate_msg, search_msg = \
         search_ret['music'], search_ret['search_type'], search_ret['candidate_msg'], search_ret['msg']
-    if not music:
-        raise Exception(search_msg)
-    
-    msg = await get_music_detail_str(music)
+    msg = await get_image_cq(await compose_music_detail_image(music['id']))
     msg += candidate_msg
-
-    return await ctx.asend_reply_msg(msg.strip())
+    return await ctx.asend_reply_msg(msg)
 
 
 # 设置歌曲别名
@@ -3353,8 +3470,7 @@ async def new_music_notify():
         if publish_time - now > timedelta(minutes=1): continue
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
-        msg = f"【PJSK新曲上线】\n"
-        msg += await get_music_detail_str(music)    
+        msg = await compose_music_detail_image(mid, title="新曲上线", text_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
 
         for group_id in music_notify_gwl.get():
             if not gbl.check_id(group_id): continue
@@ -3392,25 +3508,8 @@ async def new_music_notify():
             continue
         
         logger.info(f"发送新APPEND上线提醒: {music['id']} {music['title']}")
-        msg = f"【PJSK新APPEND上线】\n"
-        try:
-            asset_name = music['assetbundleName']
-            cover_img = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
-            msg += await get_image_cq(cover_img, allow_error=False, logger=logger)
-        except Exception as e:
-            logger.print_exc(f"获取{mid}的封面失败")
-            msg += "[封面加载失败]\n"
-
-        title = music["title"]
-        cn_title = await get_music_cn_title(mid)
-        cn_title = f"({cn_title})" if cn_title else ""
-        msg += f"【{mid}】{title} {cn_title}\n"
-
-        diff_info = get_music_diff_info(mid, await res.music_diffs.get())
-        append_lv = diff_info['level'].get('append', '-')
-        append_count = diff_info['note_count'].get('append', '-')
-
-        msg += f"APPEND lv.{append_lv} | 物量: {append_count}\n"
+        
+        msg = await compose_music_detail_image(mid, title="新APPEND铺面上线", text_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
 
         for group_id in music_notify_gwl.get():
             if not gbl.check_id(group_id): continue

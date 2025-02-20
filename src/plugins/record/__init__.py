@@ -40,7 +40,7 @@ def simplify_msg(msg):
 
 
 # 记录消息
-async def record_message(bot, event):
+async def record_message(bot: Bot, event: GroupMessageEvent):
     if event.message_id in message_id_set: return
     if not is_group_msg(event) and event.user_id == event.self_id: return
     message_id_set.add(event.message_id)
@@ -70,16 +70,21 @@ async def record_message(bot, event):
         group_id = 0
         user_name = (await get_stranger_info(bot, user_id)).get('nickname', '')
 
+   
+    user_name = truncate(event.sender.nickname, 16)
+    if is_group:
+        try: group_name = truncate(await get_group_name(bot, group_id), 16)
+        except: group_name = "未知群聊"
 
     msg_for_log = simplify_msg(msg)
     if not is_group:
-        logger.info(f"记录 {user_id} 发送的私聊消息 {msg_id}: {str(msg_for_log)}")
+        logger.info(f"[{msg_id}] {user_name}({user_id}): {str(msg_for_log)}")
     elif check_self_reply(event):
-        logger.info(f"记录自身在 {group_id} 中触发的回复 {msg_id}: {str(msg_for_log)}")
+        logger.info(f"[{msg_id}] {group_name}({group_id}) 自身回复: {str(msg_for_log)}")
     elif check_self(event):
-        logger.info(f"记录自身在 {group_id} 中发送的消息 {msg_id}: {str(msg_for_log)}")
+        logger.info(f"[{msg_id}] {group_name}({group_id}) 自身消息: {str(msg_for_log)}")
     else:
-        logger.info(f"记录 {group_id} 中 {user_id} 发送的消息 {msg_id}: {str(msg_for_log)}")
+        logger.info(f"[{msg_id}] {group_name}({group_id}) {user_name}({user_id}): {str(msg_for_log)}")
 
     msg_insert(
         group_id=group_id,

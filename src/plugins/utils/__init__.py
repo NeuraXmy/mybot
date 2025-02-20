@@ -723,7 +723,7 @@ async def get_image_cq(image, allow_error=False, logger=None, low_quality=False)
                 if low_quality:
                     image = image.convert('RGB')
                     tmp_file_path.replace('.png', '.jpg')
-                    image.save(tmp_file_path, format='JPEG', quality=90, optimize=True, subsampling=1, progressive=True)
+                    image.save(tmp_file_path, format='JPEG', quality=95, optimize=True, subsampling=1, progressive=True)
                 else:
                     image.save(tmp_file_path)
             else:
