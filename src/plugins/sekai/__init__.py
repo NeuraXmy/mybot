@@ -2706,7 +2706,7 @@ async def _(ctx: HandlerContext):
 
 
 # 歌曲列表
-pjsk_diff_board = CmdHandler(["/pjsk music list", "/pjsk_music_list", "/歌曲列表"], logger)
+pjsk_diff_board = CmdHandler(["/pjsk song list", "/pjsk_song_list", "/pjsk music list", "/pjsk_music_list", "/歌曲列表"], logger)
 pjsk_diff_board.check_cdrate(cd).check_wblist(gbl)
 @pjsk_diff_board.handle()
 async def _(ctx: HandlerContext):

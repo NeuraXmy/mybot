@@ -2,7 +2,7 @@
 
 Project Sekai（世界计划）日服游戏相关服务
 
-抓包指南: `https://bot.teaphenby.com/public/tutorial/tutorial.html`
+部分需要抓包的指令请参考抓包指南: `https://bot.teaphenby.com/public/tutorial/tutorial.html`
 
 数据来源
 - ```sekai.best```（大部分图片资源及MasterData）
@@ -11,29 +11,43 @@ Project Sekai（世界计划）日服游戏相关服务
 
 ###  用户指令
 
-- [`/pjsk bind` 绑定账号](#pjsk-bind)
-- [`/pjsk info` 查询个人信息](#pjsk-info)
-- [`/pjsk hide` 隐藏抓包数据](#pjsk-hide)
-- [`/pjsk check service` 查询抓包服务状态](#pjsk-check-service)
-- [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
-- [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
-- [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
-- [`/pjsk song` 歌曲查询](#pjsk-song)
-- [`/pjsk alias` 歌曲别名查询](#pjsk-alias)
-- [`/pjsk alias add` 添加歌曲别名](#pjsk-alias-set)
-- [`/pjsk alias cancel` 取消上次别名添加](#pjsk-alias-cancel)
-- [`/pjsk chart` 谱面查询](#pjsk-chart)
-- [`/pjsk note num` 物量查询](#pjsk-note-num)
-- [`/pjsk card` 卡牌查询](#pjsk-card)
-- [`/pjsk card img` 卡面查询](#pjsk-card-img)
-- [`/pjsk diff board` 难度排行查询](#pjsk-diff-board)
-- [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
-- [`/pjsk box` box查询](#pjsk-box)
-- [`/pjsk sk` 榜线预测查询](#pjsk-sk)
-- [`/pjsk mysekai res` 烤森资源查询](#pjsk-mysekai-res)
-- [`/pjsk mysekai blueprint` 烤森蓝图查询](#pjsk-mysekai-blueprint)
-- [`/pjsk mysekai furniture` 烤森家具查询](#pjsk-mysekai-furniture)
-- [`/pjsk mysekai photo` 烤森照片查询](#pjsk-mysekai-photo)
+- 基础指令
+    - [`/pjsk bind` 绑定账号](#pjsk-bind)
+    - [`/pjsk info` 查询个人信息](#pjsk-info)
+    - [`/pjsk hide` 隐藏抓包数据](#pjsk-hide)
+    - [`/pjsk check service` 查询抓包服务状态](#pjsk-check-service)
+    - [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
+    - [`/pjsk reg time` 注册时间查询](#pjsk-reg-time)
+
+- 虚拟Live
+    - [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
+
+- 表情
+    - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
+
+- 歌曲谱面
+    - [`/pjsk song` 歌曲查询](#pjsk-song)
+    - [`/pjsk song list` 歌曲列表查询](#pjsk-diff-board)
+    - [`/pjsk chart` 谱面查询](#pjsk-chart)
+    - [`/pjsk alias` 歌曲别名查询](#pjsk-alias)
+    - [`/pjsk note num` 物量查询](#pjsk-note-num)
+    - [`/pjsk alias add` 添加歌曲别名](#pjsk-alias-set)
+    - [`/pjsk alias cancel` 取消上次别名添加](#pjsk-alias-cancel)
+
+- 卡牌
+
+    - [`/pjsk card` 卡牌查询](#pjsk-card)
+    - [`/pjsk card img` 卡面查询](#pjsk-card-img)
+    - [`/pjsk box` 保有卡组查询](#pjsk-box)
+
+- 榜线
+    - [`/pjsk sk` 榜线预测查询](#pjsk-sk)
+
+- 烤森
+    - [`/pjsk mysekai res` 烤森资源查询](#pjsk-mysekai-res)
+    - [`/pjsk mysekai blueprint` 烤森蓝图查询](#pjsk-mysekai-blueprint)
+    - [`/pjsk mysekai furniture` 烤森家具查询](#pjsk-mysekai-furniture)
+    - [`/pjsk mysekai photo` 烤森照片查询](#pjsk-mysekai-photo)
 
 ### 管理指令
 
@@ -42,6 +56,8 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk alias del` 删除歌曲别名](#pjsk-alias-del)
 
 ---
+
+# 基础指令
 
 ## `/pjsk bind`
 ```
@@ -97,17 +113,6 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pcs`
 
 
-## `/pjsk live`
-
-```
-获取近期游戏内虚拟Live信息
-```
-
-- **示例**
-
-    `/pjsk live`
-
-
 ## `/pjsk {sub|unsub} {提醒类型}`
 
 ```
@@ -125,6 +130,37 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/pjsk unsub music` 取消订阅新曲上线提醒
 
+
+## `/pjsk reg time`
+```
+查询游戏账号注册时间
+需要上传抓包数据
+```
+- **指令别名**
+
+    `/注册时间`
+
+- **示例**
+
+    `/注册时间`
+
+---
+
+# 虚拟Live
+
+## `/pjsk live`
+
+```
+获取近期游戏内虚拟Live信息
+```
+
+- **示例**
+
+    `/pjsk live`
+
+---
+
+# 表情
 
 ## `/pjsk stamp`
 
@@ -145,6 +181,9 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/pjsk stamp 123 再见` 用 123 号表情进行制作，文本为再见
 
+---
+
+# 歌曲铺面
 
 ## `/pjsk song`
 
@@ -154,7 +193,7 @@ Project Sekai（世界计划）日服游戏相关服务
 
 - **指令别名**
 
-    `/查曲`
+    `/pjsk music` `/查曲`
 
 - **示例**
 
@@ -163,39 +202,23 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pjsk song 热风` 查询标题为热风的歌曲信息
 
 
-## `/pjsk alias`
-
+## `/pjsk song list`
 ```
-按照歌曲ID查询歌曲别名
+查询某个难度歌曲列表
+支持按等级筛选
 ```
+- **指令别名**
 
-- **示例**
-
-    `/pjsk alias 112` 
-
-
-## `/pjsk alias add`
-
-```
-添加歌曲别名，多个别名逗号分割
-```
-
-- **示例**
-
-    `/pjsk alias add 123 别名1，别名2...`
-
-
-## `/pjsk alias cancel`
-
-```
-取消自己的上次别名添加
-```
-
-- **示例**
-
-    `/pjsk alias cancel`
-
+    `/pjsk music list` `/歌曲列表`
     
+- **示例**
+
+    `/歌曲列表 ma` 查询 Master 难度歌曲列表
+    `/歌曲列表 ma 30` 查询 Master 30歌曲列表
+    `/歌曲列表 ma 30 32` 查询 Master 30~32歌曲列表
+    `/歌曲列表 ma 31 id` 查询 Master 31歌曲列表，并显示歌曲ID
+
+
 ## `/pjsk chart`
 
 ```
@@ -230,6 +253,43 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/物量 1000` 查询物量为 1000 的谱面
+
+
+## `/pjsk alias`
+
+```
+按照歌曲ID查询歌曲别名
+```
+
+- **示例**
+
+    `/pjsk alias 112` 
+
+
+## `/pjsk alias add`
+
+```
+添加歌曲别名，多个别名逗号分割
+```
+
+- **示例**
+
+    `/pjsk alias add 123 别名1，别名2...`
+
+
+## `/pjsk alias cancel`
+
+```
+取消自己的上次别名添加
+```
+
+- **示例**
+
+    `/pjsk alias cancel`
+
+
+--- 
+# 卡牌
 
 
 ## `/pjsk card`
@@ -274,35 +334,9 @@ Project Sekai（世界计划）日服游戏相关服务
 
 
 
-## `/pjsk diff board`
-```
-查询某个难度歌曲列表
-支持按等级筛选
-```
-- **指令别名**
-
-    `/难度排行`
-    
-- **示例**
-
-    `/难度排行 ma` 查询 Master 难度歌曲列表
-    `/难度排行 ma 30` 查询 Master 30歌曲列表
-    `/难度排行 ma 30 32` 查询 Master 30~32歌曲列表
-    `/难度排行 ma 31 id` 查询 Master 31歌曲列表，并显示歌曲ID
 
 
-## `/pjsk reg time`
-```
-查询游戏账号注册时间
-需要上传抓包数据
-```
-- **指令别名**
 
-    `/注册时间`
-
-- **示例**
-
-    `/注册时间`
 
 
 ## `/pjsk box`
@@ -326,6 +360,9 @@ Project Sekai（世界计划）日服游戏相关服务
     `/pjsk box box` 仅查询自己有的卡牌
 
 
+---
+# 榜线
+
 ## `/pjsk sk`
 
 ```
@@ -340,6 +377,9 @@ Project Sekai（世界计划）日服游戏相关服务
 
     `/sk预测`
 
+
+---
+# 烤森
 
 ## `/pjsk mysekai res`
 
