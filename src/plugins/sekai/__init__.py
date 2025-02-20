@@ -1415,7 +1415,7 @@ async def search_music(
     
     music = ret_musics[0] if len(ret_musics) > 0 else None
     candidates = ret_musics[1:] if len(ret_musics) > 1 else []
-    candidate_msg = "" if not candidates else "候选曲目: " + " | ".join([f'【{m["id"]}】{m["title"]}' for m in candidates])
+    candidate_msg = "" if not candidates else "候选曲目: " + " ".join([f'【{m["id"]}】{m["title"]}' for m in candidates])
     
     if music:
         logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} id={music['id']} len(candidates)={len(candidates)}")
