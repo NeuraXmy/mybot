@@ -1017,7 +1017,7 @@ class TextStyle:
 
 
 class TextBox(Widget):
-    def __init__(self, text: str = '', style: TextStyle = None, line_count=1, line_sep=2, wrap=True, overflow='shrink', use_real_line_count=False):
+    def __init__(self, text: str = '', style: TextStyle = None, line_count=None, line_sep=2, wrap=True, overflow='shrink', use_real_line_count=False):
         super().__init__()
         self.text = text
         self.style = style or TextStyle()
@@ -1027,6 +1027,9 @@ class TextBox(Widget):
         assert overflow in ('shrink', 'clip')
         self.overflow = overflow
         self.use_real_line_count = use_real_line_count
+
+        if line_count is None:
+            self.line_count = 99999 if use_real_line_count else 1
 
         self.set_padding(2)
         self.set_margin(0)

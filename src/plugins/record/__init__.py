@@ -225,4 +225,30 @@ async def _(bot: Bot, event: NoticeEvent):
     # 群戳一戳
     if event.notice_type == 'notify' and event.sub_type == 'poke':
         logger.info(f"群 {event.group_id} 的用户 {event.user_id} 戳了用户 {event.target_id}")
-    
+
+
+# 查询指令历史记录
+get_cmd_history = CmdHandler(["/cmd_history", "/ch"], logger)
+get_cmd_history.check_superuser()
+@get_cmd_history.handle()
+async def _(ctx: HandlerContext):
+    global cmd_history
+    args = ctx.get_args()
+    try: limit = int(args)
+    except: limit = 10
+    msg = "【历史记录】\n"
+    for context in cmd_history:
+        time = context.time.strftime("%Y-%m-%d %H:%M:%S")
+        msg += f"[{time}]\n"
+        group_id, user_id = context.group_id, context.user_id
+        if group_id:
+            group_name = await get_group_name(ctx.bot, group_id)
+            msg += f"<{group_name}({group_id})>\n"
+            user_name = await get_group_member_name(ctx.bot, group_id, user_id)
+            msg += f"<{user_name}({user_id})>\n"
+        else:
+            user_name = context.event.sender.nickname
+            msg += f"<{user_name}({user_id})>\n"
+        msg += f"{context.trigger_cmd} {context.arg_text}"
+        msg += "\n\n"
+    return await ctx.asend_fold_msg_adaptive(msg.strip(), 100, True)

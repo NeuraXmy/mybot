@@ -753,6 +753,7 @@ def get_audio_cq(audio_path):
 
 # 缩短字符串
 def truncate(s, limit):
+    if s is None: return "<None>"
     l = 0
     for i, c in enumerate(s):
         if l >= limit:
@@ -1395,6 +1396,7 @@ def remove_by(lst, key, value):
 
 @dataclass
 class HandlerContext:
+    time: datetime = None
     handler = None
     nonebot_handler = None
     bot: Bot = None
@@ -1449,6 +1451,9 @@ class HandlerContext:
             msgs = [cmd_msg] + msgs
         return await send_multiple_fold_msg(self.bot, self.event, msgs)
 
+
+cmd_history: List[HandlerContext] = []
+MAX_CMD_HISTORY = 100
 
 class CmdHandler:
     def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False, disabled=False, banned_cmds: List[str] = None):
@@ -1516,6 +1521,7 @@ class CmdHandler:
 
                 # 上下文构造
                 context = HandlerContext()
+                context.time = datetime.now()
                 context.handler = self
                 context.nonebot_handler = self.handler
                 context.bot = bot
@@ -1536,6 +1542,12 @@ class CmdHandler:
                 context.user_id = event.user_id
                 if is_group_msg(event):
                     context.group_id = event.group_id
+
+                # 记录到历史
+                global cmd_history, MAX_CMD_HISTORY
+                cmd_history.append(context)
+                if len(cmd_history) > MAX_CMD_HISTORY:
+                    cmd_history = cmd_history[-MAX_CMD_HISTORY:]
 
                 try:
                     return await handler_func(context)

@@ -10,7 +10,7 @@ import aiohttp
 import json
 from ..utils import *
 import numpy as np
-from ..llm import get_text_retriever, ChatSession
+from ..llm import get_text_retriever, ChatSession, translate_text
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from . import res
 from datetime import datetime
@@ -2308,6 +2308,7 @@ async def compose_mysekai_fixture_detail_image(fid) -> Image.Image:
     ## 获取基本信息
     ftype = fixture['mysekaiFixtureType']
     fname = fixture['name']
+    translated_name = await translate_text(fname, additional_info="要翻译的内容是家具/摆设的名字")
     fsize = fixture['gridSize']
     suface_type = fixture.get('mysekaiSettableLayoutType', None)
     asset_name = fixture['assetbundleName']
@@ -2381,7 +2382,9 @@ async def compose_mysekai_fixture_detail_image(fid) -> Image.Image:
         w = 600
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16).set_bg(roundrect_bg()):
             # 标题
-            TextBox(f"【{fid}】{fname}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(20, 20, 20))).set_padding(8).set_bg(roundrect_bg()).set_w(w+16)
+            title_text = f"【{fid}】{fname}"
+            if translated_name: title_text += f" ({translated_name})"
+            TextBox(title_text, TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(20, 20, 20)), use_real_line_count=True).set_padding(8).set_bg(roundrect_bg()).set_w(w+16)
             # 缩略图列表
             with Grid(col_count=5).set_content_align('c').set_item_align('c').set_sep(8, 4).set_padding(8).set_bg(roundrect_bg()).set_w(w+16):
                 for color_code, img in zip(fcolorcodes, fimgs):
@@ -3243,6 +3246,23 @@ async def _(ctx: HandlerContext):
     msg = await get_image_cq(photo) + f"拍摄时间: {time.strftime('%Y-%m-%d %H:%M')}"
 
     return await ctx.asend_reply_msg(msg)
+
+
+# 检查抓包服务状态
+pjsk_check_service = CmdHandler(["/pjsk check service", "/pjsk_check_service", "/pcs"], logger)
+pjsk_check_service.check_cdrate(cd).check_wblist(gbl)
+@pjsk_check_service.handle()
+async def _(ctx: HandlerContext):
+    url = config['api_status_url']
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, verify_ssl=False) as resp:
+                data = await resp.json()
+                assert data['status'] == 'ok'
+    except:
+        logger.print_exc(f"抓包服务状态异常")
+        return await ctx.asend_reply_msg("服务异常")
+    return await ctx.asend_reply_msg("服务正常")
 
 
 # ========================================= 定时任务 ========================================= #

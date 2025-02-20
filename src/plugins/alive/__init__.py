@@ -109,3 +109,14 @@ alive.check_cdrate(cd)
 async def handle_function(ctx: HandlerContext):
     dt = datetime.now() - cur_elapsed
     await ctx.asend_reply_msg(f"当前连接持续时长: {get_readable_timedelta(cur_elapsed)}\n连接时间: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+
+
+# kill命令
+killbot = CmdHandler(["/killbot"], logger)
+killbot.check_superuser()
+@killbot.handle()
+async def handle_function(ctx: HandlerContext):
+    await ctx.asend_reply_msg("正在关闭Bot...")
+    await asyncio.sleep(1)
+    exit(0)
+

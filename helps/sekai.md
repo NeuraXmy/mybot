@@ -2,6 +2,8 @@
 
 Project Sekai（世界计划）日服游戏相关服务
 
+抓包指南: `https://bot.teaphenby.com/public/tutorial/tutorial.html`
+
 数据来源
 - ```sekai.best```（大部分图片资源及MasterData）
 - ```MiddleRed/pjsk-mysekai-xray``` (MySekai俯视图)
@@ -12,6 +14,7 @@ Project Sekai（世界计划）日服游戏相关服务
 - [`/pjsk bind` 绑定账号](#pjsk-bind)
 - [`/pjsk info` 查询个人信息](#pjsk-info)
 - [`/pjsk hide` 隐藏抓包数据](#pjsk-hide)
+- [`/pjsk check service` 查询抓包服务状态](#pjsk-check-service)
 - [`/pjsk live` 获取当前虚拟live信息](#pjsk-live)
 - [`/pjsk {sub|unsub} {提醒类型}` 订阅/取消订阅at提醒](#pjsk-subunsub-提醒类型)
 - [`/pjsk stamp` 获取或制作表情](#pjsk-stamp)
@@ -74,9 +77,24 @@ Project Sekai（世界计划）日服游戏相关服务
 隐藏抓包数据，再次使用取消隐藏
 隐藏后，查询会展示抓包数据的指令时不会显示出自己的抓包数据
 ```
+
 - **示例**
 
     `/pjsk hide`
+
+
+## `/pjsk check service`
+```
+查询抓包服务状态
+```
+
+- **指令别名**
+
+    `/pcs`
+
+- **示例**
+
+    `/pcs`
 
 
 ## `/pjsk live`
