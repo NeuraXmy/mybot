@@ -70,8 +70,6 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
         group_id = 0
         user_name = (await get_stranger_info(bot, user_id)).get('nickname', '')
 
-   
-    user_name = truncate(event.sender.nickname, 16)
     if is_group:
         try: group_name = truncate(await get_group_name(bot, group_id), 16)
         except: group_name = "未知群聊"
