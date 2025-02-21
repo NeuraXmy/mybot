@@ -71,9 +71,6 @@ def _sk_card_recommend_work(user_id: int, live_type: str, music_key: str, music_
         height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", body)
         driver.set_window_size(width, height)
 
-        # 保存为截图
-        driver.save_screenshot("test.png")
-
         results = []
         tbody = driver.find_element(By.XPATH, "//*[text()='排名']/../../../tbody")
         # 遍历前topk的卡组

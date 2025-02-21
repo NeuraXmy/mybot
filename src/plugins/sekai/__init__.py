@@ -1091,10 +1091,10 @@ async def compose_full_honor_image(profile_honor, is_main, profile=None):
         
         if gtype == 'rank_match':
             img = await get_asset(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await get_asset(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True)
+            rank_img = await get_asset(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None)
         else:
             img = await get_asset(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await get_asset(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True)
+            rank_img = await get_asset(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None)
 
         add_frame(img, rarity)
         if rank_img:
@@ -3616,7 +3616,8 @@ async def new_music_notify():
         if publish_time - now > timedelta(minutes=1): continue
         logger.info(f"发送新曲上线提醒: {music['id']} {music['title']}")
 
-        msg = await compose_music_detail_image(mid, title="新曲上线", text_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
+        img = await compose_music_detail_image(mid, title="新曲上线", title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
+        msg = await get_image_cq(img)
 
         for group_id in music_notify_gwl.get():
             if not gbl.check_id(group_id): continue
@@ -3655,7 +3656,9 @@ async def new_music_notify():
         
         logger.info(f"发送新APPEND上线提醒: {music['id']} {music['title']}")
         
-        msg = await compose_music_detail_image(mid, title="新APPEND铺面上线", text_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
+        img = await compose_music_detail_image(mid, title="新APPEND谱面上线", title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20)))
+        msg = await get_image_cq(img)
+
 
         for group_id in music_notify_gwl.get():
             if not gbl.check_id(group_id): continue
