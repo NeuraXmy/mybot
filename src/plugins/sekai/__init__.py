@@ -1814,9 +1814,16 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
 
             for item in pres:
                 if item['del']: continue
+                outline = None
 
                 # 大小和位置
                 large_size, small_size = 30 * scale, 14 * scale
+
+                if item['type'] == 'mysekai_material' and item['id'] == 24:
+                    large_size *= 1.5
+                if item['type'] == 'mysekai_music_record':
+                    large_size *= 1.5
+
                 if item['small_icon']:
                     res_img_size = small_size
                     offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
@@ -1831,22 +1838,28 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 # 绘制顺序 小图标>稀有资源>其他
                 if item['small_icon']:
                     draw_order = len(res_draw_calls) + 1000000
+                    outline = (50, 50, 255, 50)
                 elif res_key in MOST_RARE_MYSEKAI_RES:
                     draw_order = len(res_draw_calls) + 100000
+                    outline = (255, 50, 50, 50)
                 else:
                     draw_order = len(res_draw_calls)
 
                 if item['image']:
-                    res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon']))
+                    res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon'], outline))
         
         # 排序资源掉落
         res_draw_calls.sort(key=lambda x: x[6])
 
         # 绘制资源
-        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
-            ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8).set_offset((offsetx, offsetz))
+        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon, outline in res_draw_calls:
+            with Frame().set_offset((offsetx, offsetz)):
+                ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8)
+                if outline:
+                    Frame().set_bg(FillBg(stroke=outline, stroke_width=1, fill=TRANSPARENT)).set_size((res_img_size, res_img_size))
+
         
-        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon in res_draw_calls:
+        for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon, outline in res_draw_calls:
             if not small_icon:
                 style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(50, 50, 50, 200))
                 if res_quantity > 1:
