@@ -1728,8 +1728,10 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             continue
         x, z = game_pos_to_draw_pos(item['positionX'], item['positionZ'])
         try: 
-            image_name = MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME[int(fid)]
-            image = res.misc_images.get(f"mysekai/harvest_fixtures/{image_name}")
+            harvest_fixture = find_by(await res.mysekai_site_harvest_fixtures.get(), "id", fid)
+            asset_name = harvest_fixture['assetbundleName']
+            rarity = harvest_fixture['mysekaiSiteHarvestFixtureRarityType']
+            image = res.misc_images.get(f"mysekai/harvest_fixture_icon/{rarity}/{asset_name}.png")
         except: 
             image = None
         harvest_points.append({"id": fid, 'image': image, 'x': x, 'z': z})
@@ -1786,8 +1788,8 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
 
         # 绘制资源点
         for point in harvest_points:
-            point_img_size = 150 * scale
-            offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.6))
+            point_img_size = 160 * scale
+            offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.65))
             if point['image']:
                 ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
 
@@ -3724,7 +3726,7 @@ async def msr_auto_push():
         try:
             logger.info(f"在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询")
             contents = [
-                await get_image_cq(img) for img in 
+                await get_image_cq(img, low_quality=True) for img in 
                 await compose_mysekai_res_image(qid, False, True)
             ]
             username = await get_group_member_name(bot, int(gid), int(qid))

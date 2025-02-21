@@ -228,6 +228,7 @@ mysekai_fixtures                            = SekaiMasterData("Mysekai家具数�
 mysekai_musicrecords                        = SekaiMasterData("Mysekai唱片数据", master_dbs.specify("mysekaiMusicRecords.json"))
 mysekai_phenomenas                          = SekaiMasterData("Mysekai天气数据", master_dbs.specify("mysekaiPhenomenas.json"))
 mysekai_blueprints                          = SekaiMasterData("Mysekai蓝图数据", master_dbs.specify("mysekaiBlueprints.json"))
+mysekai_site_harvest_fixtures               = SekaiMasterData("Mysekai地图资源家具数据", master_dbs.specify("mysekaiSiteHarvestFixtures.json"))
 mysekai_fixture_maingenres                  = SekaiMasterData("Mysekai主要家具类型数据", master_dbs.specify("mysekaiFixtureMainGenres.json"))
 mysekai_fixture_subgenres                   = SekaiMasterData("Mysekai次要家具类型数据", master_dbs.specify("mysekaiFixtureSubGenres.json"))
 mysekai_character_talks                     = SekaiMasterData("Mysekai角色对话数据", master_dbs.specify("mysekaiCharacterTalks.json"))
