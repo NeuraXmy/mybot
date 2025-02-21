@@ -1320,7 +1320,7 @@ class MessageArgumentParser(ArgumentParser):
                 raise NoReplyException()
 
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 pool_executor = ThreadPoolExecutor()
 
 async def run_in_pool(func, *args, pool=None):

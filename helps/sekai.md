@@ -35,10 +35,11 @@ Project Sekai（世界计划）日服游戏相关服务
     - [`/pjsk alias cancel` 取消上次别名添加](#pjsk-alias-cancel)
 
 - 卡牌
-
     - [`/pjsk card` 卡牌查询](#pjsk-card)
     - [`/pjsk card img` 卡面查询](#pjsk-card-img)
     - [`/pjsk box` 保有卡组查询](#pjsk-box)
+    - [`/pjsk event card` 活动组卡计算](#pjsk-event-card)
+    - [`/pjsk challenge card` 挑战组卡计算](#pjsk-challenge-card)
 
 - 榜线
     - [`/pjsk sk` 榜线预测查询](#pjsk-sk)
@@ -332,10 +333,43 @@ Project Sekai（世界计划）日服游戏相关服务
     `/查卡面 123` 查询 ID 为 123 的卡面信息
 
 
+## `/pjsk event card`
+```
+自动进行当期活动组卡计算（需要抓包）
+Live类型可选: 协力、单人、auto
+```
+
+- **指令别名**
+
+    `/活动组卡` `/活动组队`
+
+- **示例**
+
+    `/活动组卡` 使用默认歌曲和难度进行协力Live组卡
+
+    `/活动组卡 单人` 使用默认歌曲和难度进行单人Live组卡
+
+    `/活动组卡 123` 使用ID为123的歌曲master难度进行协力Live组卡
+
+    `/活动组卡 123 hard` 使用ID为123的歌曲hard难度进行协力Live组卡
 
 
+## `/pjsk challenge card`
+```
+自动进行每日挑战Live组卡计算（需要抓包）
+```
 
+- **指令别名**
 
+    `/挑战组卡` `/挑战组队`
+
+- **示例**
+
+    `/挑战组卡 miku` 使用默认歌曲和难度进行miku的挑战Live组卡
+
+    `/挑战组卡 miku 123` 使用ID为123的歌曲master难度进行miku的挑战Live组卡
+
+    `/挑战组卡 miku 123 hard` 使用ID为123的歌曲hard难度进行miku的挑战Live组卡
 
 
 

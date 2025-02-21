@@ -17,6 +17,7 @@ from datetime import datetime
 import random
 import colorsys
 import math
+from .sk import sk_card_recommend
 
 
 config = get_config('sekai')
@@ -674,7 +675,7 @@ async def get_card_thumbnail(cid, after_training):
     return await get_asset(f"thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.png")
 
 # 获取角色卡牌完整缩略图
-async def get_card_full_thumbnail(card, after_training, pcard=None):
+async def get_card_full_thumbnail(card, after_training, pcard=None, max_level=False):
     cid = card['id']
     image_type = "after_training" if after_training else "normal"
     cache_dir = res_path(f"card_full_thumb/{cid}_{image_type}.png")
@@ -700,6 +701,8 @@ async def get_card_full_thumbnail(card, after_training, pcard=None):
         # 如果是profile卡片则绘制等级
         if pcard:
             level = pcard['level']
+            if max_level:
+                level = 60 if rare in ["rarity_birthday", "rarity_4"] else 50
             draw = ImageDraw.Draw(img)
             draw.rectangle((0, img_h - 24, img_w, img_h), fill=(70, 70, 100, 255))
             draw.text((6, img_h - 31), f"Lv.{level}", font=get_font(DEFAULT_BOLD_FONT, 20), fill=WHITE)
@@ -2587,6 +2590,100 @@ async def compose_music_detail_image(mid, title=None, title_style=None) -> Frame
             
     return await run_in_pool(canvas.get_img)    
 
+# 获取自动组卡图片
+async def compose_card_recommend_image(qid, live_type, mid, diff, chara_id=None, topk=5) -> Image.Image:
+    # 用户信息
+    profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
+    uid = profile['userGamedata']['userId']
+    bg_group = (await get_player_avatar_info(profile))['bg_group'] if profile else None
+
+    # 组卡
+    music = find_by(await res.musics.get(), "id", mid)
+    assert_and_reply(music, f"歌曲{mid}不存在")
+    asset_name = music['assetbundleName']
+    music_cover = await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=True, default=UNKNOWN_IMG)
+    music_key = f"{mid} - {music['title']}"
+    chara_name = None
+    if chara_id:
+        chara = find_by(await res.game_characters.get(), "id", chara_id)
+        chara_name = chara.get('firstName', '') + chara.get('givenName', '')
+        chara_nickname = get_nickname_by_cid(chara_id)
+        chara_icon = res.misc_images.get(f"chara_icon/{chara_nickname}.png")
+    results = await sk_card_recommend(uid, live_type, music_key, diff, chara_name, topk)
+
+    # 获取卡片图片
+    async def get_card_img(cid, card, pcard):
+        after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
+        try: return (cid, await get_card_full_thumbnail(card, after_training, pcard, max_level=True))
+        except: return (cid, UNKNOWN_IMG)
+    card_imgs = []
+    for result in results:
+        for cid in result['cards']:
+            card = find_by(await res.cards.get(), "id", cid)
+            pcard = find_by(profile['userCards'], "cardId", cid)
+            card_imgs.append(get_card_img(cid, card, pcard))
+    card_imgs = { cid: img for cid, img in await asyncio.gather(*card_imgs) }
+
+    # 绘图
+    with Canvas(bg=ImageBg(res.misc_images.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
+            await get_detailed_profile_card(profile, pmsg)
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
+                # 标题
+                with VSplit().set_content_align('lb').set_item_align('lb').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
+                    title = ""
+                    if live_type == "challenge": 
+                        title += "每日挑战组卡"
+                    else:
+                        title += "活动组卡"
+                        if live_type == "multi":
+                            title += "(协力)"
+                        elif live_type == "single":
+                            title += "(单人)"
+                        elif live_type == "auto":
+                            title += "(AUTO)"
+                    with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
+                        TextBox(title, TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50)), use_real_line_count=True)
+                        if chara_name:
+                            ImageBox(chara_icon, size=(None, 50), use_alphablend=True)
+                            TextBox(f"{chara_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
+                    with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
+                        ImageBox(music_cover, size=(None, 50), use_alphablend=True)
+                        TextBox(f"{music_key} - {diff.upper()}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
+                # 表格
+                gh = 80
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
+                    th_style = TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50))
+                    tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
+                    # 分数
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                        TextBox("分数", th_style).set_h(gh // 2).set_content_align('c')
+                        for result in results:
+                            TextBox(f"{result['score']}", tb_style).set_h(gh).set_content_align('c')
+                    # 卡片
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                        TextBox("卡组", th_style).set_h(gh // 2).set_content_align('c')
+                        for result in results:
+                            with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
+                                for cid in result['cards']:
+                                    ImageBox(card_imgs[cid], size=(None, gh), use_alphablend=True)
+                    # 加成
+                    if live_type != "challenge":
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                            TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
+                            for result in results:
+                                TextBox(f"{result['bonus']:.1f}%", tb_style).set_h(gh).set_content_align('c')
+                    # 综合力
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                        TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
+                        for result in results:
+                            TextBox(f"{result['power']}", tb_style).set_h(gh).set_content_align('c')
+        
+                # 说明
+                TextBox(f"卡组计算来自 33Kit (3-3.dev)", TextStyle(font=DEFAULT_FONT, size=20, color=(50, 50, 50)))
+
+    return await run_in_pool(canvas.get_img)
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -3380,6 +3477,55 @@ async def _(ctx: HandlerContext):
         logger.print_exc(f"抓包服务状态异常")
         return await ctx.asend_reply_msg("服务异常")
     return await ctx.asend_reply_msg("服务正常")
+
+
+# 活动组卡
+pjsk_event_card = CmdHandler(["/pjsk event card", "/pjsk_event_card", "/活动组卡", "/活动组队"], logger)
+pjsk_event_card.check_cdrate(cd).check_wblist(gbl)
+@pjsk_event_card.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip().split()
+
+    live_type, music_id, music_diff = "multi", None, None
+    for arg in args:
+        arg = arg.strip().lower()
+        if "多人" in arg or '协力' in arg: live_type = "multi"
+        elif "单人" in arg: live_type = "single"
+        elif "自动" in arg or "auto" in arg: live_type = "auto"
+        if arg.isdigit(): music_id = int(arg)
+        for diff_names in DIFF_NAMES:
+            for name in diff_names:
+                if name in arg: music_diff = diff_names[0]
+
+    music_id = music_id or 74
+    music_diff = music_diff or "master"
+    
+    await ctx.asend_reply_msg("开始计算组卡...")
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_card_recommend_image(ctx.user_id, live_type, music_id, music_diff, None)))
+
+
+# 挑战组卡
+pjsk_challenge_card = CmdHandler(["/pjsk challenge card", "/pjsk_challenge_card", "/挑战组卡", "/挑战组队"], logger)
+pjsk_challenge_card.check_cdrate(cd).check_wblist(gbl)
+@pjsk_challenge_card.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip().split()
+
+    music_id, music_diff, chara_id = None, None, None
+    for arg in args:
+        arg = arg.strip().lower()
+        if cid := get_cid_by_nickname(arg): chara_id = cid
+        if arg.isdigit(): music_id = int(arg)
+        for diff_names in DIFF_NAMES:
+            for name in diff_names:
+                if name in arg: music_diff = diff_names[0]
+
+    assert_and_reply(chara_id, "请指定角色昵称（如miku）")
+    music_id = music_id or 104
+    music_diff = music_diff or "master"
+
+    await ctx.asend_reply_msg("开始计算组卡...")
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_card_recommend_image(ctx.user_id, "challenge", music_id, music_diff, chara_id)))
 
 
 # ========================================= 定时任务 ========================================= #
