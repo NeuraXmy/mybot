@@ -45,7 +45,7 @@ async def update_member_info(group_id=None):
 # 处理加群
 async def handle_increase(group_id, user_id, sub_type):
     bot = get_bot()
-    if group_id in gwl.get(): return
+    if group_id not in gwl.get(): return
     if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 加入 {group_id}')
@@ -79,7 +79,7 @@ async def handle_increase(group_id, user_id, sub_type):
 # 处理退群
 async def handle_decrease(group_id, user_id, sub_type):
     bot = get_bot()
-    if group_id in gwl.get(): return
+    if group_id not in gwl.get(): return
     if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 离开 {group_id}')

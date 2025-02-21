@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11.message import Message
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot import on_command
+from .status import *
 
 
 config = get_config('alive')
@@ -106,7 +107,7 @@ async def alive_check():
 alive = CmdHandler(["/alive"], logger)
 alive.check_cdrate(cd)
 @alive.handle()
-async def handle_function(ctx: HandlerContext):
+async def _(ctx: HandlerContext):
     dt = datetime.now() - cur_elapsed
     await ctx.asend_reply_msg(f"当前连接持续时长: {get_readable_timedelta(cur_elapsed)}\n连接时间: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -115,8 +116,31 @@ async def handle_function(ctx: HandlerContext):
 killbot = CmdHandler(["/killbot"], logger)
 killbot.check_superuser()
 @killbot.handle()
-async def handle_function(ctx: HandlerContext):
+async def _(ctx: HandlerContext):
     await ctx.asend_reply_msg("正在关闭Bot...")
     await asyncio.sleep(1)
     exit(0)
 
+
+# 状态查询
+status = CmdHandler(["/status"], logger)
+status.check_superuser()
+@status.handle()
+async def _(ctx: HandlerContext):
+    cpu_status = await get_cpu_status()
+    per_cpu_status = await get_per_cpu_status()
+    memory_status = get_memory_status()
+    swap_status = get_swap_status()
+    disk_usage = get_disk_usage()
+    msg = ""
+    msg += f"【CPU Usage】\n{cpu_status:.0f}%\n"
+    msg += f"【CPU Usage per Core】\n"
+    for i, status in enumerate(per_cpu_status):
+        msg += f" {status:.0f}% "
+    msg += "\n"
+    msg += f"【Mem Usage】\n{get_readable_file_size(memory_status.used)}/{get_readable_file_size(memory_status.total)} ({memory_status.percent}%)\n"
+    msg += f"【Swap Usage】\n{get_readable_file_size(swap_status.used)}/{get_readable_file_size(swap_status.total)} ({swap_status.percent}%)\n"
+    msg += "【Disk Usage】\n"
+    for path, usage in disk_usage.items():
+        msg += f"[{path}] {get_readable_file_size(usage.used)}/{get_readable_file_size(usage.total)} ({usage.percent}%)\n"
+    await ctx.asend_reply_msg(msg.strip())
