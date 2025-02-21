@@ -9,7 +9,7 @@
 ###  管理指令
 
 - [`/killbot` 关闭bot](#killbot)
-- [`/status` 查看bot状态](#status)
+- [`@bot /status` 查看bot状态](#bot-status)
 
 --- 
 
@@ -36,15 +36,19 @@
     `/killbot`
 
 
-## `/status`
+## `@bot /status`
 
 ```
-查看服务器状态
+查看服务器状态，需要@bot使用
 ```
+
+- **指令别名**
+
+    `/状态`
 
 - **示例**
 
-    `/status`
+    `@bot /status`
 
 ---
 
