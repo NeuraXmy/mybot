@@ -2613,9 +2613,15 @@ async def compose_card_recommend_image(qid, live_type, mid, diff, chara_id=None,
 
     # 获取卡片图片
     async def get_card_img(cid, card, pcard):
-        after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
-        try: return (cid, await get_card_full_thumbnail(card, after_training, pcard, max_level=True))
-        except: return (cid, UNKNOWN_IMG)
+        try: 
+            if pcard:
+                after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
+                return (cid, await get_card_full_thumbnail(card, after_training, pcard, max_level=True))
+            else:
+                rare = card['cardRarityType']
+                return (cid, await get_card_full_thumbnail(card, rare in ['rarity_3, rarity_4']))
+        except: 
+            return (cid, UNKNOWN_IMG)
     card_imgs = []
     for result in results:
         for cid in result['cards']:
@@ -3719,7 +3725,7 @@ async def msr_auto_push():
             logger.info(f"在 {gid} 中自动推送用户 {qid} 的Mysekai资源查询")
             contents = [
                 await get_image_cq(img) for img in 
-                await compose_mysekai_res_image(qid, False, False)
+                await compose_mysekai_res_image(qid, False, True)
             ]
             username = await get_group_member_name(bot, int(gid), int(qid))
             contents = [f"@{username} 的Mysekai资源查询推送"] + contents

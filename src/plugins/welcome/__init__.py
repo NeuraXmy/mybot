@@ -8,7 +8,7 @@ import asyncio
 config = get_config('welcome')
 logger = get_logger("Welcome")
 file_db = get_file_db("data/welcome/db.json", logger)
-gbl = get_group_black_list(file_db, logger, 'welcome')
+gwl = get_group_white_list(file_db, logger, 'welcome')
 
 
 # 防止神秘原因导致的重复通知
@@ -27,7 +27,7 @@ async def update_member_info(group_id=None):
     for group in groups:
         try:
             group_id = group['group_id']
-            if group_id in gbl.get(): return
+            if group_id in gwl.get(): return
             members = await get_group_users(bot, group_id)
             id_names = {}
             for info in members:
@@ -45,7 +45,7 @@ async def update_member_info(group_id=None):
 # 处理加群
 async def handle_increase(group_id, user_id, sub_type):
     bot = get_bot()
-    if group_id in gbl.get(): return
+    if group_id in gwl.get(): return
     if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 加入 {group_id}')
@@ -79,7 +79,7 @@ async def handle_increase(group_id, user_id, sub_type):
 # 处理退群
 async def handle_decrease(group_id, user_id, sub_type):
     bot = get_bot()
-    if group_id in gbl.get(): return
+    if group_id in gwl.get(): return
     if str(user_id) == str(bot.self_id): return
     group_id, user_id = group_id, user_id
     logger.info(f'{user_id} 离开 {group_id}')
@@ -115,7 +115,7 @@ start_repeat_with_interval(GROUP_INFO_UPDATE_INTERVAL, update_member_info, logge
 
 # 设置入群欢迎信息
 welcome_info = CmdHandler(["/welcome info", "/入群信息"], logger)
-welcome_info.check_wblist(gbl).check_superuser()
+welcome_info.check_wblist(gwl).check_superuser()
 @welcome_info.handle()
 async def _(ctx: HandlerContext):
     text = ctx.get_args().strip()
