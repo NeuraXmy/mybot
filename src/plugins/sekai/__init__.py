@@ -253,7 +253,7 @@ def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> H
     with HSplit().set_padding(padding) as hs:
         for seg in segs:
             text, color = seg['text'], seg['color']
-            if text is not None:
+            if text:
                 color_style = deepcopy(style)
                 if color is not None: color_style.color = color
                 TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
@@ -1996,13 +1996,10 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
                 # 到访角色列表
                 with HSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_padding(16).set_sep(16):
-                    gate_color = lerp_color(GROUP_COLOR[gate_id], WHITE, 0.4)
-                    gate_icon_colored = Image.new('RGBA', (64, 64), gate_color)
-                    gate_icon = res.misc_images.get('mysekai/gate_icon.png').resize((64, 64))
-                    gate_icon_colored.putalpha(gate_icon.split()[3])
+                    gate_icon = res.misc_images.get(f'mysekai/gate_icon/gate_{gate_id}.png')
                     with Frame().set_size((64, 64)).set_margin((16, 0)).set_content_align('rb'):
-                        ImageBox(gate_icon_colored, size=(64, 64), use_alphablend=True)
-                        TextBox(f"Lv.{gate_level}", TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=gate_color)).set_content_align('c')
+                        ImageBox(gate_icon, size=(64, 64), use_alphablend=True)
+                        TextBox(f"Lv.{gate_level}", TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=GROUP_COLOR[gate_id])).set_content_align('c').set_offset((0, 2))
 
                     for cid in visit_cids:
                         chara_icon = await get_asset(f"character_sd_l_rip/chr_sp_{cid}.png")
