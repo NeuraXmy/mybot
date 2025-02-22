@@ -1817,7 +1817,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 outline = None
 
                 # 大小和位置
-                large_size, small_size = 30 * scale, 14 * scale
+                large_size, small_size = 32 * scale, 16 * scale
 
                 if item['type'] == 'mysekai_material' and item['id'] == 24:
                     large_size *= 1.5
@@ -1827,7 +1827,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 if item['small_icon']:
                     res_img_size = small_size
                     offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
-                    offsetz = int(item['z'] - 0.4 * large_size + 1.1 * small_size * small_idx)
+                    offsetz = int(item['z'] - 0.45 * large_size + 1.0 * small_size * small_idx)
                     small_idx += 1
                 else:
                     res_img_size = large_size
@@ -1838,10 +1838,10 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 # 绘制顺序 小图标>稀有资源>其他
                 if item['small_icon']:
                     draw_order = len(res_draw_calls) + 1000000
-                    outline = (50, 50, 255, 50)
+                    outline = (50, 50, 255, 80)
                 elif res_key in MOST_RARE_MYSEKAI_RES:
                     draw_order = len(res_draw_calls) + 100000
-                    outline = (255, 50, 50, 50)
+                    outline = (255, 50, 50, 80)
                 else:
                     draw_order = len(res_draw_calls)
 
@@ -1862,8 +1862,10 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
         for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon, outline in res_draw_calls:
             if not small_icon:
                 style = TextStyle(font=DEFAULT_BOLD_FONT, size=int(10 * scale), color=(50, 50, 50, 200))
-                if res_quantity > 1:
-                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(10 * scale), color=(200, 20, 0, 200))
+                if res_quantity == 2:
+                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(11 * scale), color=(200, 20, 0, 200))
+                elif res_quantity > 2:
+                    style = TextStyle(font=DEFAULT_HEAVY_FONT, size=int(11 * scale), color=(200, 20, 200, 200))
                 TextBox(f"{res_quantity}", style).set_offset((offsetx, offsetz))
 
     return await run_in_pool(canvas.get_img)
