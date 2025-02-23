@@ -1838,12 +1838,16 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 # 绘制顺序 小图标>稀有资源>其他
                 if item['small_icon']:
                     draw_order = item['z'] * 100 + item['x'] + 1000000
-                    outline = (50, 50, 255, 100)
                 elif f"{item['type']}_{item['id']}" in MOST_RARE_MYSEKAI_RES:
                     draw_order = item['z'] * 100 + item['x'] + 100000
-                    outline = (255, 50, 50, 100)
                 else:
                     draw_order = item['z'] * 100 + item['x']
+
+                # 小图标和稀有资源添加边框
+                if f"{item['type']}_{item['id']}" in MOST_RARE_MYSEKAI_RES:
+                    outline = ((255, 50, 50, 100), 2)
+                elif item['small_icon']:
+                    outline = ((50, 50, 255, 100), 1)
 
                 if item['image']:
                     res_draw_calls.append((res_id, item['image'], res_img_size, offsetx, offsetz, item['quantity'], draw_order, item['small_icon'], outline))
@@ -1856,7 +1860,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
             with Frame().set_offset((offsetx, offsetz)):
                 ImageBox(res_img, size=(res_img_size, res_img_size), use_alphablend=True, alpha_adjust=0.8)
                 if outline:
-                    Frame().set_bg(FillBg(stroke=outline, stroke_width=1, fill=TRANSPARENT)).set_size((res_img_size, res_img_size))
+                    Frame().set_bg(FillBg(stroke=outline[0], stroke_width=outline[1], fill=TRANSPARENT)).set_size((res_img_size, res_img_size))
 
         
         for res_id, res_img, res_img_size, offsetx, offsetz, res_quantity, draw_order, small_icon, outline in res_draw_calls:
