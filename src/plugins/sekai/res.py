@@ -262,10 +262,12 @@ class ImageRes:
             raise FileNotFoundError(f"图片资源{fullpath}不存在")
         try:
             with self.lock:
-                if self.images.get(path) is None:
-                    self.images[path] = Image.open(fullpath)
-                    self.images[path].load()       
-                return self.images[path]
+                img, time = self.images.get(path, (None, None))
+                mtime = int(os.path.getmtime(fullpath) * 1000)
+                if mtime != time:
+                    self.images[path] = (Image.open(fullpath), mtime)
+                    self.images[path][0].load()  
+                return self.images[path][0]
         except:
             raise FileNotFoundError(f"读取图片资源{fullpath}失败")
 

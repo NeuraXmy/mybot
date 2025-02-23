@@ -1839,7 +1839,7 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
                 if item['small_icon']:
                     draw_order = item['z'] * 100 + item['x'] + 1000000
                     outline = (50, 50, 255, 100)
-                elif res_key in MOST_RARE_MYSEKAI_RES:
+                elif f"{item['type']}_{item['id']}" in MOST_RARE_MYSEKAI_RES:
                     draw_order = item['z'] * 100 + item['x'] + 100000
                     outline = (255, 50, 50, 100)
                 else:
@@ -1965,13 +1965,18 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
 
     # 排序
     site_res_num = sorted(list(site_res_num.items()), key=lambda x: x[0])
-    tmp = site_res_num[1]
-    site_res_num[1] = site_res_num[2]
-    site_res_num[2] = tmp
+    site_res_num[1], site_res_num[2] = site_res_num[2], site_res_num[1]
     site_harvest_map_imgs = []
+    def get_res_order(item):
+        key, num = item
+        if key in MOST_RARE_MYSEKAI_RES:
+            num -= 1000000
+        elif key in RARE_MYSEKAI_RES:
+            num -= 100000
+        return (-num, key)
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
-        site_res_num[i] = (site_id, sorted(list(res_num.items()), key=lambda x: (-x[1], x[0])))
+        site_res_num[i] = (site_id, sorted(list(res_num.items()), key=get_res_order))
 
     # 绘制资源位置图
     for i in range(len(site_res_num)):
@@ -2042,8 +2047,6 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
                 ImageBox(img)
     
     return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
-
-    # return [await run_in_pool(canvas.get_img)] + site_harvest_map_imgs
 
 # 获取mysekai家具分类名称和图片
 async def get_mysekai_fixture_genre_name_and_image(gid, is_main_genre):
