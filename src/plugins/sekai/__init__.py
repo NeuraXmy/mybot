@@ -30,9 +30,9 @@ live_notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify_live', is_s
 music_notify_gwl = get_group_white_list(file_db, logger, 'pjsk_notify_music', is_service=False)
 
 subs = {
-    "live": SubHelper("虚拟live通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
-    "music": SubHelper("新曲上线通知", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
-    "msr": SubHelper("Mysekai资源查询自动推送", file_db, logger, store_func=lambda uid, gid: f"{uid}@{gid}", get_func=lambda x: map(int, x.split("@"))),
+    "live": SubHelper("虚拟live通知", file_db, logger, key_fn=lambda uid, gid: f"{uid}@{gid}", val_fn=lambda x: map(int, x.split("@"))),
+    "music": SubHelper("新曲上线通知", file_db, logger, key_fn=lambda uid, gid: f"{uid}@{gid}", val_fn=lambda x: map(int, x.split("@"))),
+    "msr": SubHelper("Mysekai资源查询自动推送", file_db, logger, key_fn=lambda uid, gid: f"{uid}@{gid}", val_fn=lambda x: map(int, x.split("@"))),
 }
 
 music_name_retriever = get_text_retriever("music_name")
@@ -1787,9 +1787,10 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
         ImageBox(site_image, size=(draw_w, draw_h))
 
         # 绘制资源点
+        point_img_size = 160 * scale
+        global_zoffset = -point_img_size * 0.2  # 道具和资源点图标整体偏上，以让资源点对齐实际位置
         for point in harvest_points:
-            point_img_size = 160 * scale
-            offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.65))
+            offset = (int(point['x'] - point_img_size * 0.5), int(point['z'] - point_img_size * 0.6 + global_zoffset))
             if point['image']:
                 ImageBox(point['image'], size=(point_img_size, point_img_size), use_alphablend=True).set_offset(offset)
 
@@ -1826,14 +1827,18 @@ async def compose_mysekai_harvest_map_image(harvest_map, show_harvested):
 
                 if item['small_icon']:
                     res_img_size = small_size
-                    offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.5 * small_size)
-                    offsetz = int(item['z'] - 0.45 * large_size + 1.0 * small_size * small_idx)
+                    offsetx = int(item['x'] + 0.5 * large_size * large_total - 0.6 * small_size)
+                    offsetz = int(item['z'] - 0.45 * large_size + 1.0 * small_size * small_idx + global_zoffset)
                     small_idx += 1
                 else:
                     res_img_size = large_size
                     offsetx = int(item['x'] - 0.5 * large_size * large_total + large_size * large_idx)
-                    offsetz = int(item['z'] - 0.5 * large_size)
+                    offsetz = int(item['z'] - 0.5 * large_size + global_zoffset)
                     large_idx += 1
+
+                # 对于高度可能超过的情况
+                if offsetz <= 0:
+                    offsetz += int(0.5 * large_size)
 
                 # 绘制顺序 小图标>稀有资源>其他
                 if item['small_icon']:

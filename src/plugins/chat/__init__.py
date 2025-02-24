@@ -3,13 +3,14 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, download_image_to_b64, tts
+from ..llm import ChatSession, download_image_to_b64, tts, ChatSessionResponse
 from ..utils import *
 from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
 import openai
 import copy
-
+from tenacity import retry, stop_after_attempt, wait_fixed
+from ..record.sql import msg_recent
 
 config = get_config('chat')
 logger = get_logger("Chat")
@@ -19,6 +20,9 @@ tts_cd = ColdDown(file_db, logger, config['tts_cd'], cold_down_name="tts_cd")
 img_trans_cd = ColdDown(file_db, logger, config['img_trans_cd'], cold_down_name="img_trans_cd")
 img_trans_rate = RateLimit(file_db, logger, 5, period_type='day', rate_limit_name="img_trans_rate")
 gwl = get_group_white_list(file_db, logger, 'chat')
+
+CHAT_RETRY_NUM = 3
+CHAT_RETRY_DELAY_SEC = 1
 
 DEFAULT_PRIVATE_MODEL_NAME = config['default_private_model_name']
 DEFAULT_GROUP_MODEL_NAME = config['default_group_model_name']
@@ -121,7 +125,7 @@ query_msg_ids = set()
 chat_request = on_command("", block=False, priority=0)
 @chat_request.handle()
 async def _(bot: Bot, event: MessageEvent):
-    global sessions, query_msg_ids
+    global sessions, query_msg_ids, autochat_msg_ids
     try:
     
         # 获取内容
@@ -130,9 +134,18 @@ async def _(bot: Bot, event: MessageEvent):
         query_text = extract_text(query_msg)
         query_imgs = extract_image_url(query_msg)
         query_cqs = extract_cq_code(query_msg)
+        reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
 
         # 自己回复指令的消息不回复
         if check_self_reply(event): return
+
+        # 自动聊天的消息交由自动聊天回复
+        if reply_msg_obj and reply_msg_obj['message_id'] in autochat_msg_ids: return
+
+        # 如果当前群组正在自动聊天，装死交由自动聊天处理
+        last_autochat_time = autochat_last_trigger_time.get(event.group_id)
+        if last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
+            return
 
         # 空消息不回复
         if query_text.replace(f"@{BOT_NAME}", "").strip() == "" or query_text is None:
@@ -275,7 +288,10 @@ async def _(bot: Bot, event: MessageEvent):
 
         for _ in range(3):
             t = datetime.now()
-            resp = await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
+            @retry(stop=stop_after_attempt(CHAT_RETRY_NUM), wait=wait_fixed(CHAT_RETRY_DELAY_SEC), reraise=True)
+            async def do_chat():
+                return await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
+            resp = await do_chat()
             res_text = resp.result
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens
@@ -481,3 +497,240 @@ async def _(ctx: HandlerContext):
     finally:
         try: translating_msg_ids.remove(reply_msg_id)
         except: pass
+
+
+
+# ------------------------------------------ 自动聊天 ------------------------------------------ #
+
+AUTO_CHAT_CONFIG_PATH = "data/chat/autochat_config.yaml"
+autochat_sub = SubHelper("自动聊天", file_db, logger)
+autochat_msg_ids = set()
+replying_group_ids = set()
+autochat_last_trigger_time = {}
+
+@dataclass
+class AutoChatConfig:
+    model_name: str
+    reasoning: bool
+    input_record_num: int
+    prompt_template: str
+    retry_num: int
+    retry_delay_sec: int
+    chat_prob: float
+    self_history_num: int
+    output_len_limit: int
+    no_reply_word: str
+    answer_start: str
+
+    @staticmethod
+    def get_config():
+        import yaml
+        with open(AUTO_CHAT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        return AutoChatConfig(**config)
+
+@dataclass
+class AutoChatMemory:
+    group_id: str
+    self_history: List[str] = field(default_factory=list)
+
+    @staticmethod
+    def load(group_id):
+        group_id = str(group_id)
+        all_memory = file_db.get("autochat_memory", {})
+        memory = all_memory.get(group_id, {})
+        memory['group_id'] = group_id
+        return AutoChatMemory(**memory)
+    
+    def save(self):
+        all_memory = file_db.get("autochat_memory", {})
+        memory = all_memory.get(self.group_id, {})
+        for k, v in self.__dict__.items():
+            memory[k] = v
+        all_memory[self.group_id] = memory
+        file_db.set("autochat_memory", all_memory)
+
+
+autochat_on = CmdHandler(["/autochat_on"], logger, priority=100)
+autochat_on.check_wblist(gwl).check_superuser().check_group()
+@autochat_on.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    group_id = int(args) if args else ctx.group_id
+    group_name = await get_group_name(ctx.bot, group_id)
+    autochat_sub.sub(group_id)
+    if group_id == ctx.group_id:
+        return await ctx.asend_reply_msg("已开启自动聊天")
+    else:
+        return await ctx.asend_reply_msg(f"已为群聊{group_name}({group_id})开启自动聊天")
+
+
+autochat_off = CmdHandler(["/autochat_off"], logger, priority=100)
+autochat_off.check_wblist(gwl).check_superuser().check_group()
+@autochat_off.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    group_id = int(args) if args else ctx.group_id
+    group_name = await get_group_name(ctx.bot, group_id)
+    autochat_sub.unsub(group_id)
+    if group_id == ctx.group_id:
+        return await ctx.asend_reply_msg("已关闭自动聊天")
+    else:
+        return await ctx.asend_reply_msg(f"已为群聊{group_name}({group_id})关闭自动聊天")
+
+
+async def msg_to_readable_text(group_id, msg):
+    bot = get_bot()
+    text = f"{get_readable_datetime(msg['time'])} msg_id={msg['msg_id']} {msg['nickname']}({msg['user_id']}):\n"
+    for item in msg['msg']:
+        mtype, mdata = item['type'], item['data']
+        if mtype == "text":
+            text += f"{mdata}"
+        elif mtype == "face":
+            text += f"[表情]"
+        elif mtype == "image":
+            if summary := mdata.get("summary"):
+                text += f"[图片/表情:{summary}]"
+            else:
+                text += f"[图片]"
+        elif mtype == "video":
+            text += f"[视频]"
+        elif mtype == "audio":
+            text += f"[音频]"
+        elif mtype == "file":
+            text += f"[文件]"
+        elif mtype == "at":
+            # at_name = await get_group_member_name(bot, group_id, mdata['qq'])
+            text += f"[@{mdata['qq']}]"
+        elif mtype == "reply":
+            text += f"[reply={mdata['id']}]"
+        elif mtype == "forward":
+            text += f"[转发折叠消息]"
+    return text
+
+
+clear_self_history = CmdHandler(["/autochat_clear"], logger, priority=100)
+clear_self_history.check_wblist(gwl).check_superuser().check_group()
+@clear_self_history.handle()
+async def _(ctx: HandlerContext):
+    memory = AutoChatMemory.load(ctx.group_id)
+    memory.self_history = []
+    memory.save()
+    return await ctx.asend_reply_msg("已清空自动聊天自身的历史记录")
+
+
+chat_request = on_command("", block=False, priority=0)
+@chat_request.handle()
+async def _(bot: Bot, event: GroupMessageEvent):
+    need_remove_group_id = False
+    try:
+        group_id = event.group_id
+        self_id = int(bot.self_id)
+        msg = await get_msg(bot, event.message_id)
+
+        if not autochat_sub.is_subbed(group_id): return
+        # if not gwl.check(event): return
+
+        # 自己的消息不触发
+        if event.user_id == self_id: return
+        # / 开头的消息不触发
+        if event.raw_message.strip().startswith("/"): return
+        # 没有文本的消息不触发
+        if not extract_text(msg).strip(): return
+
+        cfg = AutoChatConfig.get_config()
+
+        # 检测是否触发
+        is_trigger = False
+        msg = await get_msg(bot, event.message_id)
+        reply_msg_obj = await get_reply_msg_obj(bot, msg)
+        cqs = extract_cq_code(msg)
+        has_at_self = 'at' in cqs and int(cqs['at'][0]['qq']) == self_id
+        has_reply_self = reply_msg_obj and reply_msg_obj["sender"]["user_id"] == self_id
+        last_trigger_time = autochat_last_trigger_time.get(group_id)
+        common_chat_banned = last_trigger_time and (datetime.now() - last_trigger_time).total_seconds() < 180
+        
+        # 如果正在处于禁用普通chat的状态，回复和at必定触发
+        if common_chat_banned and (has_at_self or has_reply_self):
+            is_trigger = True
+        # 概率触发
+        elif random.random() <= cfg.chat_prob: 
+            is_trigger = True
+
+        # 正在回复的群聊不触发
+        if group_id in replying_group_ids: return
+        replying_group_ids.add(group_id)
+        need_remove_group_id = True
+        
+        if not is_trigger: return
+        logger.info(f"群聊 {group_id} 自动聊天触发 消息id {event.message_id}")
+        memory = AutoChatMemory.load(group_id)
+        autochat_last_trigger_time[group_id] = datetime.now()
+
+        # 获取内容
+        await asyncio.sleep(2)
+        recent_msgs = msg_recent(group_id, cfg.input_record_num)
+        # 清空不在自动回复列表的自己的消息
+        recent_msgs = [msg for msg in recent_msgs if msg['user_id'] != self_id or msg['msg_id'] in autochat_msg_ids]
+        if not recent_msgs: return
+        recent_texts = [await msg_to_readable_text(group_id, msg) for msg in recent_msgs]
+        recent_texts.reverse()
+
+        # print("\n".join(recent_texts))
+            
+        # 填入prompt
+        prompt_template = cfg.prompt_template
+        prompt = prompt_template.format(
+            group_name=await get_group_name(bot, group_id),
+            recent_msgs="\n".join(recent_texts),
+            self_history="\n".join(memory.self_history)
+        ).strip()
+
+        # 生成回复
+        session = ChatSession()
+        session.append_user_content(prompt, verbose=False)
+
+        @retry(stop=stop_after_attempt(cfg.retry_num), wait=wait_fixed(cfg.retry_delay_sec), reraise=True)
+        async def chat():
+            return await session.get_response(model_name=cfg.model_name, enable_reasoning=cfg.reasoning)
+        
+        resp: ChatSessionResponse = await chat()
+        answer_idx = resp.result.find(cfg.answer_start)
+        if answer_idx != -1:
+            res_text = resp.result[answer_idx + len(cfg.answer_start):].strip()
+        else:
+            logger.warning(f"群聊 {group_id} 自动聊天未找到回复开始标记")
+            return
+
+        # 获取at和回复
+        at_id, reply_id = None, None
+        # 匹配 [@id]
+        if at_match := re.search(r"\[@(\d+)\]", res_text):
+            at_id = int(at_match.group(1))
+            res_text = res_text.replace(at_match.group(0), "")
+            res_text = f"[CQ:at,qq={at_id}]{res_text}"
+        # 匹配 [reply=id]
+        if reply_match := re.search(r"\[reply=(\d+)\]", res_text):
+            reply_id = int(reply_match.group(1))
+            res_text = res_text.replace(reply_match.group(0), "")
+            res_text = f"[CQ:reply,id={reply_id}]{res_text}"
+
+        res_text = truncate(res_text, cfg.output_len_limit)
+        logger.info(f"群聊 {group_id} 自动聊天生成回复: {res_text} at_id={at_id} reply_id={reply_id}")
+
+        if res_text.strip() == cfg.no_reply_word:
+            logger.info(f"群聊 {group_id} 自动聊天决定不回复")
+            return
+        
+        # 发送并加入到历史和id记录
+        msg = await send_group_msg_by_bot(bot, group_id, res_text)
+        autochat_msg_ids.add(int(msg['message_id']))
+        memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
+        memory.save()
+
+    except:
+        logger.print_exc(f"群聊 {group_id} 自动聊天失败")
+
+    finally:
+        if need_remove_group_id:
+            replying_group_ids.discard(group_id)

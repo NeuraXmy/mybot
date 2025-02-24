@@ -34,7 +34,7 @@ from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
 import io
 from retrying import retry
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import atexit
 
 
@@ -1567,20 +1567,20 @@ class CmdHandler:
 
 
 class SubHelper:
-    def __init__(self, name: str, db: FileDB, logger: Logger, store_func=None, get_func=None):
+    def __init__(self, name: str, db: FileDB, logger: Logger, key_fn=None, val_fn=None):
         self.name = name
         self.db = db
         self.logger = logger
-        self.store_func = store_func or (lambda x: str(x))
-        self.get_func = get_func or (lambda x: x)
+        self.key_fn = key_fn or (lambda x: str(x))
+        self.val_fn = val_fn or (lambda x: x)
         self.key = f'{self.name}_sub_list'
 
     def is_subbed(self, *args):
-        uid = self.store_func(*args)
+        uid = self.key_fn(*args)
         return uid in self.db.get(self.key, [])
 
     def sub(self, *args):
-        uid = self.store_func(*args)
+        uid = self.key_fn(*args)
         lst = self.db.get(self.key, [])
         if uid in lst:
             return False
@@ -1590,7 +1590,7 @@ class SubHelper:
         return True
 
     def unsub(self, *args):
-        uid = self.store_func(*args)
+        uid = self.key_fn(*args)
         lst = self.db.get(self.key, [])
         if uid not in lst:
             return False
@@ -1600,7 +1600,7 @@ class SubHelper:
         return True
 
     def get_all(self):
-        return [self.get_func(item) for item in self.db.get(self.key, [])]
+        return [self.val_fn(item) for item in self.db.get(self.key, [])]
 
     def clear(self):
         self.db.delete(self.key)
