@@ -17,12 +17,6 @@ TIME_THRESHOLD = config['time_threshold']
 NOTIFY_AT_FIRST = config['notify_at_first']
 NOTIFY_AT_DISCONNECT = config['notify_at_disconnect']
 NOTIFY_AT_CONNECT = config['notify_at_connect']
-SEND_EMAIL = config['send_email']
-MAIL_HOST = config['mail_host']
-MAIL_PORT = config['mail_port']
-MAIL_USER = config['mail_user']
-MAIL_PASS = config['mail_pass']
-MAIL_RECEIVERS = config['mail_receivers']
 
 REPORT_GROUPS = config['report_groups']
 
@@ -40,23 +34,9 @@ group_reported = False      # 群已报告
 async def send_noti(state):
     if state == DISCONNECT_STATE    and not NOTIFY_AT_DISCONNECT:   return
     if state == CONNECT_STATE       and not NOTIFY_AT_CONNECT:      return
-    logger.info(f"存活检测发送通知：{state}")
-    if SEND_EMAIL and MAIL_RECEIVERS:
-        for receiver in MAIL_RECEIVERS:
-            try:
-                await send_mail_async(
-                    subject=f"Bot {BOT_NAME} {'断开连接' if state == DISCONNECT_STATE else '恢复连接'}",
-                    recipient=receiver,
-                    body=f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    smtp_server=MAIL_HOST,
-                    port=MAIL_PORT,
-                    username=MAIL_USER,
-                    password=MAIL_PASS,
-                    use_tls=False,
-                    logger=logger,
-                )
-            except Exception as e:
-                logger.print_exc(f"发送邮件到 {receiver} 失败")
+    logger.info(f"存活检测发送邮件通知：{state}")
+    title = 'QQ断开连接' if state == DISCONNECT_STATE else 'QQ恢复连接'
+    await asend_exception_mail(title, "", logger)
 
 
 # 存活检测

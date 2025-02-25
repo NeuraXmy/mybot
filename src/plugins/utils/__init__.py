@@ -17,7 +17,6 @@ import base64
 import aiohttp
 from nonebot import require
 import random
-from retrying import retry
 from argparse import ArgumentParser
 import colorsys
 import inspect
@@ -33,9 +32,9 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
 import io
-from retrying import retry
 from dataclasses import dataclass, field
 import atexit
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 
 # 配置文件
@@ -124,7 +123,7 @@ def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration
 
 
 # 下载图片 返回PIL.Image对象
-@retry(stop_max_attempt_number=3, wait_fixed=1000)
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 async def download_image(image_url, force_http=True):
     if force_http and image_url.startswith("https"):
         image_url = image_url.replace("https", "http")
@@ -136,7 +135,7 @@ async def download_image(image_url, force_http=True):
             return Image.open(io.BytesIO(image))
 
 # 下载svg图片，返回PIL.Image对象
-@retry(stop_max_attempt_number=3, wait_fixed=1000)
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 async def download_and_convert_svg(image_url):
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
@@ -608,51 +607,64 @@ async def get_reply_msg_obj(bot, msg):
 
 
 
-# 记录自身对指令的回复消息id集合
 self_reply_msg_ids = set()
-def record_self_reply_msg(msg):
-    try:
-        global self_reply_msg_ids
-        self_reply_msg_ids.add(int(msg["message_id"]))
-        # print(f'添加自身回复消息 {msg["message_id"]}')
-        return msg
-    except Exception as e:
-        return msg
-
-# 检查消息发送次数限制
 MSG_RATE_LIMIT_PER_SECOND = get_config()['msg_rate_limit_per_second']
 current_msg_count = 0
 current_msg_second = -1
-def check_msg_rate_limit():
-    cur_ts = int(datetime.now().timestamp())
-    global current_msg_count, current_msg_second
-    if cur_ts != current_msg_second:
-        current_msg_count = 0
-        current_msg_second = cur_ts
-    if current_msg_count >= MSG_RATE_LIMIT_PER_SECOND:
-        utils_logger.warning(f'消息达到发送频率，取消本次发送')
-        return False
-    current_msg_count += 1
-    return True
+send_msg_failed_last_mail_time = datetime.fromtimestamp(0)
+send_msg_failed_mail_interval = timedelta(minutes=10)
 
+def send_msg_func(func):
+    async def wrapper(*args, **kwargs):
+        # 检查消息发送次数限制
+        cur_ts = int(datetime.now().timestamp())
+        global current_msg_count, current_msg_second
+        if cur_ts != current_msg_second:
+            current_msg_count = 0
+            current_msg_second = cur_ts
+        if current_msg_count >= MSG_RATE_LIMIT_PER_SECOND:
+            utils_logger.warning(f'消息达到发送频率，取消消息发送')
+            return
+        current_msg_count += 1
+        
+        try:
+            ret = await func(*args, **kwargs)
+        except Exception as e:
+            # 失败发送邮件通知
+            global send_msg_failed_last_mail_time
+            if datetime.now() - send_msg_failed_last_mail_time > send_msg_failed_mail_interval:
+                send_msg_failed_last_mail_time = datetime.now()
+                asyncio.create_task(asend_exception_mail("消息发送失败", traceback.format_exc(), utils_logger))
+            raise
+
+        # 记录自身对指令的回复消息id集合
+        try:
+            global self_reply_msg_ids
+            self_reply_msg_ids.add(int(ret["message_id"]))
+            return ret
+        except Exception as e:
+            return ret
+        
+    return wrapper
+    
 # 发送消息
+@send_msg_func
 async def send_msg(handler, message):
-    if not check_msg_rate_limit(): return
-    return record_self_reply_msg(await handler.send(OutMessage(message)))
+    return await handler.send(OutMessage(message))
 
 # 发送回复消息
+@send_msg_func
 async def send_reply_msg(handler, reply_id, message):
-    if not check_msg_rate_limit(): return
-    return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}')))
+    return await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
 
 # 发送at消息
+@send_msg_func
 async def send_at_msg(handler, user_id, message):
-    if not check_msg_rate_limit(): return
-    return record_self_reply_msg(await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}')))
+    return await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}'))
 
 # 发送群聊折叠消息 其中contents是text的列表
+@send_msg_func
 async def send_group_fold_msg(bot, group_id, contents):
-    if not check_msg_rate_limit(): return
     msg_list = [{
         "type": "node",
         "data": {
@@ -661,13 +673,11 @@ async def send_group_fold_msg(bot, group_id, contents):
             "content": content
         }
     } for content in contents]
-    ret = await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
-    ret['message_id'] = int(ret['message_id'])
-    return record_self_reply_msg(ret)
+    return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
 
 # 发送多条消息折叠消息
+@send_msg_func
 async def send_multiple_fold_msg(bot, event, contents):
-    if not check_msg_rate_limit(): return
     msg_list = [{
         "type": "node",
         "data": {
@@ -677,11 +687,20 @@ async def send_multiple_fold_msg(bot, event, contents):
         }
     } for content in contents]
     if is_group_msg(event):
-        ret = await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
+        return await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
     else:
-        ret = await bot.send_private_forward_msg(user_id=event.user_id, messages=msg_list)
-    ret['message_id'] = int(ret['message_id']) - 1
-    return record_self_reply_msg(ret)
+        return await bot.send_private_forward_msg(user_id=event.user_id, messages=msg_list)
+    
+# 在event外发送群聊消息
+@send_msg_func
+async def send_group_msg_by_bot(bot, group_id, message):
+    return await bot.send_group_msg(group_id=int(group_id), message=message)
+
+# 在event外发送私聊消息
+@send_msg_func
+async def send_private_msg_by_bot(bot, user_id, message):
+    return await bot.send_private_msg(user_id=int(user_id), message=message)
+
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
 async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
@@ -690,16 +709,6 @@ async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, ne
     if need_reply:
         return await send_reply_msg(handler, event.message_id, message)
     return await send_msg(handler, message)
-
-# 在event外发送群聊消息
-async def send_group_msg_by_bot(bot, group_id, message):
-    if not check_msg_rate_limit(): return
-    return record_self_reply_msg(await bot.send_group_msg(group_id=int(group_id), message=message))
-
-# 在event外发送私聊消息
-async def send_private_msg_by_bot(bot, user_id, message):
-    if not check_msg_rate_limit(): return
-    return record_self_reply_msg(await bot.send_private_msg(user_id=int(user_id), message=message))
 
 
 # 是否是动图
@@ -1243,7 +1252,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 # 发送邮件
-async def send_mail_async(
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+async def asend_mail(
     subject: str,
     recipient: str,
     body: str,
@@ -1251,10 +1261,8 @@ async def send_mail_async(
     port: int,
     username: str,
     password: str,
+    logger: Logger,
     use_tls: bool = True,
-    logger = None,
-    max_attempts: int = 3,
-    retry_interval: int = 5,
 ):
     logger.info(f'从 {username} 发送邮件到 {recipient} 主题: {subject} 内容: {body}')
     from email.message import EmailMessage
@@ -1264,26 +1272,37 @@ async def send_mail_async(
     message["To"] = recipient
     message["Subject"] = subject
     message.set_content(body)
+    await aiosmtplib.send(
+        message,
+        hostname=smtp_server,
+        port=port,
+        username=username,
+        password=password,
+        use_tls=use_tls,
+    )
+    logger.info(f'发送邮件到 {recipient} 成功')
 
-    for i in range(max_attempts):
+# 公共的发送异常通知接口
+async def asend_exception_mail(title: str, content: str, logger: Logger):
+    mail_config = get_config("exception_mail")
+    if not content:
+        content = ""
+    content = content + f"\n({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+    
+    for receiver in mail_config.get("receivers", []):
         try:
-            await aiosmtplib.send(
-                message,
-                hostname=smtp_server,
-                port=port,
-                username=username,
-                password=password,
-                use_tls=use_tls,
+            await asend_mail(
+                subject=f"【BOT异常通知】{title}",
+                recipient=receiver,
+                body=content,
+                smtp_server=mail_config['host'],
+                port=mail_config['port'],
+                username=mail_config['user'],
+                password=mail_config['pass'],
+                logger=logger,
             )
-            logger.info(f'发送邮件成功')
-            return
         except Exception as e:
-            if logger is not None:
-                if i == max_attempts - 1:
-                    logger.error(f'第{i + 1}次发送邮件失败 (达到最大尝试次数)')
-                    raise e
-                logger.warning(f'第{i + 1}次发送邮件失败: {e}')
-            await asyncio.sleep(retry_interval)
+            logger.print_exc(f'发送异常邮件 {title} 到 {receiver} 失败')
 
 
 # 不会触发消息回复的Exception，用于退出当前Event

@@ -143,8 +143,9 @@ async def _(bot: Bot, event: MessageEvent):
         if reply_msg_obj and reply_msg_obj['message_id'] in autochat_msg_ids: return
 
         # 如果当前群组正在自动聊天，装死交由自动聊天处理
+        autochat_opened = is_group_msg(event) and autochat_sub.is_subbed(event.group_id)
         last_autochat_time = autochat_last_trigger_time.get(event.group_id)
-        if last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
+        if autochat_opened and last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
             return
 
         # 空消息不回复
@@ -507,6 +508,7 @@ autochat_sub = SubHelper("自动聊天", file_db, logger)
 autochat_msg_ids = set()
 replying_group_ids = set()
 autochat_last_trigger_time = {}
+image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
 
 @dataclass
 class AutoChatConfig:
@@ -517,10 +519,15 @@ class AutoChatConfig:
     retry_num: int
     retry_delay_sec: int
     chat_prob: float
+    group_chat_probs: dict[str, float]
     self_history_num: int
     output_len_limit: int
     no_reply_word: str
     answer_start: str
+    image_caption_model_name: str
+    image_caption_timeout_sec: int
+    image_caption_prompt: str
+    image_caption_limit: int
 
     @staticmethod
     def get_config():
@@ -579,7 +586,46 @@ async def _(ctx: HandlerContext):
         return await ctx.asend_reply_msg(f"已为群聊{group_name}({group_id})关闭自动聊天")
 
 
-async def msg_to_readable_text(group_id, msg):
+# 获取图片caption
+async def get_image_caption(mdata: dict, cfg: AutoChatConfig):
+    summary, sub_type, url, file_unique = mdata['summary'], mdata['sub_type'], mdata['url'], mdata['file_unique']
+    sub_type = "图片" if sub_type == 0 else "表情"
+    caption = image_caption_db.get(file_unique)
+    if not caption:
+        logger.info(f"autochat尝试总结图片: file_unique={file_unique} url={url} summary={summary} subtype={sub_type}")
+        try:
+            prompt = cfg.image_caption_prompt.format(sub_type=sub_type)
+            img = await download_image_to_b64(url)
+            session = ChatSession()
+            session.append_user_content(prompt, imgs=[img], verbose=False)
+            resp = await asyncio.wait_for(
+                session.get_response(
+                    model_name=cfg.image_caption_model_name, 
+                    enable_reasoning=False
+                ), 
+                timeout=cfg.image_caption_timeout_sec
+            )
+            caption = truncate(resp.result.strip(), 256)
+            assert caption, "图片总结为空"
+
+            logger.info(f"图片总结成功: {caption}")
+            image_caption_db.set(file_unique, caption)
+            keys = image_caption_db.get('keys', [])
+            keys.append(file_unique)
+            while len(keys) > cfg.image_caption_limit:
+                key = keys.pop(0)
+                image_caption_db.delete(key)
+                logger.info(f"删除图片caption: {key}")
+            image_caption_db.set('keys', keys)
+        
+        except Exception as e:
+            logger.print_exc(f"总结图片 url={url} 失败")
+            return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
+        
+    return f"[{sub_type}:{caption}]"
+
+# 将消息段转换为纯文本
+async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
     bot = get_bot()
     text = f"{get_readable_datetime(msg['time'])} msg_id={msg['msg_id']} {msg['nickname']}({msg['user_id']}):\n"
     for item in msg['msg']:
@@ -589,10 +635,7 @@ async def msg_to_readable_text(group_id, msg):
         elif mtype == "face":
             text += f"[表情]"
         elif mtype == "image":
-            if summary := mdata.get("summary"):
-                text += f"[图片/表情:{summary}]"
-            else:
-                text += f"[图片]"
+            text += await get_image_caption(mdata, cfg)
         elif mtype == "video":
             text += f"[视频]"
         elif mtype == "audio":
@@ -613,10 +656,16 @@ clear_self_history = CmdHandler(["/autochat_clear"], logger, priority=100)
 clear_self_history.check_wblist(gwl).check_superuser().check_group()
 @clear_self_history.handle()
 async def _(ctx: HandlerContext):
-    memory = AutoChatMemory.load(ctx.group_id)
+    args = ctx.get_args().strip()
+    group_id = int(args) if args else ctx.group_id
+    group_name = await get_group_name(ctx.bot, group_id)
+    memory = AutoChatMemory.load(group_id)
     memory.self_history = []
     memory.save()
-    return await ctx.asend_reply_msg("已清空自动聊天自身的历史记录")
+    if group_id == ctx.group_id:
+        return await ctx.asend_reply_msg("已清空本群自动聊天自身的历史记录")
+    else:
+        return await ctx.asend_reply_msg(f"已清空群聊 {group_name}({group_id}) 自动聊天自身的历史记录")
 
 
 chat_request = on_command("", block=False, priority=0)
@@ -636,7 +685,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # / 开头的消息不触发
         if event.raw_message.strip().startswith("/"): return
         # 没有文本的消息不触发
-        if not extract_text(msg).strip(): return
+        # if not extract_text(msg).strip(): return
 
         cfg = AutoChatConfig.get_config()
 
@@ -649,12 +698,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
         has_reply_self = reply_msg_obj and reply_msg_obj["sender"]["user_id"] == self_id
         last_trigger_time = autochat_last_trigger_time.get(group_id)
         common_chat_banned = last_trigger_time and (datetime.now() - last_trigger_time).total_seconds() < 180
+        chat_prob = cfg.group_chat_probs.get(str(group_id), cfg.chat_prob)
         
         # 如果正在处于禁用普通chat的状态，回复和at必定触发
         if common_chat_banned and (has_at_self or has_reply_self):
             is_trigger = True
         # 概率触发
-        elif random.random() <= cfg.chat_prob: 
+        elif random.random() <= chat_prob: 
             is_trigger = True
 
         # 正在回复的群聊不触发
@@ -673,7 +723,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # 清空不在自动回复列表的自己的消息
         recent_msgs = [msg for msg in recent_msgs if msg['user_id'] != self_id or msg['msg_id'] in autochat_msg_ids]
         if not recent_msgs: return
-        recent_texts = [await msg_to_readable_text(group_id, msg) for msg in recent_msgs]
+        recent_texts = [await msg_to_readable_text(cfg, group_id, msg) for msg in recent_msgs]
         recent_texts.reverse()
 
         # print("\n".join(recent_texts))
