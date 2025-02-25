@@ -589,7 +589,10 @@ async def _(ctx: HandlerContext):
 
 # 获取图片caption
 async def get_image_caption(mdata: dict, cfg: AutoChatConfig):
-    summary, sub_type, url, file_unique = mdata['summary'], mdata['sub_type'], mdata['url'], mdata['file_unique']
+    summary = mdata.get("summary", '')
+    url = mdata.get("url", None)
+    file_unique = mdata.get("file_unique", '')
+    sub_type = mdata.get("sub_type", 0)
     sub_type = "图片" if sub_type == 0 else "表情"
     caption = image_caption_db.get(file_unique)
     if not caption:

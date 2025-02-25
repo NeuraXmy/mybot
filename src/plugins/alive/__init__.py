@@ -99,3 +99,15 @@ async def _(ctx: HandlerContext):
     await ctx.asend_reply_msg("正在关闭Bot...")
     await asyncio.sleep(1)
     exit(0)
+
+
+# 获取当前状态
+status = CmdHandler(["status", "状态"], logger, only_to_me=True, block=True, priority=1000)
+status.check_cdrate(cd)
+@status.handle()
+async def _(ctx: HandlerContext):
+    from nonebot_plugin_picstatus.collectors import collect_all
+    from nonebot_plugin_picstatus.bg_provider import bg_preloader
+    from nonebot_plugin_picstatus.templates import render_current_template
+    bg, collected = await asyncio.gather(bg_preloader.get(), collect_all())
+    return await ctx.asend_msg(await get_image_cq(await render_current_template(collected=collected, bg=bg)))

@@ -742,6 +742,8 @@ async def get_image_cq(image, allow_error=False, logger=None, low_quality=False)
                 cq = f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
             os.remove(tmp_file_path)
             return cq
+        elif isinstance(image, bytes):
+            return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
         elif image.startswith("http"):
             image = await download_image(image)
             return await get_image_cq(image, allow_error, logger)
