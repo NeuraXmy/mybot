@@ -6,11 +6,14 @@
 
 - [`聊天` AI聊天](#聊天)
 - [`/chat_model_list` 查询支持的聊天模型](#chat_model_list)
+- [`/chat_providers` 查询所有供应商以及余额](#chat_providers)
 - [`/tts` 文本转语音](#tts)
 
 ### 管理指令
 
 - [`/chat_model` 查询或修改聊天模型](#chat_model)
+- [`/autochat_{on|off}` 开启或关闭自动聊天](#autochat_onoff)
+- [`/autochat_clear` 清空自动聊天的自身聊天记录](#autochat_clear)
 
 ---
 
@@ -50,6 +53,16 @@
 
     `/chat_model_list`
 
+## `/chat_providers`
+
+```
+查询所有供应商以及余额
+```
+
+- **示例**
+
+    `/chat_providers`
+
 
 ## `/tts`
 
@@ -78,6 +91,35 @@
     `/chat_model gpt-4o` 修改文本和多模态模型为 gpt-4o
 
     `/chat_model text o1-mini` 只修改文本模型为 o1-mini
+
+
+## `/autochat_{on|off}`
+```
+开启或关闭自动聊天
+不带参数开启当前群聊的，带参数开启指定群聊的
+```
+
+- **示例**
+
+    `/autochat_on` 开启当前群聊的自动聊天
+
+    `/autochat_off` 关闭当前群聊的自动聊天
+
+    `/autochat_on 123456789` 开启指定群聊的自动聊天
+
+
+## `/autochat_clear`
+```
+清空自动聊天的自身聊天记录
+不带参数清空当前群聊的，带参数清空指定群聊的
+```
+
+- **示例**
+
+    `/autochat_clear` 清空当前群聊的自动聊天记录
+
+    `/autochat_clear 123456789` 清空指定群聊的自动聊天记录
+
 
 
 --- 

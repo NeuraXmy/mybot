@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, download_image_to_b64, tts, ChatSessionResponse
+from ..llm import ChatSession, download_image_to_b64, tts, ChatSessionResponse, api_provider_mgr
 from ..utils import *
 from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
@@ -21,8 +21,8 @@ img_trans_cd = ColdDown(file_db, logger, config['img_trans_cd'], cold_down_name=
 img_trans_rate = RateLimit(file_db, logger, 5, period_type='day', rate_limit_name="img_trans_rate")
 gwl = get_group_white_list(file_db, logger, 'chat')
 
-CHAT_RETRY_NUM = 3
-CHAT_RETRY_DELAY_SEC = 1
+# CHAT_RETRY_NUM = 3
+# CHAT_RETRY_DELAY_SEC = 1
 
 DEFAULT_PRIVATE_MODEL_NAME = config['default_private_model_name']
 DEFAULT_GROUP_MODEL_NAME = config['default_group_model_name']
@@ -115,6 +115,8 @@ def change_model_name(event, model_name, mode):
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
+# 自动聊天禁用普通聊天的时长
+AUTOCHAT_COMMON_CHAT_BAN_TIME = timedelta(minutes=30)
 
 # 会话列表 索引为最后一次消息的id
 sessions = {}
@@ -146,7 +148,7 @@ async def _(bot: Bot, event: MessageEvent):
         if is_group_msg(event):
             autochat_opened = autochat_sub.is_subbed(event.group_id)
             last_autochat_time = autochat_last_trigger_time.get(event.group_id)
-            if autochat_opened and last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
+            if autochat_opened and last_autochat_time and datetime.now() - last_autochat_time < AUTOCHAT_COMMON_CHAT_BAN_TIME:
                 return
 
         # 空消息不回复
@@ -290,10 +292,7 @@ async def _(bot: Bot, event: MessageEvent):
 
         for _ in range(3):
             t = datetime.now()
-            @retry(stop=stop_after_attempt(CHAT_RETRY_NUM), wait=wait_fixed(CHAT_RETRY_DELAY_SEC), reraise=True)
-            async def do_chat():
-                return await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
-            resp = await do_chat()
+            resp = await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
             res_text = resp.result
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens
@@ -338,12 +337,13 @@ async def _(bot: Bot, event: MessageEvent):
     # 添加额外信息
     additional_info = f"{model_name}@{provider_name} | {total_seconds:.1f}s, {total_ptokens}+{total_ctokens} tokens"
     if rest_quota > 0:
+        price_unit = api_provider_mgr.find_model(model_name)[1].get_price_unit()
         if total_cost == 0.0:
-            additional_info += f" | 0/{rest_quota:.2f}$"
+            additional_info += f" | 0/{rest_quota:.2f}{price_unit}"
         elif total_cost >= 0.0001:
-            additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}$"
+            additional_info += f" | {total_cost:.4f}/{rest_quota:.2f}{price_unit}"
         else:
-            additional_info += f" | <0.0001/{rest_quota:.2f}$"
+            additional_info += f" | <0.0001/{rest_quota:.2f}{price_unit}"
     additional_info = f"\n({additional_info})"
     final_text = tools_additional_info + reasoning_text + res_text + additional_info
 
@@ -412,6 +412,19 @@ all_model.check_cdrate(chat_cd).check_wblist(gwl)
 @all_model.handle()
 async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(f"可用的模型: {', '.join(ChatSession.get_all_model_names())}")
+
+
+# 获取所有可用的供应商名
+chat_providers = CmdHandler(["/chat_providers"], logger, priority=101)
+chat_providers.check_cdrate(chat_cd).check_wblist(gwl)
+@chat_providers.handle()
+async def _(ctx: HandlerContext):
+    providers = api_provider_mgr.get_all_providers()
+    msg = ""
+    for provider in providers:
+        quota = await provider.aget_current_quota()
+        msg += f"{provider.name} 余额: {quota}{provider.price_unit}\n"
+    return await ctx.asend_reply_msg(msg.strip())
 
 
 # TTS
@@ -513,7 +526,7 @@ image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
 
 @dataclass
 class AutoChatConfig:
-    model_name: str
+    model_names: list[str]
     reasoning: bool
     input_record_num: int
     prompt_template: str
@@ -529,6 +542,7 @@ class AutoChatConfig:
     image_caption_timeout_sec: int
     image_caption_prompt: str
     image_caption_limit: int
+    image_caption_prob: float
 
     @staticmethod
     def get_config():
@@ -588,7 +602,7 @@ async def _(ctx: HandlerContext):
 
 
 # 获取图片caption
-async def get_image_caption(mdata: dict, cfg: AutoChatConfig):
+async def get_image_caption(mdata: dict, cfg: AutoChatConfig, use_llm: bool):
     summary = mdata.get("summary", '')
     url = mdata.get("url", None)
     file_unique = mdata.get("file_unique", '')
@@ -596,6 +610,9 @@ async def get_image_caption(mdata: dict, cfg: AutoChatConfig):
     sub_type = "图片" if sub_type == 0 else "表情"
     caption = image_caption_db.get(file_unique)
     if not caption:
+        if not use_llm:
+            return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
+        
         logger.info(f"autochat尝试总结图片: file_unique={file_unique} url={url} summary={summary} subtype={sub_type}")
         try:
             prompt = cfg.image_caption_prompt.format(sub_type=sub_type)
@@ -639,7 +656,7 @@ async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
         elif mtype == "face":
             text += f"[表情]"
         elif mtype == "image":
-            text += await get_image_caption(mdata, cfg)
+            text += await get_image_caption(mdata, cfg, use_llm=(random.random() < cfg.image_caption_prob))
         elif mtype == "video":
             text += f"[视频]"
         elif mtype == "audio":
@@ -701,7 +718,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         has_at_self = 'at' in cqs and int(cqs['at'][0]['qq']) == self_id
         has_reply_self = reply_msg_obj and reply_msg_obj["sender"]["user_id"] == self_id
         last_trigger_time = autochat_last_trigger_time.get(group_id)
-        common_chat_banned = last_trigger_time and (datetime.now() - last_trigger_time).total_seconds() < 180
+        common_chat_banned = last_trigger_time and datetime.now() - last_trigger_time < AUTOCHAT_COMMON_CHAT_BAN_TIME
         chat_prob = cfg.group_chat_probs.get(str(group_id), cfg.chat_prob)
         
         # 如果正在处于禁用普通chat的状态，回复和at必定触发
@@ -744,17 +761,30 @@ async def _(bot: Bot, event: GroupMessageEvent):
         session = ChatSession()
         session.append_user_content(prompt, verbose=False)
 
-        @retry(stop=stop_after_attempt(cfg.retry_num), wait=wait_fixed(cfg.retry_delay_sec), reraise=True)
-        async def chat():
-            return await session.get_response(model_name=cfg.model_name, enable_reasoning=cfg.reasoning)
-        
-        resp: ChatSessionResponse = await chat()
-        answer_idx = resp.result.find(cfg.answer_start)
-        if answer_idx != -1:
-            res_text = resp.result[answer_idx + len(cfg.answer_start):].strip()
-        else:
-            logger.warning(f"群聊 {group_id} 自动聊天未找到回复开始标记")
-            return
+        last_exception = None
+        for model_name in cfg.model_names:
+            try:
+                @retry(stop=stop_after_attempt(cfg.retry_num), wait=wait_fixed(cfg.retry_delay_sec), reraise=True)
+                async def chat():
+                    return await session.get_response(model_name=model_name, enable_reasoning=cfg.reasoning)
+                
+                resp: ChatSessionResponse = await chat()
+                answer_idx = resp.result.find(cfg.answer_start)
+                if answer_idx != -1:
+                    res_text = resp.result[answer_idx + len(cfg.answer_start):].strip()
+                else:
+                    raise Exception("自动聊天未找到回复开始标记")
+                last_exception = None
+                break
+
+            except Exception as e:
+                logger.warning(f"群聊 {group_id} 尝试模型 {model_name} 自动聊天失败: {e}")
+                last_exception = e
+                continue
+
+        if last_exception:
+            raise last_exception
+                
 
         # 获取at和回复
         at_id, reply_id = None, None
