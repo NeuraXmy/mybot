@@ -641,9 +641,10 @@ def send_msg_func(func):
         try:
             global self_reply_msg_ids
             self_reply_msg_ids.add(int(ret["message_id"]))
-            return ret
         except Exception as e:
-            return ret
+            utils_logger.print_exc(f'记录发送消息的id失败')
+            
+        return ret
         
     return wrapper
     

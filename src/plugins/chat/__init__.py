@@ -143,10 +143,11 @@ async def _(bot: Bot, event: MessageEvent):
         if reply_msg_obj and reply_msg_obj['message_id'] in autochat_msg_ids: return
 
         # 如果当前群组正在自动聊天，装死交由自动聊天处理
-        autochat_opened = is_group_msg(event) and autochat_sub.is_subbed(event.group_id)
-        last_autochat_time = autochat_last_trigger_time.get(event.group_id)
-        if autochat_opened and last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
-            return
+        if is_group_msg(event):
+            autochat_opened = autochat_sub.is_subbed(event.group_id)
+            last_autochat_time = autochat_last_trigger_time.get(event.group_id)
+            if autochat_opened and last_autochat_time and (datetime.now() - last_autochat_time).total_seconds() < 180:
+                return
 
         # 空消息不回复
         if query_text.replace(f"@{BOT_NAME}", "").strip() == "" or query_text is None:
