@@ -156,14 +156,16 @@ class ChatSession:
         payload = {
             "model": model.get_model_id(),
             "messages": content,
-            "include_reasoning": use_reasoning,
-            "reasoning_effort": "high",
         }
+        if model.include_reasoning:
+            payload["include_reasoning"] = use_reasoning
+        if reasoning_effort := model.data.get("reasoning_effort"):
+            payload["reasoning_effort"] = reasoning_effort
 
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload, timeout=CHAT_TIMEOUT) as resp:
                 if resp.status != 200:
-                    raise Exception(f"请求失败: {resp.status} {resp.reason}")
+                    raise Exception(f"请求失败 {resp.status} {resp.reason}: {await resp.text()}")
                 response = await resp.json()
                 if "error" in response:
                     raise Exception(f"请求失败: {response['error']}")
