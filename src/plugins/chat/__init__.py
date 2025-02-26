@@ -115,9 +115,6 @@ def change_model_name(event, model_name, mode):
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
-# 自动聊天禁用普通聊天的时长
-AUTOCHAT_COMMON_CHAT_BAN_TIME = timedelta(minutes=30)
-
 # 会话列表 索引为最后一次消息的id
 sessions = {}
 # 询问的消息id集合
@@ -129,7 +126,6 @@ chat_request = on_command("", block=False, priority=0)
 async def _(bot: Bot, event: MessageEvent):
     global sessions, query_msg_ids, autochat_msg_ids
     try:
-    
         # 获取内容
         query_msg_obj = await get_msg_obj(bot, event.message_id)
         query_msg = query_msg_obj["message"]
@@ -144,11 +140,15 @@ async def _(bot: Bot, event: MessageEvent):
         # 自动聊天的消息交由自动聊天回复
         if reply_msg_obj and reply_msg_obj['message_id'] in autochat_msg_ids: return
 
-        # 如果当前群组正在自动聊天，装死交由自动聊天处理
-        if is_group_msg(event):
-            autochat_opened = autochat_sub.is_subbed(event.group_id)
-            last_autochat_time = autochat_last_trigger_time.get(event.group_id)
-            if autochat_opened and last_autochat_time and datetime.now() - last_autochat_time < AUTOCHAT_COMMON_CHAT_BAN_TIME:
+        # 是否是/chat触发的消息
+        triggered_by_chat_cmd = False
+        if query_text.strip().startswith("/chat"):
+            query_text = query_text.strip().removeprefix("/chat")
+            triggered_by_chat_cmd = True
+
+        # 如果当前群组正在自动聊天，只有通过/chat触发的消息才回复
+        if is_group_msg(event) and autochat_sub.is_subbed(event.group_id):
+            if not triggered_by_chat_cmd:
                 return
 
         # 空消息不回复
@@ -162,20 +162,21 @@ async def _(bot: Bot, event: MessageEvent):
         # 群组名单检测
         if not gwl.check(event, allow_private=True, allow_super=True): return
 
-        # 群组内，或者自己对自己的私聊，只有at机器人的消息才会被回复
-        if is_group_msg(event) or check_self(event):
-            has_at = False
-            if "at" in query_cqs:
-                for cq in query_cqs["at"]:
-                    if cq["qq"] == bot.self_id:
-                        has_at = True
-                        break
-            if "text" in query_cqs:
-                for cq in query_cqs["text"]:
-                    if f"@{BOT_NAME}" in cq['text']:
-                        has_at = True
-                        break
-            if not has_at: return
+        #  如果不是/chat触发的消息，在群组内或者自己对自己的私聊，只有at机器人的消息才会被回复
+        if not triggered_by_chat_cmd:
+            if is_group_msg(event) or check_self(event):
+                has_at = False
+                if "at" in query_cqs:
+                    for cq in query_cqs["at"]:
+                        if cq["qq"] == bot.self_id:
+                            has_at = True
+                            break
+                if "text" in query_cqs:
+                    for cq in query_cqs["text"]:
+                        if f"@{BOT_NAME}" in cq['text']:
+                            has_at = True
+                            break
+                if not has_at: return
         
         # cd检测
         if not (await chat_cd.check(event)): return
@@ -521,7 +522,6 @@ AUTO_CHAT_CONFIG_PATH = "data/chat/autochat_config.yaml"
 autochat_sub = SubHelper("自动聊天", file_db, logger)
 autochat_msg_ids = set()
 replying_group_ids = set()
-autochat_last_trigger_time = {}
 image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
 
 @dataclass
@@ -697,6 +697,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
         group_id = event.group_id
         self_id = int(bot.self_id)
         msg = await get_msg(bot, event.message_id)
+        cqs = extract_cq_code(msg)
+        msg_text = extract_text(msg).strip()
+        reply_msg_obj = await get_reply_msg_obj(bot, msg)
 
         if not autochat_sub.is_subbed(group_id): return
         # if not gwl.check(event): return
@@ -704,25 +707,19 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # 自己的消息不触发
         if event.user_id == self_id: return
         # / 开头的消息不触发
-        if event.raw_message.strip().startswith("/"): return
+        if msg_text.startswith("/"): return
         # 没有文本的消息不触发
-        # if not extract_text(msg).strip(): return
+        # if not msg_text: return
 
         cfg = AutoChatConfig.get_config()
 
         # 检测是否触发
         is_trigger = False
-        msg = await get_msg(bot, event.message_id)
-        reply_msg_obj = await get_reply_msg_obj(bot, msg)
-        cqs = extract_cq_code(msg)
         has_at_self = 'at' in cqs and int(cqs['at'][0]['qq']) == self_id
         has_reply_self = reply_msg_obj and reply_msg_obj["sender"]["user_id"] == self_id
-        last_trigger_time = autochat_last_trigger_time.get(group_id)
-        common_chat_banned = last_trigger_time and datetime.now() - last_trigger_time < AUTOCHAT_COMMON_CHAT_BAN_TIME
         chat_prob = cfg.group_chat_probs.get(str(group_id), cfg.chat_prob)
-        
-        # 如果正在处于禁用普通chat的状态，回复和at必定触发
-        if common_chat_banned and (has_at_self or has_reply_self):
+        # 回复和at必定触发
+        if has_at_self or has_reply_self:
             is_trigger = True
         # 概率触发
         elif random.random() <= chat_prob: 
@@ -736,7 +733,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         if not is_trigger: return
         logger.info(f"群聊 {group_id} 自动聊天触发 消息id {event.message_id}")
         memory = AutoChatMemory.load(group_id)
-        autochat_last_trigger_time[group_id] = datetime.now()
 
         # 获取内容
         await asyncio.sleep(2)
@@ -746,8 +742,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         if not recent_msgs: return
         recent_texts = [await msg_to_readable_text(cfg, group_id, msg) for msg in recent_msgs]
         recent_texts.reverse()
-
-        # print("\n".join(recent_texts))
             
         # 填入prompt
         prompt_template = cfg.prompt_template
@@ -785,7 +779,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         if last_exception:
             raise last_exception
                 
-
         # 获取at和回复
         at_id, reply_id = None, None
         # 匹配 [@id]

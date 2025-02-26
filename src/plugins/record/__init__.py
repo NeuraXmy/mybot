@@ -231,7 +231,7 @@ async def _(bot: Bot, event: NoticeEvent):
 
 
 # 查询指令历史记录
-get_cmd_history = CmdHandler(["/cmd_history", "/ch"], logger)
+get_cmd_history = CmdHandler(["/cmd_history", "/cmdh"], logger)
 get_cmd_history.check_superuser()
 @get_cmd_history.handle()
 async def _(ctx: HandlerContext):
