@@ -171,6 +171,7 @@ MUSIC_CAPTION_MAP_DICT = {
     "あんさんぶるスターズ！！コラボver.": "Ensemble Stars!! Collab",
     "セカイver.": "Sekai",
     "Inst.ver.": "Inst.",
+    "「劇場版プロジェクトセカイ」ver.": "Movie",
 }
 
 # ========================================= 绘图相关 ========================================= #
@@ -264,7 +265,7 @@ def res_path(path):
     return osp.join("data/sekai/res", path)
 
 # 统一获取解包图片资源
-async def get_asset(path: str, cache=True, allow_error=False, default=UNKNOWN_IMG, cache_expire_secs=None) -> Image.Image:
+async def get_asset(path: str, cache=True, allow_error=False, default=UNKNOWN_IMG, cache_expire_secs=None, timeout=None) -> Image.Image:
     cache_path = res_path(pjoin('assets', path))
     try:
         if not cache: raise
@@ -286,7 +287,10 @@ async def get_asset(path: str, cache=True, allow_error=False, default=UNKNOWN_IM
 
     for url, ok_to_cache in urls_to_try:
         try:
-            img = await download_image(url)
+            if not timeout:
+                img = await download_image(url)
+            else:
+                img = await asyncio.wait_for(download_image(url), timeout)
             if cache and ok_to_cache:
                 create_parent_folder(cache_path)
                 img.save(cache_path)
@@ -473,7 +477,7 @@ async def get_music_cn_title(mid):
     return music_cn_titles.get(str(mid), None)
 
 # 更新曲名语义库
-@res.SekaiMasterData.updated_hook("曲名语义库更新")
+@res.musics.updated_hook("曲名语义库更新")
 async def update_music_name_embs():
     musics = await res.musics.get()
     music_cn_titles = await res.music_cn_titles.get()
@@ -524,7 +528,7 @@ async def get_chart_image(mid, diff):
     return await get_image_cq(cache_dir)
 
 # 更新表情文本语义库
-@res.SekaiMasterData.updated_hook("表情文本语义库更新")
+@res.stamps.updated_hook("表情文本语义库更新")
 async def update_stamp_text_embs():
     stamps = await res.stamps.get()
     for stamp in stamps:
@@ -1091,10 +1095,10 @@ async def compose_full_honor_image(profile_honor, is_main, profile=None):
         
         if gtype == 'rank_match':
             img = await get_asset(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await get_asset(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None)
+            rank_img = await get_asset(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None, timeout=2)
         else:
             img = await get_asset(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await get_asset(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None)
+            rank_img = await get_asset(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None, timeout=2)
 
         add_frame(img, rarity)
         if rank_img:
@@ -1189,19 +1193,21 @@ async def compose_profile_image(basic_profile):
                 # 头衔
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding((16, 0)):
                     honors = basic_profile["userProfileHonors"]
-                    try: 
-                        honor1_img = await compose_full_honor_image(find_by(honors, 'seq', 1), True, basic_profile)
-                        ImageBox(honor1_img, size=(None, 48))
-                    except: logger.print_exc("合成头衔图片1失败")
-                    try: 
-                        honor2_img = await compose_full_honor_image(find_by(honors, 'seq', 2), False, basic_profile)
-                        ImageBox(honor2_img, size=(None, 48))
-                    except: logger.print_exc("合成头衔图片2失败")
-                    try: 
-                        honor3_img = await compose_full_honor_image(find_by(honors, 'seq', 3), False, basic_profile)
-                        ImageBox(honor3_img, size=(None, 48))
-                    except: logger.print_exc("合成头衔图片3失败")
-
+                    async def compose_honor_image_nothrow(*args):
+                        try: 
+                            return await compose_full_honor_image(*args)
+                        except: 
+                            logger.print_exc("合成头衔图片失败")
+                            return None
+                    honor_imgs = [
+                        compose_honor_image_nothrow(find_by(honors, 'seq', 1), True, basic_profile),
+                        compose_honor_image_nothrow(find_by(honors, 'seq', 2), False, basic_profile),
+                        compose_honor_image_nothrow(find_by(honors, 'seq', 3), False, basic_profile)
+                    ]
+                    honor_imgs = await asyncio.gather(*honor_imgs)
+                    for img in honor_imgs:
+                        if img: 
+                            ImageBox(img, size=(None, 48))
                 # 卡组
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(6).set_padding((16, 0)):
                     cards = [find_by(await res.cards.get(), 'id', pcard['cardId']) for pcard in pcards]
@@ -2527,7 +2533,7 @@ async def compose_music_detail_image(mid, title=None, title_style=None) -> Frame
     caption_vocals = {}
     for item in find_by(await res.music_vocals.get(), "musicId", mid, 'all'):
         vocal = {}
-        caption = MUSIC_CAPTION_MAP_DICT[item['caption']]
+        caption = MUSIC_CAPTION_MAP_DICT.get(item['caption'], "???")
         vocal['chara_imgs'] = []
         vocal['vocal_name'] = None
         for chara in item['characters']:

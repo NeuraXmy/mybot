@@ -803,6 +803,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
         msg = await send_group_msg_by_bot(bot, group_id, res_text)
         autochat_msg_ids.add(int(msg['message_id']))
         memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
+        while len(memory.self_history) > cfg.self_history_num:
+            memory.self_history.pop(0)
         memory.save()
 
     except:

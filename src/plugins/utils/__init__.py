@@ -1374,15 +1374,14 @@ async def asave_json(path, data):
 async def download_json(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(url, verify_ssl=False) as resp:
-            if resp.status == 200:
-                if "text/plain" in resp.content_type:
-                    return json.loads(await resp.text())
-                if "application/octet-stream" in resp.content_type:
-                    import io
-                    return json.loads(io.BytesIO(await resp.read()).read().decode())
-                return await resp.json()
-            else:
-                raise Exception(resp.status)
+            if resp.status != 200:
+                raise Exception(f"下载 {url} 失败: {resp.status} {resp.reason}: {await resp.text()}")
+            if "text/plain" in resp.content_type:
+                return json.loads(await resp.text())
+            if "application/octet-stream" in resp.content_type:
+                import io
+                return json.loads(io.BytesIO(await resp.read()).read().decode())
+            return await resp.json()
 
 
 # 用某个key查找某个dict列表中的元素 mode=first/last/all
