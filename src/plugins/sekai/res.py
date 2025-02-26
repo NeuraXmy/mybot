@@ -140,7 +140,7 @@ class SekaiMasterData:
         return _wrapper
 
 
-master_dbs = MasterDbManager(
+master_db_mgr = MasterDbManager(
     sources=[
         MasterDbSource(
             name="haruki",
@@ -162,7 +162,7 @@ master_dbs = MasterDbManager(
 )
 
 def get_sekai_master_data(name: str, url: str, map_fn=None):
-    return SekaiMasterData(master_dbs, name, url, map_fn)
+    return SekaiMasterData(master_db_mgr, name, url, map_fn)
 
 
 # vlive数据处理映射

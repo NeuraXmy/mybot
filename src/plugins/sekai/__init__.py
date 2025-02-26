@@ -2725,18 +2725,14 @@ async def compose_card_recommend_image(qid, live_type, mid, diff, chara_id=None,
 
 # ========================================= 会话逻辑 ========================================= #
 
-# 立刻更新数据
+# 更新数据
 pjsk_update = CmdHandler(['/pjsk update', '/pjsk_update'], logger)
 pjsk_update.check_superuser()
 @pjsk_update.handle()
 async def _(ctx: HandlerContext):
-    error_lists = await res.SekaiMasterData.update_all()
-    if not error_lists:
-        return await ctx.asend_reply_msg("数据更新成功")
-    msg = "以下数据更新失败:\n"
-    for name, e in error_lists:
-        msg += f"{name}: {e}\n"
-    return await ctx.asend_reply_msg(msg)
+    await res.master_db_mgr.update()
+    latest_source = await res.master_db_mgr.get_latest_source()
+    return await ctx.asend_reply_msg(f"最新 MasterDB 数据源: {latest_source.name} ({latest_source.version})")
 
 
 # 获取最近的vlive信息
