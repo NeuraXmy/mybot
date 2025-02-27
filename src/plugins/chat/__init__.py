@@ -663,7 +663,7 @@ async def get_image_caption(mdata: dict, cfg: AutoChatConfig, use_llm: bool):
 async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
     bot = get_bot()
     text = f"{get_readable_datetime(msg['time'])} msg_id={msg['msg_id']} {msg['nickname']}({msg['user_id']}):\n"
-    for item in msg['msg']:
+    for item in await get_msg(bot, msg['msg_id']):
         mtype, mdata = item['type'], item['data']
         if mtype == "text":
             text += f"{mdata}"

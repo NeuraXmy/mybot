@@ -679,15 +679,17 @@ async def get_card_thumbnail(cid, after_training):
     return await get_asset(f"thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.png")
 
 # 获取角色卡牌完整缩略图
-async def get_card_full_thumbnail(card, after_training, pcard=None, max_level=False):
+async def get_card_full_thumbnail(card, after_training=None, pcard=None, max_level=False):
     cid = card['id']
-    image_type = "after_training" if after_training else "normal"
-    cache_dir = res_path(f"card_full_thumb/{cid}_{image_type}.png")
-    try:
-        if pcard: raise
-        return Image.open(cache_dir)
-    except:
-        pass
+    if not pcard:
+        image_type = "after_training" if after_training else "normal"
+    else:
+        after_training = (pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done")
+        image_type = "after_training" if pcard['specialTrainingStatus'] == "done" else "normal"
+    if not pcard:
+        cache_dir = res_path(f"card_full_thumb/{cid}_{image_type}.png")
+        try: return Image.open(cache_dir)
+        except: pass
     img = await get_card_thumbnail(cid, after_training)
     def draw(img: Image.Image, card):
         attr = card['attr']
@@ -757,14 +759,14 @@ async def compose_card_list_image(chara_id, cards, qid):
                     return None
                 pcard = find_by(profile['userCards'], "cardId", card['id'])
                 after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
-                img = await get_card_full_thumbnail(card, after_training, pcard)
+                img = await get_card_full_thumbnail(card, pcard=pcard)
                 return img, None
             normal = await get_card_full_thumbnail(card, False)
             after = await get_card_full_thumbnail(card, True) if has_after_training(card) else None
             return normal, after
         except: 
             logger.print_exc(f"获取卡牌{card['id']}完整缩略图失败")
-            return None
+            return UNKNOWN_IMG, UNKNOWN_IMG
     thumbs = await asyncio.gather(*[get_thumb_nothrow(card) for card in cards])
     card_and_thumbs = [(card, thumb) for card, thumb in zip(cards, thumbs) if thumb is not None]
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
@@ -1212,7 +1214,7 @@ async def compose_profile_image(basic_profile):
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(6).set_padding((16, 0)):
                     cards = [find_by(await res.cards.get(), 'id', pcard['cardId']) for pcard in pcards]
                     card_imgs = [
-                        await get_card_full_thumbnail(card, pcard['after_training'], pcard)
+                        await get_card_full_thumbnail(card, pcard=pcard)
                         for card, pcard 
                         in zip(cards, pcards)
                     ]
@@ -1299,7 +1301,7 @@ async def compose_music_list_image(diff, lv_musics, qid, show_id):
             music = find_by(musics, 'id', mid)
             asset_name = music['assetbundleName']
             return await get_asset(f"music/jacket/{asset_name}_rip/{asset_name}.png")
-        except: return None
+        except: return UNKNOWN_IMG
     for i in range(len(lv_musics)):
         lv, musics = lv_musics[i]
         mids = [m['id'] for m in musics]
@@ -2648,10 +2650,10 @@ async def compose_card_recommend_image(qid, live_type, mid, diff, chara_id=None,
         try: 
             if pcard:
                 after_training = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
-                return (cid, await get_card_full_thumbnail(card, after_training, pcard, max_level=True))
+                return (cid, await get_card_full_thumbnail(card, pcard=pcard, max_level=True))
             else:
                 rare = card['cardRarityType']
-                return (cid, await get_card_full_thumbnail(card, rare in ['rarity_3, rarity_4']))
+                return (cid, await get_card_full_thumbnail(card, has_after_training(card)))
         except: 
             return (cid, UNKNOWN_IMG)
     card_imgs = []
