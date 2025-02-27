@@ -601,6 +601,20 @@ async def _(ctx: HandlerContext):
         return await ctx.asend_reply_msg(f"已为群聊{group_name}({group_id})关闭自动聊天")
 
 
+# json消息段转换为纯文本
+def json_msg_to_readable_text(mdata: dict):
+    try:
+        data = json.loads(mdata['data'])
+        title = data["meta"]["detail_1"]["title"]
+        desc = truncate(data["meta"]["detail_1"]["desc"], 32)
+        url = data["meta"]["detail_1"]["qqdocurl"]
+        return f"[{title}分享:{desc}]"
+    except:
+        try:
+            return f"[转发消息:{data['prompt']}]"
+        except:
+            return "[转发消息(加载失败)]"
+
 # 获取图片caption
 async def get_image_caption(mdata: dict, cfg: AutoChatConfig, use_llm: bool):
     summary = mdata.get("summary", '')
@@ -664,12 +678,13 @@ async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
         elif mtype == "file":
             text += f"[文件]"
         elif mtype == "at":
-            # at_name = await get_group_member_name(bot, group_id, mdata['qq'])
             text += f"[@{mdata['qq']}]"
         elif mtype == "reply":
             text += f"[reply={mdata['id']}]"
         elif mtype == "forward":
             text += f"[转发折叠消息]"
+        elif mtype == "json":
+            text += json_msg_to_readable_text(mdata)
     return text
 
 

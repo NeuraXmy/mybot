@@ -1,6 +1,6 @@
 import json
 from ..utils import *
-from threading import Lock
+import threading
 
 config = get_config('sekai')
 logger = get_logger("Sekai")
@@ -26,7 +26,7 @@ class MasterDbSource:
             version_data = await download_json(self.version_url)
             version = version_data['dataVersion']
             self.version = version
-            logger.info(f"MasterDB [{self.name}] 的版本为 {version}")
+            # logger.info(f"MasterDB [{self.name}] 的版本为 {version}")
         except Exception as e:
             logger.print_exc(f"获取 MasterDB [{self.name}] 的版本信息失败")
 
@@ -41,12 +41,14 @@ class MasterDbManager:
         """
         更新所有MasterDB的版本信息
         """
-        logger.info(f"开始获取 {len(self.sources)} 个 MasterDB 的版本信息")
+        logger.info(f"开始更新 {len(self.sources)} 个 MasterDB 的版本信息")
+        last_latest_source = self.latest_source
         await asyncio.gather(*[source.update_version() for source in self.sources])
         self.sources.sort(key=lambda x: get_version_order(x.version), reverse=True)
         self.latest_source = self.sources[0]
         self.version_update_time = datetime.now()
-        logger.info(f"获取到最新版本的 MasterDB [{self.latest_source.name}] 版本为 {self.latest_source.version}")
+        if last_latest_source != self.latest_source:
+            logger.info(f"获取到最新版本的 MasterDB [{self.latest_source.name}] 版本为 {self.latest_source.version}")
     
     async def get_latest_source(self) -> MasterDbSource:
         """
@@ -66,6 +68,7 @@ class SekaiMasterData:
         self.data = None
         self.cache_path = create_parent_folder(f"data/sekai/master_data/{url}")
         self.update_hooks = []
+        self.lock = asyncio.Lock()
 
     async def _load_from_cache(self):
         """
@@ -112,17 +115,18 @@ class SekaiMasterData:
         """
         获取数据
         """
-        # 从缓存加载
-        if self.data is None:
-            try: 
-                await self._load_from_cache()
-            except Exception as e:
-                logger.warning(f"MasterData [{self.name}] 从本地缓存加载失败: {e}")
-        # 检查是否更新
-        source = await self.db_mgr.get_latest_source()
-        if get_version_order(self.version) < get_version_order(source.version):
-            await self._download_from_db(source)
-        return self.data
+        async with self.lock:
+            # 从缓存加载
+            if self.data is None:
+                try: 
+                    await self._load_from_cache()
+                except Exception as e:
+                    logger.warning(f"MasterData [{self.name}] 从本地缓存加载失败: {e}")
+            # 检查是否更新
+            source = await self.db_mgr.get_latest_source()
+            if get_version_order(self.version) < get_version_order(source.version):
+                await self._download_from_db(source)
+            return self.data
 
     def register_updated_hook(self, name: str, hook):
         """
@@ -259,7 +263,7 @@ class StaticImageRes:
     def __init__(self, dir):
         self.dir = dir
         self.images = {}
-        self.lock = Lock()
+        self.lock = threading.Lock()
 
     def get(self, path) -> Image.Image:
         fullpath = pjoin(self.dir, path)
@@ -288,6 +292,7 @@ class MiscJsonRes:
         self.data = None
         self.update_interval = update_interval
         self.update_time = None
+        self.lock = asyncio.Lock()
     
     async def download(self):
         self.data = await download_json(self.url)
@@ -295,9 +300,10 @@ class MiscJsonRes:
         logger.info(f"Json资源 [{self.name}] 更新成功")
 
     async def get(self):
-        if not self.data or datetime.now() - self.update_time > self.update_interval:
-            await self.download()
-        return self.data
+        async with self.lock:
+            if not self.data or datetime.now() - self.update_time > self.update_interval:
+                await self.download()
+            return self.data
     
 music_cn_titles = MiscJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json", timedelta(days=1))
        
