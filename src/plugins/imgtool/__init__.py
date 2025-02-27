@@ -105,24 +105,34 @@ class ImageOperation:
             else:
                 msg = f"参数错误\n{self.help}"
             raise ReplyException(msg.strip())
+
+        def process_image(img):
+            img_type = ImageType.get_type(img)
+            if self.process_type == 'single':
+                return self.operate(img, args)
+            elif self.process_type == 'batch':
+                if img_type == ImageType.Animated:
+                    tmp_save_path = f"data/imgtool/tmp/{rand_filename('gif')}"
+                    try:
+                        create_parent_folder(tmp_save_path)
+                        frames = get_frames_from_gif(img)
+                        frames = [self.operate(f, args, img_type, i, img.n_frames) for i, f in enumerate(frames)]
+                        save_transparent_gif(frames, get_gif_duration(img), tmp_save_path)
+                        return Image.open(tmp_save_path)
+                    finally:
+                        if os.path.exists(tmp_save_path):
+                            os.remove(tmp_save_path)
+                else:
+                    return self.operate(img, args, img_type)
+        
         img_type = ImageType.get_type(img)
         logger.info(f"执行图片操作:{self.name} 输入类型:{img_type} 参数:{args}")
-        if self.process_type == 'single':
-            return self.operate(img, args)
-        elif self.process_type == 'batch':
-            if img_type == ImageType.Animated:
-                tmp_save_path = f"data/imgtool/tmp/{rand_filename('gif')}"
-                try:
-                    create_parent_folder(tmp_save_path)
-                    frames = get_frames_from_gif(img)
-                    frames = [self.operate(f, args, img_type, i, img.n_frames) for i, f in enumerate(frames)]
-                    save_transparent_gif(frames, get_gif_duration(img), tmp_save_path)
-                    return Image.open(tmp_save_path)
-                finally:
-                    if os.path.exists(tmp_save_path):
-                        os.remove(tmp_save_path)
-            else:
-                return self.operate(img, args, img_type)
+        if self.input_type != ImageType.Multiple and img_type == ImageType.Multiple:
+            logger.info(f"为 {self.name} 操作批量处理 {len(img)} 张图片")
+            return [process_image(i) for i in img]
+        else:
+            return process_image(img)
+            
                 
 # 从回复消息获取第一张图片
 async def get_reply_fst_image(ctx: HandlerContext, return_url=False):
@@ -307,9 +317,14 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
         cur_type = ops[i][0].input_type
         assert_and_reply(pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配")
 
+    # 如果回复的是转发消息，则即使不是Multiple输入也尝试使用多图
+    reply_msg = await ctx.aget_reply_msg()
+    cqs = extract_cq_code(reply_msg)
+    reply_forward = 'forward' in cqs
+
     # 获取图片，并检查初始输入类型是否匹配
     fst_input_type = ops[0][0].input_type
-    if fst_input_type == ImageType.Multiple:
+    if fst_input_type == ImageType.Multiple or reply_forward:
         img = await get_multi_images(ctx)
     else:
         img = await get_reply_fst_image(ctx)
@@ -329,8 +344,7 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
         
     logger.info(f"{len(ops)}个图片操作全部执行完毕")
 
-    last_output_type = ops[-1][0].output_type
-    if last_output_type == ImageType.Multiple:
+    if isinstance(img, list):
         msgs = [f"{await get_image_cq(item)}#{i}" for i, item in enumerate(img)]
         return await ctx.asend_multiple_fold_msg(msgs)
     else:
@@ -392,16 +406,30 @@ async def _(ctx: HandlerContext):
 class GifOperation(ImageOperation):
     def __init__(self):
         super().__init__("gif", ImageType.Static, ImageType.Static, 'single')
-        self.help = "将静态PNG图片转换为GIF，让透明部分能够在聊天中正确显示"
+        self.help = """
+将静态PNG图片转换为GIF，让透明部分能够在聊天中正确显示，使用方式:
+gif n 使用普通算法生成GIF
+gif 使用优化算法以默认50%不透明度阈值生成GIF
+gif 0.8 使用优化算法以80%不透明度阈值生成GIF
+""".strip()
 
     def parse_args(self, args: List[str]) -> dict:
-        assert_and_reply(not args, "该操作不接受参数")
-        return None
+        ret = { 'opt': True, 'threshold': 0.5 }
+        if args:
+            if 'n' in args:
+                ret['opt'] = False
+            else:
+                ret['threshold'] = float(args[0])
+                assert_and_reply(0.0 <= ret['threshold'] <= 1.0, "不透明度阈值必须在0-1之间")
+        return ret
 
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
         try:
             tmp_path = f"data/imgtool/tmp/{rand_filename('gif')}"
-            save_transparent_gif(img, 0, tmp_path)
+            if args['opt']:
+                save_transparent_gif(img, 0, tmp_path, args['threshold'])
+            else:
+                img.convert('RGBA').save(tmp_path, save_all=True, append_images=[], duration=0, loop=0)
             return Image.open(tmp_path)
         finally:
             remove_file(tmp_path)

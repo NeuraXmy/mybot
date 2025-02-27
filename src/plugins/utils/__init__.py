@@ -111,14 +111,12 @@ def get_frames_from_gif(img: Image.Image):
     return [frame.copy() for frame in ImageSequence.Iterator(img)]
 
 # 从帧序列保存透明GIF
-def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str):
-    # t = datetime.now()
-
+def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str, alpha_threshold: float = 0.0):
+    alpha_threshold = max(0.0, min(1.0, alpha_threshold))
+    alpha_threshold = int(alpha_threshold * 255)
     if isinstance(frames, Image.Image):
         frames = [frames]
-    _save_transparent_gif(frames, duration, save_path)
-    
-    # print(f"save gif cost {datetime.now() - t}")
+    _save_transparent_gif(frames, duration, save_path, alpha_threshold)
 
 
 

@@ -36,27 +36,27 @@ class MasterDbManager:
         self.latest_source = None
         self.version_update_interval = version_update_interval
         self.version_update_time = None
+        self.lock = asyncio.Lock()
 
     async def update(self):
         """
         更新所有MasterDB的版本信息
         """
         logger.info(f"开始更新 {len(self.sources)} 个 MasterDB 的版本信息")
-        last_latest_source = self.latest_source
         await asyncio.gather(*[source.update_version() for source in self.sources])
         self.sources.sort(key=lambda x: get_version_order(x.version), reverse=True)
         self.latest_source = self.sources[0]
         self.version_update_time = datetime.now()
-        if last_latest_source != self.latest_source:
-            logger.info(f"获取到最新版本的 MasterDB [{self.latest_source.name}] 版本为 {self.latest_source.version}")
+        logger.info(f"获取到最新版本的 MasterDB [{self.latest_source.name}] 版本为 {self.latest_source.version}")
     
     async def get_latest_source(self) -> MasterDbSource:
         """
         获取最新的MasterDB
         """
-        if not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
-            await self.update()
-        return self.latest_source
+        async with self.lock:
+            if not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
+                await self.update()
+            return self.latest_source
 
 class SekaiMasterData:
     def __init__(self, db_mgr: MasterDbManager, name: str, url: str, map_fn=None):
