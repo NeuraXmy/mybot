@@ -874,12 +874,12 @@ async def get_detailed_profile(qid, raise_exc=False):
         try:
             profile = await download_json(url)
         except Exception as e:
-            if int(e.args[0]) == 403:
-                logger.info(f"获取 {qid} 抓包数据失败: 上传抓包数据时未选择公开可读")
-                raise Exception("上传抓包数据时未选择公开可读")
-            elif int(e.args[0]) == 404:
-                logger.info(f"获取 {qid} 抓包数据失败: 未上传过抓包数据")
-                raise Exception("未上传过抓包数据")
+            if isinstance(e.args[1], aiohttp.ClientResponse):
+                resp: aiohttp.ClientResponse = e.args[1]
+                try: detail = json.loads(await resp.text()).get("detail")
+                except: detail = ""
+                logger.info(f"获取 {qid} 抓包数据失败: {resp.status} {resp.reason}: {detail}")
+                raise Exception(f"{resp.status} {resp.reason}: {detail}")
             else:
                 logger.info(f"获取 {qid} 抓包数据失败: {e}")
                 raise Exception(f"HTTP ERROR {e}")
@@ -959,9 +959,12 @@ async def get_mysekai_info(qid, raise_exc=False):
         try:
             mysekai_info = await download_json(url)
         except Exception as e:
-            if int(e.args[0]) == 404:
-                logger.info(f"获取 {qid} mysekai抓包数据失败: 未上传过mysekai数据")
-                raise Exception("未上传过mysekai数据")
+            if isinstance(e.args[1], aiohttp.ClientResponse):
+                resp: aiohttp.ClientResponse = e.args[1]
+                try: detail = json.loads(await resp.text()).get("detail")
+                except: detail = ""
+                logger.info(f"获取 {qid} 抓包数据失败: {resp.status} {resp.reason}: {detail}")
+                raise Exception(f"{resp.status} {resp.reason}: {detail}")
             else:
                 logger.info(f"获取 {qid} mysekai抓包数据失败: {e}")
                 raise Exception(f"HTTP ERROR {e}")

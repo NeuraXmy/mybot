@@ -101,8 +101,12 @@ def _sk_card_recommend_work(user_id: int, live_type: str, music_key: str, music_
     finally:
         driver.quit()
 
+
 # sk自动组卡
 async def sk_card_recommend(user_id: int, live_type: str, music_key: str, music_diff: str, chara_name: str=None, topk=5):
-    return await run_in_pool(_sk_card_recommend_work, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool)
+    return await asyncio.wait_for(
+        run_in_pool(_sk_card_recommend_work, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
+        timeout=60,
+    )
 
 

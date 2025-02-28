@@ -424,7 +424,7 @@ async def _(ctx: HandlerContext):
     msg = ""
     for provider in providers:
         quota = await provider.aget_current_quota()
-        msg += f"{provider.name} 余额: {quota}{provider.price_unit}\n"
+        msg += f"{provider.name} 余额: {quota:.4f}{provider.price_unit}\n"
     return await ctx.asend_reply_msg(msg.strip())
 
 
