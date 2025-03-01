@@ -2424,7 +2424,7 @@ async def compose_mysekai_fixture_detail_image(fid) -> Image.Image:
             await get_mysekai_res_icon(f"mysekai_material_{item['mysekaiMaterialId']}"),
             item['quantity']
         ) for item in only_diassemble_materials]
-    elif blueprint:
+    elif blueprint and is_disassembled:
         recycle_materials = [(img, quantity // 2) for img, quantity in cost_materials if quantity > 1]
 
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
@@ -3537,7 +3537,7 @@ async def _(ctx: HandlerContext):
                 if name in arg: music_diff = diff_names[0]
 
     music_id = music_id or 74
-    music_diff = music_diff or "master"
+    music_diff = music_diff or "expert"
     
     await ctx.asend_reply_msg("开始计算组卡...")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_card_recommend_image(ctx.user_id, live_type, music_id, music_diff, None)))

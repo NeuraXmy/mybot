@@ -444,9 +444,12 @@ def get_readable_timedelta(delta: timedelta):
 # 获取加入的所有群id
 async def get_group_id_list(bot):
     group_list = await bot.call_api('get_group_list')
-    for group in group_list:
-        print(group)
     return [group['group_id'] for group in group_list]
+
+
+# 检查是否加入了某个群
+async def check_in_group(bot, group_id):
+    return int(group_id) in await get_group_id_list(bot)
 
 
 # 获取加入的所有群
@@ -693,6 +696,9 @@ async def send_multiple_fold_msg(bot, event, contents):
 # 在event外发送群聊消息
 @send_msg_func
 async def send_group_msg_by_bot(bot, group_id, message):
+    if not await check_in_group(bot, group_id):
+        utils_logger.warning(f'取消发送消息到未加入的群 {group_id}')
+        return
     return await bot.send_group_msg(group_id=int(group_id), message=message)
 
 # 在event外发送私聊消息
@@ -1054,6 +1060,7 @@ class GroupWhiteList:
             else:
                 return await send_reply_msg(switch_query, event.message_id, f'{name}关闭中')
             
+
     def get(self):
         return self.db.get(self.white_list_name, [])
     

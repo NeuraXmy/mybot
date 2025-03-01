@@ -661,31 +661,35 @@ async def get_image_caption(mdata: dict, cfg: AutoChatConfig, use_llm: bool):
 
 # 将消息段转换为纯文本
 async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
-    bot = get_bot()
-    text = f"{get_readable_datetime(msg['time'])} msg_id={msg['msg_id']} {msg['nickname']}({msg['user_id']}):\n"
-    for item in await get_msg(bot, msg['msg_id']):
-        mtype, mdata = item['type'], item['data']
-        if mtype == "text":
-            text += f"{mdata}"
-        elif mtype == "face":
-            text += f"[表情]"
-        elif mtype == "image":
-            text += await get_image_caption(mdata, cfg, use_llm=(random.random() < cfg.image_caption_prob))
-        elif mtype == "video":
-            text += f"[视频]"
-        elif mtype == "audio":
-            text += f"[音频]"
-        elif mtype == "file":
-            text += f"[文件]"
-        elif mtype == "at":
-            text += f"[@{mdata['qq']}]"
-        elif mtype == "reply":
-            text += f"[reply={mdata['id']}]"
-        elif mtype == "forward":
-            text += f"[转发折叠消息]"
-        elif mtype == "json":
-            text += json_msg_to_readable_text(mdata)
-    return text
+    try:
+        bot = get_bot()
+        text = f"{get_readable_datetime(msg['time'])} msg_id={msg['msg_id']} {msg['nickname']}({msg['user_id']}):\n"
+        for item in await get_msg(bot, msg['msg_id']):
+            mtype, mdata = item['type'], item['data']
+            if mtype == "text":
+                text += f"{mdata}"
+            elif mtype == "face":
+                text += f"[表情]"
+            elif mtype == "image":
+                text += await get_image_caption(mdata, cfg, use_llm=(random.random() < cfg.image_caption_prob))
+            elif mtype == "video":
+                text += f"[视频]"
+            elif mtype == "audio":
+                text += f"[音频]"
+            elif mtype == "file":
+                text += f"[文件]"
+            elif mtype == "at":
+                text += f"[@{mdata['qq']}]"
+            elif mtype == "reply":
+                text += f"[reply={mdata['id']}]"
+            elif mtype == "forward":
+                text += f"[转发折叠消息]"
+            elif mtype == "json":
+                text += json_msg_to_readable_text(mdata)
+        return text
+    except Exception as e:
+        logger.print_exc(f"消息转换失败: {msg}")
+        return None
 
 
 clear_self_history = CmdHandler(["/autochat_clear"], logger, priority=100)
@@ -756,6 +760,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         recent_msgs = [msg for msg in recent_msgs if msg['user_id'] != self_id or msg['msg_id'] in autochat_msg_ids]
         if not recent_msgs: return
         recent_texts = [await msg_to_readable_text(cfg, group_id, msg) for msg in recent_msgs]
+        recent_texts = [text for text in recent_texts if text]
         recent_texts.reverse()
             
         # 填入prompt

@@ -36,7 +36,6 @@ class MasterDbManager:
         self.latest_source = None
         self.version_update_interval = version_update_interval
         self.version_update_time = None
-        self.lock = asyncio.Lock()
 
     async def update(self):
         """
@@ -53,10 +52,9 @@ class MasterDbManager:
         """
         获取最新的MasterDB
         """
-        async with self.lock:
-            if not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
-                await self.update()
-            return self.latest_source
+        if not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
+            await self.update()
+        return self.latest_source
 
 class SekaiMasterData:
     def __init__(self, db_mgr: MasterDbManager, name: str, url: str, map_fn=None):
@@ -68,7 +66,6 @@ class SekaiMasterData:
         self.data = None
         self.cache_path = create_parent_folder(f"data/sekai/master_data/{url}")
         self.update_hooks = []
-        self.lock = asyncio.Lock()
 
     async def _load_from_cache(self):
         """
@@ -115,18 +112,17 @@ class SekaiMasterData:
         """
         获取数据
         """
-        async with self.lock:
-            # 从缓存加载
-            if self.data is None:
-                try: 
-                    await self._load_from_cache()
-                except Exception as e:
-                    logger.warning(f"MasterData [{self.name}] 从本地缓存加载失败: {e}")
-            # 检查是否更新
-            source = await self.db_mgr.get_latest_source()
-            if get_version_order(self.version) < get_version_order(source.version):
-                await self._download_from_db(source)
-            return self.data
+        # 从缓存加载
+        if self.data is None:
+            try: 
+                await self._load_from_cache()
+            except Exception as e:
+                logger.warning(f"MasterData [{self.name}] 从本地缓存加载失败: {e}")
+        # 检查是否更新
+        source = await self.db_mgr.get_latest_source()
+        if get_version_order(self.version) < get_version_order(source.version):
+            await self._download_from_db(source)
+        return self.data
 
     def register_updated_hook(self, name: str, hook):
         """
@@ -292,7 +288,6 @@ class MiscJsonRes:
         self.data = None
         self.update_interval = update_interval
         self.update_time = None
-        self.lock = asyncio.Lock()
     
     async def download(self):
         self.data = await download_json(self.url)
@@ -300,10 +295,9 @@ class MiscJsonRes:
         logger.info(f"Json资源 [{self.name}] 更新成功")
 
     async def get(self):
-        async with self.lock:
-            if not self.data or datetime.now() - self.update_time > self.update_interval:
-                await self.download()
-            return self.data
+        if not self.data or datetime.now() - self.update_time > self.update_interval:
+            await self.download()
+        return self.data
     
 music_cn_titles = MiscJsonRes("曲目中文名", "https://i18n-json.sekai.best/zh-CN/music_titles.json", timedelta(days=1))
        
