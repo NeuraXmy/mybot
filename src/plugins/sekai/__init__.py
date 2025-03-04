@@ -1199,7 +1199,7 @@ async def compose_full_honor_image(profile_honor, is_main, profile=None):
 
     raise NotImplementedError()
         
-# 合成名片图片
+# 合成个人信息图片
 async def compose_profile_image(basic_profile):
     decks = basic_profile['userDeck']
     pcards = [find_by(basic_profile['userCards'], 'cardId', decks[f'member{i}']) for i in range(1, 6)]
@@ -1310,7 +1310,7 @@ async def compose_profile_image(basic_profile):
                                 chara_img = res.misc_images.get(f'chara_rank_icon/{chara}.png')
                                 ImageBox(chara_img, size=(gw, gh), use_alphablend=True)
                                 t = TextBox(str(rank), TextStyle(font=DEFAULT_FONT, size=20, color=(40, 40, 40, 255)))
-                                t.set_size((48, 48)).set_content_align('c').set_offset((42, 4))
+                                t.set_size((60, 48)).set_content_align('c').set_offset((36, 4))
                     
                     # 挑战Live等级
                     if 'userChallengeLiveSoloResult' in basic_profile:
@@ -2108,7 +2108,7 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
                 ImageBox(img)
     
     add_watermark(canvas)
-    add_watermark(canvas2, text=DEFAULT_WATERMARK + ", map photo from MiddleRed")
+    add_watermark(canvas2, text=DEFAULT_WATERMARK + ", map view from MiddleRed")
     return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
 
 # 获取mysekai家具分类名称和图片
