@@ -835,7 +835,9 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
             logger.print_exc(f'循环执行 {name} 任务失败')
 
 # 重复执行某个任务的装饰器
-def repeat_with_interval(interval_secs: int, name: str, logger: Logger, every_output=False, error_output=True, error_limit=5, start_offset=10):
+def repeat_with_interval(interval_secs: int, name: str, logger: Logger, every_output=False, error_output=True, error_limit=5, start_offset=None):
+    if start_offset is None:
+        start_offset = 10 + random.randint(0, 5)
     def wrapper(func):
         start_repeat_with_interval(interval_secs, func, logger, name, every_output, error_output, error_limit, start_offset)
         return func
@@ -852,7 +854,9 @@ def start_async_task(func, logger, name, start_offset=5):
             logger.print_exc(f'异步执行 {name} 任务失败')
 
 # 开始执行某个任务的装饰器
-def async_task(name: str, logger: Logger, start_offset=5):
+def async_task(name: str, logger: Logger, start_offset=None):
+    if start_offset is None:
+        start_offset = 10 + random.randint(0, 5)
     def wrapper(func):
         start_async_task(func, logger, name, start_offset)
         return func

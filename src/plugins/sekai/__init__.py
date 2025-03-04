@@ -2085,6 +2085,11 @@ async def compose_mysekai_fixture_list_image(qid, show_id, only_craftable):
         basic_profile = await get_basic_profile(uid)
         mysekai_info, pmsg = await get_mysekai_info(qid, raise_exc=True)
 
+        assert_and_reply(
+            'userMysekaiBlueprints' in mysekai_info['updatedResources'],
+            "您的抓包数据来源没有提供蓝图数据"
+        )
+
         obtained_fids = set()
         for item in mysekai_info['updatedResources']['userMysekaiBlueprints']:
             bid = item['mysekaiBlueprintId']
