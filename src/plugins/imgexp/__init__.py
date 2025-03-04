@@ -22,32 +22,23 @@ DOWNLOAD_MAXSIZE = 1024 * 1024 * 10
 GIF_MAX_FPS = 10
 GIF_MAX_SIZE = 512
 
-search = on_command('/search', priority=0, block=False)
+search = CmdHandler(['/search'], logger)
+search.check_cdrate(cd).check_wblist(gbl)
 @search.handle()
-async def handle(bot: Bot, event: MessageEvent):
-    if not (await cd.check(event)): return
-    if not gbl.check(event, allow_private=True): return
+async def _(ctx: HandlerContext):
+    bot, event = ctx.bot, ctx.event
 
     reply_msg = await get_reply_msg(bot, await get_msg(bot, event.message_id))
-    if reply_msg is None:
-        return await send_reply_msg(search, event.message_id, f"请使用 /search 回复一张图片")
+    assert_and_reply(reply_msg, f"请使用 /search 回复一张图片")
 
     cqs = extract_cq_code(reply_msg)
-
-    if 'image' not in cqs:
-        return await send_reply_msg(search, event.message_id, f"请使用 /search 回复一张图片")
+    assert_and_reply('image' in cqs, f"请使用 /search 回复一张图片")
   
     img_url = cqs['image'][0]['url']
-    try:
-        logger.info(f'搜索图片: {img_url}')
-        res_img, res_info = await search_image(img_url)
-        logger.info(f'搜索图片成功: {img_url} 共 {len(res_info)} 个结果')
-    except Exception as e:
-        logger.print_exc('搜索图片失败')
-        return await send_reply_msg(search, event.message_id, f"搜索图片失败: {e}")
-    
-    if len(res_info) == 0:
-        return await send_reply_msg(search, event.message_id, f"无搜索结果")
+    logger.info(f'搜索图片: {img_url}')
+    res_img, res_info = await search_image(img_url)
+    logger.info(f'搜索图片成功: {img_url} 共 {len(res_info)} 个结果')
+    assert_and_reply(res_info, f"无搜索结果")
     
     msg = await get_image_cq(res_img)
     source_urls = {}
@@ -59,7 +50,7 @@ async def handle(bot: Bot, event: MessageEvent):
     for source in source_urls:
         for i, url in enumerate(source_urls[source]):
             msg += f"NO.{i+1} from {source}:\n{url}\n"
-    return await send_fold_msg_adaptive(bot, search, event, msg.strip(), 0)
+    return await ctx.asend_fold_msg_adaptive(msg, threshold=0)
 
 
 async def aget_video_info(url):
@@ -117,7 +108,7 @@ async def adownload_video(url, path, maxsize, lowq):
 ytdlp = CmdHandler(['/yt-dlp', '/ytdlp', '/yt_dlp', '/video'], logger)
 ytdlp.check_cdrate(cd).check_wblist(gbl, allow_private=True)
 @ytdlp.handle()
-async def handle(ctx: HandlerContext):
+async def _(ctx: HandlerContext):
     parser = ctx.get_argparser()
     parser.add_argument('url', type=str)
     parser.add_argument('--info', '-i', action='store_true')
@@ -223,7 +214,7 @@ async def get_twitter_image_urls(url):
 ximg = CmdHandler(['/ximg', '/x_img', '/twimg', '/tw_img'], logger)
 ximg.check_cdrate(cd).check_wblist(gbl, allow_private=True)
 @ximg.handle()
-async def handle(ctx: HandlerContext):
+async def _(ctx: HandlerContext):
         parser = ctx.get_argparser()
         parser.add_argument('url', type=str)
         parser.add_argument('--vertical',   '-V', action='store_true')

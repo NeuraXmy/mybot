@@ -320,7 +320,6 @@ def get_logger(name) -> Logger:
 
 utils_logger = get_logger('Utils')
 
-
 # 文件数据库
 class FileDB:
     def __init__(self, path, logger):
@@ -368,6 +367,7 @@ def get_file_db(path, logger) -> FileDB:
         _file_dbs[path] = FileDB(path, logger)
     return _file_dbs[path]
 
+utils_file_db = get_file_db('data/utils/db.json', utils_logger)
 
 # 计时器
 class Timer:
@@ -608,6 +608,31 @@ async def get_reply_msg_obj(bot, msg):
 
 
 
+# 检查群聊是否被全局禁用
+def check_group_disabled(group_id):
+    enabled_groups = utils_file_db.get('enabled_groups', [])
+    return int(group_id) not in enabled_groups
+
+# 通过event检查群聊是否被全局禁用
+def check_group_disabled_by_event(event):
+    if is_group_msg(event) and check_group_disabled(event.group_id):
+        utils_logger.warning(f'取消发送消息到被全局禁用的群 {event.group_id}')
+        return True
+    return False
+
+# 设置群聊全局启用状态
+def set_group_enable(group_id, enable):
+    enabled_groups = utils_file_db.get('enabled_groups', [])
+    if enable:
+        if int(group_id) not in enabled_groups:
+            enabled_groups.append(int(group_id))
+    else:
+        if int(group_id) in enabled_groups:
+            enabled_groups.remove(int(group_id))
+    utils_file_db.set('enabled_groups', enabled_groups)
+    utils_logger.info(f'设置群聊 {group_id} 全局启用状态为 {enable}')
+
+
 self_reply_msg_ids = set()
 MSG_RATE_LIMIT_PER_SECOND = get_config()['msg_rate_limit_per_second']
 current_msg_count = 0
@@ -615,6 +640,7 @@ current_msg_second = -1
 send_msg_failed_last_mail_time = datetime.fromtimestamp(0)
 send_msg_failed_mail_interval = timedelta(minutes=10)
 
+# 发送消息装饰器
 def send_msg_func(func):
     async def wrapper(*args, **kwargs):
         # 检查消息发送次数限制
@@ -640,8 +666,9 @@ def send_msg_func(func):
 
         # 记录自身对指令的回复消息id集合
         try:
-            global self_reply_msg_ids
-            self_reply_msg_ids.add(int(ret["message_id"]))
+            if ret:
+                global self_reply_msg_ids
+                self_reply_msg_ids.add(int(ret["message_id"]))
         except Exception as e:
             utils_logger.print_exc(f'记录发送消息的id失败')
             
@@ -651,22 +678,28 @@ def send_msg_func(func):
     
 # 发送消息
 @send_msg_func
-async def send_msg(handler, message):
+async def send_msg(handler, event, message):
+    if check_group_disabled_by_event(event): return None
     return await handler.send(OutMessage(message))
 
 # 发送回复消息
 @send_msg_func
-async def send_reply_msg(handler, reply_id, message):
-    return await handler.send(OutMessage(f'[CQ:reply,id={reply_id}]{message}'))
+async def send_reply_msg(handler, event, message):
+    if check_group_disabled_by_event(event): return None
+    return await handler.send(OutMessage(f'[CQ:reply,id={event.message_id}]{message}'))
 
 # 发送at消息
 @send_msg_func
-async def send_at_msg(handler, user_id, message):
-    return await handler.send(OutMessage(f'[CQ:at,qq={user_id}]{message}'))
+async def send_at_msg(handler, event, message):
+    if check_group_disabled_by_event(event): return None
+    return await handler.send(OutMessage(f'[CQ:at,qq={event.user_id}]{message}'))
 
 # 发送群聊折叠消息 其中contents是text的列表
 @send_msg_func
 async def send_group_fold_msg(bot, group_id, contents):
+    if check_group_disabled(group_id):
+        utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
+        return
     msg_list = [{
         "type": "node",
         "data": {
@@ -680,6 +713,7 @@ async def send_group_fold_msg(bot, group_id, contents):
 # 发送多条消息折叠消息
 @send_msg_func
 async def send_multiple_fold_msg(bot, event, contents):
+    if check_group_disabled_by_event(event): return None
     msg_list = [{
         "type": "node",
         "data": {
@@ -693,9 +727,13 @@ async def send_multiple_fold_msg(bot, event, contents):
     else:
         return await bot.send_private_forward_msg(user_id=event.user_id, messages=msg_list)
     
+
 # 在event外发送群聊消息
 @send_msg_func
 async def send_group_msg_by_bot(bot, group_id, message):
+    if check_group_disabled(group_id):
+        utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
+        return
     if not await check_in_group(bot, group_id):
         utils_logger.warning(f'取消发送消息到未加入的群 {group_id}')
         return
@@ -712,8 +750,8 @@ async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, ne
     if is_group_msg(event) and len(message) > threshold:
         return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
     if need_reply:
-        return await send_reply_msg(handler, event.message_id, message)
-    return await send_msg(handler, message)
+        return await send_reply_msg(handler, event, message)
+    return await send_msg(handler, event, message)
 
 
 # 是否是动图
@@ -1026,11 +1064,11 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id in white_list:
-                return await send_reply_msg(switch_on, event.message_id, f'{name}已经是开启状态')
+                return await send_reply_msg(switch_on, event, f'{name}已经是开启状态')
             white_list.append(group_id)
             db.set(white_list_name, white_list)
             if self.on_func is not None: await self.on_func(event.group_id)
-            return await send_reply_msg(switch_on, event.message_id, f'{name}已开启')
+            return await send_reply_msg(switch_on, event, f'{name}已开启')
         
         # 关闭命令
         switch_off = on_command(f'/{name}_off', block=False, priority=100)
@@ -1043,11 +1081,11 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id not in white_list:
-                return await send_reply_msg(switch_off, event.message_id, f'{name}已经是关闭状态')
+                return await send_reply_msg(switch_off, event, f'{name}已经是关闭状态')
             white_list.remove(group_id)
             db.set(white_list_name, white_list)
             if self.off_func is not None:  await self.off_func(event.group_id)
-            return await send_reply_msg(switch_off, event.message_id, f'{name}已关闭')
+            return await send_reply_msg(switch_off, event, f'{name}已关闭')
             
         # 查询命令
         switch_query = on_command(f'/{name}_status', block=False, priority=100)
@@ -1060,9 +1098,9 @@ class GroupWhiteList:
             group_id = event.group_id
             white_list = db.get(white_list_name, [])
             if group_id in white_list:
-                return await send_reply_msg(switch_query, event.message_id, f'{name}开启中')
+                return await send_reply_msg(switch_query, event, f'{name}开启中')
             else:
-                return await send_reply_msg(switch_query, event.message_id, f'{name}关闭中')
+                return await send_reply_msg(switch_query, event, f'{name}关闭中')
             
 
     def get(self):
@@ -1125,11 +1163,11 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id in black_list:
-                return await send_reply_msg(off, event.message_id, f'{name}已经是关闭状态')
+                return await send_reply_msg(off, event, f'{name}已经是关闭状态')
             black_list.append(group_id)
             db.set(black_list_name, black_list)
             if self.off_func is not None: await self.off_func(event.group_id)
-            return await send_reply_msg(off, event.message_id, f'{name}已关闭')
+            return await send_reply_msg(off, event, f'{name}已关闭')
         
         # 开启命令
         on = on_command(f'/{name}_on', block=False, priority=100)
@@ -1142,11 +1180,11 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id not in black_list:
-                return await send_reply_msg(on, event.message_id, f'{name}已经是开启状态')
+                return await send_reply_msg(on, event, f'{name}已经是开启状态')
             black_list.remove(group_id)
             db.set(black_list_name, black_list)
             if self.on_func is not None: await self.on_func(event.group_id)
-            return await send_reply_msg(on, event.message_id, f'{name}已开启')
+            return await send_reply_msg(on, event, f'{name}已开启')
             
         # 查询命令
         query = on_command(f'/{name}_status', block=False, priority=100)
@@ -1159,9 +1197,9 @@ class GroupBlackList:
             group_id = event.group_id
             black_list = db.get(black_list_name, [])
             if group_id in black_list:
-                return await send_reply_msg(query, event.message_id, f'{name}关闭中')
+                return await send_reply_msg(query, event, f'{name}关闭中')
             else:
-                return await send_reply_msg(query, event.message_id, f'{name}开启中')
+                return await send_reply_msg(query, event, f'{name}开启中')
         
     def get(self):
         return self.db.get(self.black_list_name, [])
@@ -1232,7 +1270,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if msg != "/service":
         name = msg.split(' ')[1]
         if name not in _gwls and name not in _gbls:
-            return await send_reply_msg(service, event.message_id, f'未知服务 {name}')
+            return await send_reply_msg(service, event, f'未知服务 {name}')
         msg = ""
         if name in _gwls:
             msg += f"{name}使用的规则是白名单\n开启服务的群聊有:\n"
@@ -1244,7 +1282,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 msg += f'{await get_group_name(bot, group_id)}({group_id})\n'
         else:
             msg += f"未知服务 {name}"
-        return await send_reply_msg(service, event.message_id, msg.strip())
+        return await send_reply_msg(service, event, msg.strip())
 
 
     msg_on = "本群开启的服务:\n"
@@ -1260,7 +1298,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         else:
             msg_off += f'{name} '
 
-    return await send_reply_msg(service, event.message_id, msg_on + '\n' + msg_off)
+    return await send_reply_msg(service, event, msg_on + '\n' + msg_off)
 
 
 # 发送邮件
@@ -1461,13 +1499,13 @@ class HandlerContext:
     # -------------------------- 消息发送 -------------------------- # 
 
     def asend_msg(self, msg: str):
-        return send_msg(self.nonebot_handler, msg)
+        return send_msg(self.nonebot_handler, self.event, msg)
 
     def asend_reply_msg(self, msg: str):
-        return send_reply_msg(self.nonebot_handler, self.message_id, msg)
+        return send_reply_msg(self.nonebot_handler, self.event, msg)
 
     def asend_at_msg(self, msg: str):
-        return send_at_msg(self.nonebot_handler, self.user_id, msg)
+        return send_at_msg(self.nonebot_handler, self.event, msg)
 
     def asend_fold_msg_adaptive(self, msg: str, threshold=100, need_reply=True):
         return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply)
@@ -1486,12 +1524,24 @@ cmd_history: List[HandlerContext] = []
 MAX_CMD_HISTORY = 100
 
 class CmdHandler:
-    def __init__(self, commands: List[str], logger: Logger, error_reply=True, priority=100, block=True, only_to_me=False, disabled=False, banned_cmds: List[str] = None):
+    def __init__(
+            self, 
+            commands: List[str], 
+            logger: Logger, 
+            error_reply=True, 
+            priority=100, 
+            block=True, 
+            only_to_me=False, 
+            disabled=False, 
+            banned_cmds: List[str] = None, 
+            check_group_enabled=True
+        ):
         if isinstance(commands, str):
             commands = [commands]
         self.commands = commands
         self.logger = logger
         self.error_reply = error_reply
+        self.check_group_enabled = check_group_enabled
         handler_kwargs = {}
         if only_to_me: handler_kwargs["rule"] = rule_to_me()
         self.handler = on_command(commands[0], priority=priority, block=block, aliases=set(commands[1:]), **handler_kwargs)
@@ -1533,6 +1583,12 @@ class CmdHandler:
 
                 # 禁止私聊自己的指令生效
                 if not is_group_msg(event) and event.user_id == event.self_id:
+                    self.logger.warning(f'取消私聊自己的指令处理')
+                    return
+
+                # 检测群聊是否启用
+                if self.check_group_enabled and is_group_msg(event) and check_group_disabled(event.group_id):
+                    self.logger.warning(f'取消未启用群聊 {event.group_id} 的指令处理')
                     return
 
                 # 权限检查
@@ -1679,3 +1735,48 @@ def concat_images(images: List[Image.Image], mode) -> Image.Image:
 
     else:
         raise Exception('concat mode must be v/h/g')
+
+
+# 设置群聊开启
+enable_group = CmdHandler(['/enable'], utils_logger, check_group_enabled=False)
+enable_group.check_superuser()
+@enable_group.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try: group_id = int(args)
+    except: 
+        assert_and_reply(ctx.group_id, "请指定群号")
+        group_id = ctx.group_id
+    group_name = await get_group_name(ctx.bot, group_id)
+    set_group_enable(group_id, True)
+    return await ctx.asend_reply_msg(f'已启用群聊 {group_name} ({group_id})')
+ 
+# 设置群聊关闭
+disable_group = CmdHandler(['/disable'], utils_logger, check_group_enabled=False)
+disable_group.check_superuser()
+@disable_group.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try: group_id = int(args)
+    except: 
+        assert_and_reply(ctx.group_id, "请指定群号")
+        group_id = ctx.group_id
+    group_name = await get_group_name(ctx.bot, group_id)
+    set_group_enable(group_id, False)
+    return await ctx.asend_reply_msg(f'已禁用群聊 {group_name} ({group_id})')
+
+# 查看群聊列表的开启状态
+group_status = CmdHandler(['/group_status'], utils_logger)
+group_status.check_superuser()
+@group_status.handle()
+async def _(ctx: HandlerContext):
+    enabled_msg = "【已启用的群聊】"
+    disabled_msg = "【已禁用的群聊】"
+    enabled_groups = utils_file_db.get("enabled_groups", [])
+    for group_id in await get_group_id_list(ctx.bot):
+        group_name = await get_group_name(ctx.bot, group_id)
+        if group_id in enabled_groups:
+            enabled_msg += f'\n{group_name} ({group_id})'
+        else:
+            disabled_msg += f'\n{group_name} ({group_id})'
+    return await ctx.asend_reply_msg(enabled_msg + '\n\n' + disabled_msg)

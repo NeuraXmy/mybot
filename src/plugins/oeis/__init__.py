@@ -13,29 +13,22 @@ gbl = get_group_black_list(file_db, logger, 'oeis')
 NUM_SEARCH = config['search_num']
 
 
-query = on_command("/oeis", priority=1, block=False)
+query = CmdHandler(["/oeis"], logger)
+query.check_cdrate(cd).check_wblist(gbl)
 @query.handle()
-async def handle(bot: Bot, event: MessageEvent):
-    if not (await cd.check(event)): return
-    if not gbl.check(event, allow_private=True): return
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    sequences = await oeis_query(args, n=NUM_SEARCH)
+    logger.info(f"查询 OEIS 序列: {args} 共 {len(sequences)} 条结果")
+    
+    assert_and_reply(sequences, "未找到相关序列")
 
-    try:
-        args = event.get_plaintext().replace("/oeis", "").strip()
-        sequences = await oeis_query(args, n=NUM_SEARCH)
-        logger.info(f"查询 OEIS 序列: {args} 共 {len(sequences)} 条结果")
+    msg = ""
+    for seq in sequences:
+        msg += f"【{seq.id}】{seq.name}\n"
+        msg += f"{seq.sequence}\n"
+        msg += f"Formula: {seq.formula}\n"
+        msg += "\n"
 
-        if len(sequences) == 0:
-            return await send_reply_msg(query, event.message_id, "未找到相关序列")
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
 
-        msg = ""
-        for seq in sequences:
-            msg += f"【{seq.id}】{seq.name}\n"
-            msg += f"{seq.sequence}\n"
-            msg += f"Formula: {seq.formula}\n"
-            msg += "\n"
-
-        return await send_fold_msg_adaptive(bot, query, event, msg.strip(), threshold=200)
-
-    except Exception as e:
-        logger.print_exc(f"查询 OEIS 序列时发生错误: {e}")
-        return await send_reply_msg(query, event.message_id, "查询失败")

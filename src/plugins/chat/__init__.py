@@ -121,9 +121,10 @@ sessions = {}
 query_msg_ids = set()
 
 # 询问
-chat_request = on_command("", block=False, priority=0)
+chat_request = CmdHandler([""], logger, block=False, priority=0)
 @chat_request.handle()
-async def _(bot: Bot, event: MessageEvent):
+async def _(ctx: HandlerContext):
+    bot, event = ctx.bot, ctx.event
     global sessions, query_msg_ids, autochat_msg_ids
     try:
         # 获取内容
@@ -191,12 +192,12 @@ async def _(bot: Bot, event: MessageEvent):
         # 如果在对话中指定模型名
         if "model:" in query_text:
             if is_group_msg(event) and not check_superuser(event): 
-                return await send_reply_msg(chat_request, event.message_id, "非超级用户不允许自定义模型")
+                return await ctx.asend_reply_msg("非超级用户不允许自定义模型")
             model_name = query_text.split("model:")[1].strip().split(" ")[0]
             try:
                 ChatSession.check_model_name(model_name)
             except Exception as e:
-                return await send_reply_msg(chat_request, event.message_id, str(e))
+                return await ctx.asend_reply_msg(f"{e}")
             query_text = query_text.replace(f"model:{model_name}", "").strip()       
 
         # 是否是cleanchat
@@ -250,7 +251,7 @@ async def _(bot: Bot, event: MessageEvent):
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
                 # 不支持的回复类型
                 if any([t in reply_cqs for t in ["json", "video"]]):
-                    return await send_reply_msg(chat_request, event.message_id, "不支持的消息类型")
+                    return await ctx.asend_reply_msg("不支持的消息类型")
                 session = ChatSession(system_prompt)
                 # 回复折叠内容
                 if "forward" in reply_cqs:
@@ -321,14 +322,14 @@ async def _(bot: Bot, event: MessageEvent):
         if session_id_backup:
             sessions[session_id_backup] = session
         ret = truncate(f"会话失败: {e.message}", 128)
-        return await send_reply_msg(chat_request, event.message_id, ret)
+        return await ctx.asend_reply_msg(ret)
 
     except Exception as error:
         logger.print_exc(f'会话 {session.id} 失败')
         if session_id_backup:
             sessions[session_id_backup] = session
         ret = truncate(f"会话失败: {error}", 128)
-        return await send_reply_msg(chat_request, event.message_id, ret)
+        return await ctx.asend_reply_msg(ret)
 
     # 思考内容
     reasoning_text = ""
@@ -352,7 +353,7 @@ async def _(bot: Bot, event: MessageEvent):
     ret = await send_fold_msg_adaptive(bot, chat_request, event, final_text, FOLD_LENGTH_THRESHOLD)
 
     # 加入会话历史
-    if len(session) < SESSION_LEN_LIMIT:
+    if ret and len(session) < SESSION_LEN_LIMIT:
         ret_id = str(ret["message_id"])
         sessions[ret_id] = session
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
@@ -438,7 +439,7 @@ async def _(ctx: HandlerContext):
     audio_file_path = None
     try:
         audio_file_path = await tts(text)
-        return await send_msg(tts_request, get_audio_cq(audio_file_path))
+        return await ctx.asend_msg(get_audio_cq(audio_file_path))
     finally:
         if audio_file_path and os.path.exists(audio_file_path):
             os.remove(audio_file_path)
@@ -706,9 +707,10 @@ async def _(ctx: HandlerContext):
         return await ctx.asend_reply_msg(f"已清空群聊 {group_name}({group_id}) 自动聊天自身的历史记录")
 
 
-chat_request = on_command("", block=False, priority=0)
-@chat_request.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+autochat = CmdHandler([""], logger, block=False, priority=1)
+@autochat.handle()
+async def _(ctx: HandlerContext):
+    bot, event = ctx.bot, ctx.event
     need_remove_group_id = False
     try:
         group_id = event.group_id
@@ -828,12 +830,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
             return
         
         # 发送并加入到历史和id记录
-        msg = await send_group_msg_by_bot(bot, group_id, res_text)
-        autochat_msg_ids.add(int(msg['message_id']))
-        memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
-        while len(memory.self_history) > cfg.self_history_num:
-            memory.self_history.pop(0)
-        memory.save()
+        msg = await ctx.asend_msg(res_text)
+        if msg:
+            autochat_msg_ids.add(int(msg['message_id']))
+            memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
+            while len(memory.self_history) > cfg.self_history_num:
+                memory.self_history.pop(0)
+            memory.save()
 
     except:
         logger.print_exc(f"群聊 {group_id} 自动聊天失败")

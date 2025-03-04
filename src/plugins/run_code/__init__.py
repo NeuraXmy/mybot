@@ -15,24 +15,14 @@ file_db = get_file_db("data/runcode/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, "runcode")
 
-runcode = on_command('/code', priority=100, block=False)
+runcode = CmdHandler(['/code'], logger)
+runcode.check_cdrate(cd).check_wblist(gbl)
 @runcode.handle()
-async def runcode_body(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
-    if not gbl.check(event, allow_private=True): return
-    if not (await cd.check(event)): return
+async def _(ctx: HandlerContext):
+    code = ctx.get_args().strip()
+    assert_and_reply(code, "请输入代码")
+    logger.info(f"运行代码: {code}")
+    res = await run(code)
+    logger.info(f"运行结果: {res}")
+    return await ctx.asend_fold_msg_adaptive(res)
 
-    content = arg.extract_plain_text()
-    if content == "" or content is None:
-        return 
-    
-    code = str(arg).strip()
-    try:
-        logger.info(f"运行代码: {code}")
-        res = await run(code)
-        logger.info(f"运行结果: {res}")
-        name = await get_group_member_name(bot, event.group_id, event.user_id)
-        return await send_fold_msg_adaptive(bot, runcode, event, res)
-
-    except Exception as e:
-        logger.print_exc(f"运行代码失败")
-        return await send_reply_msg(runcode, event, f"运行代码失败: {e}")

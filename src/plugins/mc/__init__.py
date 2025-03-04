@@ -491,7 +491,7 @@ async def _(ctx: HandlerContext):
     info = ctx.get_args().strip()
     server.info = info
     server.save()
-    return await send_msg(set_info, f'设置MC服务器信息为: {info}')
+    return await ctx.asend_reply_msg(f'设置MC服务器信息为: {info}')
 
 # 发送消息
 sendmsg = CmdHandler(["/send"], logger)
