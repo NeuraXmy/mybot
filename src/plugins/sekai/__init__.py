@@ -320,7 +320,7 @@ async def get_asset(path: str, cache=True, allow_error=False, default=UNKNOWN_IM
             return img
         except Exception as e:
             if not allow_error:
-                logger.warning(f"从\"{url}\"下载资源失败")
+                logger.warning(f"从\"{url}\"下载资源失败: {e}")
     if not allow_error:
         raise Exception(f"获取资源\"{path}\"失败")
     else:
@@ -328,7 +328,7 @@ async def get_asset(path: str, cache=True, allow_error=False, default=UNKNOWN_IM
     return default
 
 # 获取其他类型解包资源
-async def get_not_image_asset(path: str, cache=True, allow_error=False, default=None, binary=False, cache_expire_secs=None):
+async def get_not_image_asset(path: str, cache=True, allow_error=False, default=None, binary=False, cache_expire_secs=None, timeout=10):
     cache_path = res_path(pjoin('assets', path))
 
     def try_load_from_cache(use_exp):
@@ -356,11 +356,19 @@ async def get_not_image_asset(path: str, cache=True, allow_error=False, default=
     
     for url, ok_to_cache in urls_to_try:
         try:
-            async with aiohttp.ClientSession(timeout=10) as session:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        raise Exception(f"请求失败: {resp.status}")
-                    data = await resp.read()
+            async def download():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        return resp
+        
+            if not timeout:
+                resp = await download()
+            else:
+                resp = await asyncio.wait_for(download(), timeout)
+
+            if resp.status != 200:
+                raise Exception(f"请求失败: {resp.status}")
+            data = await resp.read()
             if cache and ok_to_cache:
                 create_parent_folder(cache_path)
                 with open(cache_path, "wb") as f:
@@ -370,7 +378,7 @@ async def get_not_image_asset(path: str, cache=True, allow_error=False, default=
             return data
         except Exception as e:
             if not allow_error:
-                logger.warning(f"从\"{url}\"下载资源失败")
+                logger.warning(f"从\"{url}\"下载资源失败: {e}")
     if data := try_load_from_cache(False):
         logger.warning(f"获取资源\"{path}\"失败，使用缓存数据")
         return data

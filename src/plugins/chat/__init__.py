@@ -536,8 +536,6 @@ class AutoChatConfig:
     group_chat_probs: dict[str, float]
     self_history_num: int
     output_len_limit: int
-    no_reply_word: str
-    answer_start: str
     image_caption_model_name: str
     image_caption_timeout_sec: int
     image_caption_prompt: str
@@ -780,14 +778,24 @@ async def _(bot: Bot, event: GroupMessageEvent):
             try:
                 @retry(stop=stop_after_attempt(cfg.retry_num), wait=wait_fixed(cfg.retry_delay_sec), reraise=True)
                 async def chat():
-                    return await session.get_response(model_name=model_name, enable_reasoning=cfg.reasoning)
+                    resp = await session.get_response(model_name=model_name, enable_reasoning=cfg.reasoning)
+                    text = resp.result
+                    appear_len = get_str_appear_length(text)
+                    if appear_len > cfg.output_len_limit:
+                        raise Exception(f"回复过长: {appear_len} > {cfg.output_len_limit}")
+                    start_idx = text.find('{')
+                    end_idx = text.rfind('}')
+                    if start_idx == -1 or end_idx == -1:
+                        raise Exception("回复格式错误")
+                    text = text[start_idx:end_idx+1]
+                    try: 
+                        data = json.loads(text)
+                        text = data["text"]
+                    except:
+                        raise Exception("回复格式错误")
+                    return text
                 
-                resp: ChatSessionResponse = await chat()
-                answer_idx = resp.result.find(cfg.answer_start)
-                if answer_idx != -1:
-                    res_text = resp.result[answer_idx + len(cfg.answer_start):].strip()
-                else:
-                    raise Exception("自动聊天未找到回复开始标记")
+                res_text = await chat()
                 last_exception = None
                 break
 
@@ -815,7 +823,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         res_text = truncate(res_text, cfg.output_len_limit)
         logger.info(f"群聊 {group_id} 自动聊天生成回复: {res_text} at_id={at_id} reply_id={reply_id}")
 
-        if res_text.strip() == cfg.no_reply_word:
+        if not res_text.strip():
             logger.info(f"群聊 {group_id} 自动聊天决定不回复")
             return
         
