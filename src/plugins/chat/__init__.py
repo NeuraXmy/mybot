@@ -350,7 +350,7 @@ async def _(ctx: HandlerContext):
     final_text = tools_additional_info + reasoning_text + res_text + additional_info
 
     # 进行回复
-    ret = await send_fold_msg_adaptive(bot, chat_request, event, final_text, FOLD_LENGTH_THRESHOLD)
+    ret = await ctx.asend_fold_msg_adaptive(final_text, FOLD_LENGTH_THRESHOLD)
 
     # 加入会话历史
     if ret and len(session) < SESSION_LEN_LIMIT:
@@ -556,20 +556,23 @@ class AutoChatMemory:
     self_history: List[str] = field(default_factory=list)
 
     @staticmethod
-    def load(group_id):
+    def load(group_id=None):
+        if group_id is None: group_id = "global"
+        memory_db = get_file_db(f"data/chat/autochat_memory_db/{group_id}.json", logger)
         group_id = str(group_id)
-        all_memory = file_db.get("autochat_memory", {})
+        all_memory = memory_db.get("autochat_memory", {})
         memory = all_memory.get(group_id, {})
         memory['group_id'] = group_id
         return AutoChatMemory(**memory)
     
     def save(self):
-        all_memory = file_db.get("autochat_memory", {})
+        memory_db = get_file_db(f"data/chat/autochat_memory_db/{self.group_id}.json", logger)
+        all_memory = memory_db.get("autochat_memory", {})
         memory = all_memory.get(self.group_id, {})
         for k, v in self.__dict__.items():
             memory[k] = v
         all_memory[self.group_id] = memory
-        file_db.set("autochat_memory", all_memory)
+        memory_db.set("autochat_memory", all_memory)
 
 
 autochat_on = CmdHandler(["/autochat_on"], logger, priority=100)
@@ -687,7 +690,7 @@ async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
                 text += json_msg_to_readable_text(mdata)
         return text
     except Exception as e:
-        logger.print_exc(f"消息转换失败: {msg}")
+        logger.warning(f"消息转换失败: {msg}, {e}")
         return None
 
 
@@ -772,14 +775,13 @@ async def _(ctx: HandlerContext):
         ).strip()
 
         # 生成回复
-        session = ChatSession()
-        session.append_user_content(prompt, verbose=False)
-
         last_exception = None
         for model_name in cfg.model_names:
             try:
                 @retry(stop=stop_after_attempt(cfg.retry_num), wait=wait_fixed(cfg.retry_delay_sec), reraise=True)
                 async def chat():
+                    session = ChatSession()
+                    session.append_user_content(prompt, verbose=False)
                     resp = await session.get_response(model_name=model_name, enable_reasoning=cfg.reasoning)
                     text = resp.result
                     appear_len = get_str_appear_length(text)

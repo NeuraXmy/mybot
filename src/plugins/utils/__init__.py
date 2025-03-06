@@ -1585,10 +1585,10 @@ class CmdHandler:
                 if not is_group_msg(event) and event.user_id == event.self_id:
                     self.logger.warning(f'取消私聊自己的指令处理')
                     return
-
-                # 检测群聊是否启用
+                
+                 # 检测群聊是否启用
                 if self.check_group_enabled and is_group_msg(event) and check_group_disabled(event.group_id):
-                    self.logger.warning(f'取消未启用群聊 {event.group_id} 的指令处理')
+                    # self.logger.warning(f'取消未启用群聊 {event.group_id} 的指令处理')
                     return
 
                 # 权限检查
@@ -1601,6 +1601,8 @@ class CmdHandler:
                 for wblist, kwargs in self.wblist_checks:
                     if not wblist.check(event, **kwargs):
                         return
+
+                # cd检查
                 for cdrate, kwargs in self.cdrate_checks:
                     if not (await cdrate.check(event, **kwargs)):
                         return
@@ -1631,9 +1633,10 @@ class CmdHandler:
 
                 # 记录到历史
                 global cmd_history, MAX_CMD_HISTORY
-                cmd_history.append(context)
-                if len(cmd_history) > MAX_CMD_HISTORY:
-                    cmd_history = cmd_history[-MAX_CMD_HISTORY:]
+                if context.trigger_cmd:
+                    cmd_history.append(context)
+                    if len(cmd_history) > MAX_CMD_HISTORY:
+                        cmd_history = cmd_history[-MAX_CMD_HISTORY:]
 
                 try:
                     return await handler_func(context)
