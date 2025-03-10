@@ -1388,3 +1388,20 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(await get_image_cq(await run_in_pool(canvas.get_img)))
 
 
+# 视频转gif
+video_to_gif = CmdHandler(['/gif'], logger)
+video_to_gif.check_cdrate(cd).check_wblist(gbl)
+@video_to_gif.handle()
+async def _(ctx: HandlerContext):
+    reply_msg = await ctx.aget_reply_msg()
+    assert_and_reply(reply_msg, "请回复一条带有视频的消息")
+    cqs = extract_cq_code(reply_msg)
+    assert_and_reply('video' in cqs, "回复的消息中没有视频")
+    video = cqs['video'][0]
+    video_url = video['url']
+    filesize = int(video['file_size'])
+    assert_and_reply(filesize <= 1024 * 1024 * 10, "视频文件过大，无法处理")
+    async with TempNapcatFilePath('video', video['file']) as video_path:
+        with TempFilePath("gif") as gif_path:
+            await run_in_pool(convert_video_to_gif, video_path, gif_path)
+            return await ctx.asend_reply_msg(await get_image_cq(gif_path))

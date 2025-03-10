@@ -1548,14 +1548,15 @@ async def get_music_detail_str(music):
     return msg
 
 # 合成box图片
-async def compose_box_image(qid, cards, show_id, show_box):
+async def compose_box_image(qid, cards, show_id, show_box, use_after_training=True):
     profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
     avatar_info = await get_player_avatar_info(profile)
     # user cards
     user_cards = profile['userCards']
     # collect card imgs
     async def get_card_full_thumbnail_nothrow(card):
-        try: return await get_card_full_thumbnail(card, card['cardRarityType'] in ['rarity_3', 'rarity_4'])
+        after_training = (card['cardRarityType'] in ['rarity_3', 'rarity_4']) and use_after_training
+        try: return await get_card_full_thumbnail(card, after_training)
         except: return None
     card_imgs = await asyncio.gather(*[get_card_full_thumbnail_nothrow(card) for card in cards])
     # collect chara cards
@@ -3485,6 +3486,9 @@ async def _(ctx: HandlerContext):
     show_box = False
     if 'box' in args:
         show_box = True
+    use_after_training = True
+    if 'before' in args:
+        use_after_training = False
     rare, args = extract_card_rare(args)
     attr, args = extract_card_attr(args)
     supply, args = extract_card_supply(args)
@@ -3516,7 +3520,7 @@ async def _(ctx: HandlerContext):
 
         res_cards.append(card)
     
-    await ctx.asend_reply_msg(await get_image_cq(await compose_box_image(ctx.user_id, res_cards, show_id, show_box)))
+    await ctx.asend_reply_msg(await get_image_cq(await compose_box_image(ctx.user_id, res_cards, show_id, show_box, use_after_training)))
 
 
 # 查询榜线预测

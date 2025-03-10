@@ -35,6 +35,8 @@ import io
 from dataclasses import dataclass, field
 import atexit
 from tenacity import retry, stop_after_attempt, wait_fixed
+from uuid import uuid4
+import decord
 
 
 # 配置文件
@@ -96,10 +98,23 @@ def lighten_color(color, amount=0.5):
     r, g, b = colorsys.hls_to_rgb(h, l, s)
     return f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
 
-def rand_filename(ext):
+def rand_filename(ext: str) -> str:
     if ext.startswith('.'):
         ext = ext[1:]
-    return f"{random.randint(0, 1000000000):09}.{ext}"
+    return f'{uuid4()}.{ext}'
+
+
+class TempFilePath:
+    def __init__(self, ext: str):
+        self.ext = ext
+        self.path = pjoin('data/utils/tmp', rand_filename(ext))
+        create_parent_folder(self.path)
+
+    def __enter__(self):
+        return self.path
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        remove_file(self.path)
 
 
 # 从GIF获取帧间隔
@@ -215,6 +230,56 @@ def markdown_to_image(markdown_text: str) -> Image.Image:
         driver.quit()
         remove_file(html_save_path)
         remove_file(img_save_path)
+
+# 下载文件到本地路径
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+async def download_file(url, file_path):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, verify_ssl=False) as resp:
+            if resp.status != 200:
+                raise Exception(f"下载文件 {url} 失败: {resp.status} {resp.reason}")
+            with open(file_path, 'wb') as f:
+                f.write(await resp.read())
+
+class TempDownloadFilePath:
+    def __init__(self, url, ext: str = None):
+        self.url = url
+        if ext is None:
+            ext = url.split('.')[-1]
+        self.path = pjoin('data/utils/tmp', rand_filename(ext))
+        create_parent_folder(self.path)
+
+    async def __aenter__(self):
+        await download_file(self.url, self.path)
+        return self.path
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        remove_file(self.path)
+
+# 下载napcat文件，返回本地路径
+async def download_napcat_file(ftype: str, file: str) -> str:
+    bot = get_bot()
+    if ftype == 'image':
+        ret = await bot.call_api('get_image', **{'file': file})
+    elif ftype == 'record':
+        ret = await bot.call_api('get_record', **{'file': file, 'out_format': 'wav'})
+    else:
+        ret = await bot.call_api('get_file', **{'file': file})
+    return ret['file']
+
+class TempNapcatFilePath:
+    def __init__(self, ftype: str, file: str):
+        self.ftype = ftype
+        self.file = file
+        self.ext = file.split('.')[-1]
+
+    async def __aenter__(self):
+        path = await download_napcat_file(self.ftype, self.file)
+        self.path = path
+        return path
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        remove_file(self.path)
 
 
 # 编辑距离
@@ -899,6 +964,23 @@ def async_task(name: str, logger: Logger, start_offset=None):
         start_async_task(func, logger, name, start_offset)
         return func
     return wrapper  
+
+
+# 转换视频到gif
+def convert_video_to_gif(video_path, save_path, max_fps=10, max_size=256, max_frame_num=200):
+    utils_logger.info(f'转换视频为GIF: {video_path}')
+    reader = decord.VideoReader(video_path)
+    frame_num, fps = len(reader), reader.get_avg_fps()
+    duration = frame_num / fps
+    max_fps = max(min(max_fps, int(max_frame_num / duration)), 1)
+    indices = np.linspace(0, frame_num - 1, min(frame_num, int(duration * max_fps)), dtype=int)
+    frames = reader.get_batch(indices).asnumpy()
+    resized_frames = []
+    for frame in frames:
+        img = Image.fromarray(frame).convert('RGB')
+        img.thumbnail((max_size, max_size), Image.Resampling.BILINEAR)
+        resized_frames.append(img)
+    resized_frames[0].save(save_path, save_all=True, append_images=resized_frames[1:], duration=1000 / max_fps, loop=0)
 
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #

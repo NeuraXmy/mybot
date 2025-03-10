@@ -19,8 +19,6 @@ cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'imgexp')
 
 DOWNLOAD_MAXSIZE = 1024 * 1024 * 10
-GIF_MAX_FPS = 10
-GIF_MAX_SIZE = 512
 
 search = CmdHandler(['/search'], logger)
 search.check_cdrate(cd).check_wblist(gbl)
@@ -64,32 +62,6 @@ async def aget_video_info(url):
         return info
     return await asyncio.to_thread(get_video_info, url)
 
-async def aconvert_video_to_gif(path):
-    logger.info(f'转换视频为GIF: {path}')
-    def convert_video_to_gif(path):
-        gif_path = path.replace('.mp4', '.gif')
-        import imageio
-        reader = imageio.get_reader(path)
-        fps = reader.get_meta_data()['fps']
-        interval = 1
-        for i in range(1, 10):
-            if fps // i <= GIF_MAX_FPS:
-                interval = i
-                fps = fps // i
-                break
-        writer = imageio.get_writer(gif_path, fps=fps, loop=0, subrectangles=True)
-        for i, frame in enumerate(reader):
-            if i % interval == 0:
-                w, h = frame.shape[1], frame.shape[0]
-                if max(w, h) > GIF_MAX_SIZE:
-                    sacle = GIF_MAX_SIZE / max(w, h)
-                    image = Image.fromarray(frame)
-                    image = image.resize((int(w * sacle), int(h * sacle)))
-                    frame = np.array(image)
-                writer.append_data(frame)
-        return gif_path
-    return await asyncio.to_thread(convert_video_to_gif, path)
-
 async def adownload_video(url, path, maxsize, lowq):
     def download_video(url, path, maxsize):
         opts = {
@@ -105,7 +77,7 @@ async def adownload_video(url, path, maxsize, lowq):
 
 
 
-ytdlp = CmdHandler(['/yt-dlp', '/ytdlp', '/yt_dlp', '/video'], logger)
+ytdlp = CmdHandler(['/yt-dlp', '/ytdlp', '/yt_dlp', '/video', '/xvideo'], logger)
 ytdlp.check_cdrate(cd).check_wblist(gbl, allow_private=True)
 @ytdlp.handle()
 async def _(ctx: HandlerContext):
@@ -150,8 +122,7 @@ async def _(ctx: HandlerContext):
     else:
         logger.info(f'下载视频: {args.url}')
 
-        tmp_save_path = os.path.abspath(f"data/imgexp/tmp/{rand_filename('.mp4')}")
-        try:
+        with TempFilePath("mp4") as tmp_save_path:
             os.makedirs('data/imgexp/tmp', exist_ok=True)
 
             await ctx.asend_reply_msg("正在下载视频...")
@@ -161,24 +132,14 @@ async def _(ctx: HandlerContext):
                 return await ctx.asend_reply_msg(f"视频大小超过限制")
 
             if args.gif:
-                gif_path = await aconvert_video_to_gif(tmp_save_path)
-
-                try:
+                with TempFilePath("gif") as gif_path:
+                    await run_in_pool(convert_video_to_gif, tmp_save_path, gif_path)
                     await ctx.asend_msg(await get_image_cq(gif_path))
-                finally:
-                    if os.path.exists(gif_path):
-                        os.remove(gif_path)
-                
+    
             else:
                 await ctx.asend_msg(f"[CQ:video,file=file:///{tmp_save_path}]")
 
-        finally:
-            if os.path.exists(tmp_save_path):
-                os.remove(tmp_save_path)
 
-
-
-    
 
 async def get_twitter_image_urls(url):
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(3), reraise=True)
