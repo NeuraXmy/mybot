@@ -123,8 +123,6 @@ async def _(ctx: HandlerContext):
         logger.info(f'下载视频: {args.url}')
 
         with TempFilePath("mp4") as tmp_save_path:
-            os.makedirs('data/imgexp/tmp', exist_ok=True)
-
             await ctx.asend_reply_msg("正在下载视频...")
             await adownload_video(args.url, tmp_save_path, DOWNLOAD_MAXSIZE, args.low_quality)
 
@@ -137,7 +135,8 @@ async def _(ctx: HandlerContext):
                     await ctx.asend_msg(await get_image_cq(gif_path))
     
             else:
-                await ctx.asend_msg(f"[CQ:video,file=file:///{tmp_save_path}]")
+                video = await run_in_pool(read_file_as_base64, tmp_save_path)
+                await ctx.asend_msg(f"[CQ:video,file=base64://{video}]")
 
 
 

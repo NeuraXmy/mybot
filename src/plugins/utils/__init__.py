@@ -114,6 +114,7 @@ class TempFilePath:
         return self.path
     
     def __exit__(self, exc_type, exc_val, exc_tb):
+        utils_logger.info(f'删除临时文件 {self.path}')
         remove_file(self.path)
 
 
@@ -281,6 +282,10 @@ class TempNapcatFilePath:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         remove_file(self.path)
 
+# 读取文件为base64字符串
+def read_file_as_base64(file_path):
+    with open(file_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode()
 
 # 编辑距离
 def levenshtein_distance(s1, s2):

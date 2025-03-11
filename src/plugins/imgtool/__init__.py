@@ -1393,6 +1393,20 @@ video_to_gif = CmdHandler(['/gif'], logger)
 video_to_gif.check_cdrate(cd).check_wblist(gbl)
 @video_to_gif.handle()
 async def _(ctx: HandlerContext):
+    parser = ctx.get_argparser()
+    parser.add_argument('--max_size', '-s', type=int, default=256)
+    parser.add_argument('--max_fps', '-f', type=int, default=10)
+    parser.add_argument('--max_frame_num', '-n', type=int, default=200)
+    args = await parser.parse_args(error_reply="""
+    使用方式: (回复一个视频) /gif [--max_size/-s <最大尺寸>] [--max_fps/-f <最大帧率>] [--max_frame_num/-n <最大帧数>]
+    --max_size/-s: 图像的长边超过该尺寸时会将视频保持分辨率缩小 默认为256
+    --max_fps/-f: 图像的帧率超过该值时会抽帧 默认为10
+    --max_frame_num/-n: 图像的帧数量超过该值时会抽帧 默认为200
+    示例:  
+    (回复一个视频) /gif
+    (回复一个视频) /gif -s 512 -f 5 -n 100
+    """.strip())
+
     reply_msg = await ctx.aget_reply_msg()
     assert_and_reply(reply_msg, "请回复一条带有视频的消息")
     cqs = extract_cq_code(reply_msg)
@@ -1403,5 +1417,5 @@ async def _(ctx: HandlerContext):
     assert_and_reply(filesize <= 1024 * 1024 * 10, "视频文件过大，无法处理")
     async with TempNapcatFilePath('video', video['file']) as video_path:
         with TempFilePath("gif") as gif_path:
-            await run_in_pool(convert_video_to_gif, video_path, gif_path)
+            await run_in_pool(convert_video_to_gif, video_path, gif_path, args.max_fps, args.max_size, args.max_frame_num)
             return await ctx.asend_reply_msg(await get_image_cq(gif_path))
