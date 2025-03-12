@@ -55,6 +55,7 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
     msg_obj = await get_msg_obj(bot, event.message_id)
 
     msg = msg_obj['message']
+
     msg_id = msg_obj['message_id']
     msg_text = extract_text(msg)
     img_urls = extract_image_url(msg)

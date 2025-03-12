@@ -527,9 +527,25 @@ async def get_group_list(bot):
     return await bot.call_api('get_group_list')
 
 
+# 为图片消息添加file_unique
+def add_file_unique_for_image(msg):
+    for seg in msg:
+        if seg['type'] == 'image':
+            if not 'file_unique' in seg['data']:
+                url: str = seg['data'].get('url', '')
+                start_idx = url.find('fileid=') + len('fileid=')
+                if start_idx == -1: continue
+                end_idx = url.find('&', start_idx)
+                if end_idx == -1: end_idx = len(url)
+                file_unique = url[start_idx:end_idx]
+                seg['data']['file_unique'] = file_unique
+
+
 # 获取完整消息对象
 async def get_msg_obj(bot, message_id):
-    return await bot.call_api('get_msg', **{'message_id': int(message_id)})
+    msg_obj = await bot.call_api('get_msg', **{'message_id': int(message_id)})
+    add_file_unique_for_image(msg_obj['message'])
+    return msg_obj
 
 
 # 获取消息段
