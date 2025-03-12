@@ -1,139 +1,153 @@
-# 文件名修改为 config.yaml 后生效
-
 bot_name: ""
 log_level: "INFO"
 superuser:
-  - 11111
-  - 22222
+  - 12345
+
+msg_rate_limit_per_second: 3  # 每秒限制发送消息的数量
 
 cd_verbose_interval: 30 # 冷却中时间隔多少秒输出一次cd信息
 
 font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"  # 中文字体路径
 font_name: "Microsoft YaHei"                                  # Matplotlib库使用的中文字体名称
 
+exception_mail: # 发送异常消息邮件的配置
+  host: "smtp.qq.com"          # 邮箱服务器地址
+  port: 587                    # 邮箱服务器端口
+  user: "123@qq.com"      # 邮箱发送者用户名
+  pass: "abcdefg"     # 邮箱密码
+  receivers:                   # 邮箱接收者列表
+    - 1234@qq.com
+
 
 alive:
   check_interval: 3                 # 存活检测间隔（秒）
   time_threshold: 10                # 状态改变多久后才发送提醒（秒）
-  notify_at_connect: True           # 恢复连线时是否发送提醒
-  notify_at_disconnect: True        # 断线时是否发送提醒
-  notify_at_first: False            # 如果bot启动时已经断线/连接，是否发送一次提醒
-  send_email: True                  # 是否发送邮件
-  mail_host: "smtp.qq.com"          # 邮箱服务器地址
-  mail_port: 25                     # 邮箱服务器端口
-  mail_user: "11111111@qq.com"      # 邮箱发送者用户名
-  mail_pass: "1312312312313111"     # 邮箱密码
-  mail_receivers:                   # 邮箱接收者列表
-    - "111111111@qq.com"
+  notify_at_connect: False          # 恢复连线时是否发送邮件提醒
+  notify_at_disconnect: True        # 断线时是否发送邮件提醒
+  notify_at_first: False            # 如果bot启动时已经断线/连接，是否发送一次邮件提醒
+
+  report_groups:  # 群聊连线通知
+    - 123
 
 
 bird:
-  cd: 10
+  cd: 3
   folk_name_max: 10                 # 俗名匹配显示的最大数量
   query_topk: 10                    # 模糊查询显示的前k名
   max_edit_distance: 2              # 模糊查询的最大编辑距离
   
 
 bobing:
-  cd: 10                         
+  cd: 3        
+
+
+broadcast:
+  cd: 3          
 
 
 helper:
-  cd: 300  # 每种help查询单独的cd
+  cd: 3  # 每种help查询单独的cd
 
 
 imgexp:
-  google_cookies: ""
   saucenao_apikey: ""
-  saucenao_max_num: 10
-  google_max_num: 10
-  yandex_max_num: 0
-  ascii2d_max_num: 0
-  cd: 60
+  serp_apikey: ""
+  cd: 3
 
 
 imgtool:
-  cd: 30
+  cd: 3
 
 
 llm:
-  api_key: ""
-  api_base: ""
+  chat_max_tokens: 2048                    # 聊天最大生成长度
 
-  quota_check_url: ""                     # 检查配额的url
-  quota_check_username: ""                # 检查配额的用户名
-  quota_check_password: ""                # 检查配额的密码
-  quota_check_interval: 60                # 检查配额的间隔（分钟）
-  
-  chat_model:                             # 聊天模型
-    id: "gpt-4o"
-    input_pricing:  0.000005              # 每个输入token的价格（美元）
-    output_pricing: 0.000015              # 每个输出token的价格（美元）
-  chat_max_tokens: 2048                   # 聊天最大生成长度
-
-  text_embedding_model:                   # 文本嵌入模型
+  text_embedding_model:                    # 文本嵌入模型
+    provider: "AI-YYDS"
     id: "text-embedding-ada-002"           
-    input_pricing:  0.00000002            # 每个输入token的价格（美元）
+    input_pricing:  0.00000002             # 每个输入token的价格（美元）
 
-  tts_model:                              # 文本转语音模型
+  tts_model:                               # 文本转语音模型
+    provider: "AI-YYDS"
     id: "tts-1"
-    input_pricing:  0.000015              # 每个输入字符的价格（美元）
+    input_pricing:  0.000015               # 每个输入字符的价格（美元）
     voice: "alloy"                         # TTS语音名称
   
 
 chat:
-  fold_response_threshold: 400    # 群聊中超过多少字折叠回复
-  session_len_limit: 10           # 会话长度限制
+  default_private_model_name: # 默认私聊模型名称
+    text: "gpt-4o"
+    mm: "gpt-4o"
+    tool: "gpt-4o"
+  default_group_model_name:   # 默认群聊模型名称
+    text: "deepseek-v3-free"
+    mm: "qwen2.5-vl-72b-instruct-free" 
+    tool: "gpt-4o"
+  fold_response_threshold: 400              # 群聊中超过多少字折叠回复
+  session_len_limit: 20                     # 会话长度限制
   chat_cd: 10
   tts_cd: 60
+  img_trans_cd: 120
 
 
 cron:
+  model_name: "gpt-4o"            # 使用的模型名称
   max_retries: 5                  # 最大重试次数
-  cd: 10  
+  cd: 3  
 
 
 eval:
-  cd: 10
+  cd: 3
 
 
 mc:
   query_interval: 1              # 向卫星地图查询的间隔（秒）
   queue_consume_interval: 1      # 队列消费间隔（秒）
   query_offset: -1000            # 查询时间的偏移量
-  disconnect_notify_count: 8     # 和服务器断联多少次后提醒
+  disconnect_notify_count: 60    # 和服务器断联多少次后提醒
   ascii_art_width: 50            # 字符画的宽度
   player_time_update_interval: 60   # 超过多少秒自动更新玩家在线时间
-  cd: 5
+  cd: 3
 
 
 oeis:
   search_num: 3
-  cd: 10
+  cd: 3
 
 
 record:
-  
+  cd: 3
 
 rpc:
   host: "0.0.0.0"
-  port: 00000
+  port: 24444
   
 
 run_code:
-  cd: 10                       
+  cd: 3     
 
 
 sekai:
   font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"
   data_update_times:  # 定时更新数据的时间[时，分，秒]
     - [5, 0, 0]
+    - [8, 0, 0]
     - [11, 0, 0]
+    - [14, 0, 0]
+    - [17, 0, 0]
+    - [20, 0, 0]
   vlive_start_notify_before_minute:       # 提前多少分钟提醒vlive开始（列表）
     - 10
   vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
     - 140
-  cd: 2               
+  cd: 3               
+  api_status_url:   "https://localhost/api/status"
+  profile_api_url:  "https://localhost/api/user/{uid}/profile"  
+  suite_api_url:    "https://localhost/api/user/{uid}/suite"    
+  mysekai_api_url:  "https://localhost/api/user/{uid}/mysekai"  
+  mysekai_photo_api_url: "https://localhost/api/mysekai/photo/{photo_path}"
+  suite_upload_time_api_url: "https://localhost/api/suite/upload_time"
+  mysekai_upload_time_api_url: "https://localhost/api/mysekai/upload_time"
 
 
 statistics:
@@ -143,16 +157,16 @@ statistics:
   plot_topk: 5                  # 折线图显示的前k名
   plot_interval: 15             # 折线图的时间间隔（分钟）
   sta_word_topk: 8              # 词汇统计显示前k个用户
-  cd: 60
+  cd: 3
 
 
 touhou:
   sc_query_max_num: 5           # 符卡查询显示的最大数量
-  cd: 60
+  cd: 3
 
 
 water:
-  cd: 10                      
+  cd: 3                      
 
 
 welcome:

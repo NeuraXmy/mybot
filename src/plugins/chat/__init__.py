@@ -526,6 +526,13 @@ replying_group_ids = set()
 image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
 
 @dataclass
+class SchedulerItem:
+    behavior: str
+    start_time: datetime
+    end_time: datetime
+    prob: float
+
+@dataclass
 class AutoChatConfig:
     model_names: list[str]
     reasoning: bool
@@ -542,6 +549,7 @@ class AutoChatConfig:
     image_caption_prompt: str
     image_caption_limit: int
     image_caption_prob: float
+    trigger_keywords: dict[str, float]
 
     @staticmethod
     def get_config():
@@ -551,28 +559,41 @@ class AutoChatConfig:
         return AutoChatConfig(**config)
 
 @dataclass
-class AutoChatMemory:
+class AutoChatGroupMemory:
     group_id: str
     self_history: List[str] = field(default_factory=list)
 
     @staticmethod
-    def load(group_id=None):
-        if group_id is None: group_id = "global"
+    def load(group_id):
+        assert group_id != 'global'
         memory_db = get_file_db(f"data/chat/autochat_memory_db/{group_id}.json", logger)
-        group_id = str(group_id)
-        all_memory = memory_db.get("autochat_memory", {})
-        memory = all_memory.get(group_id, {})
+        memory = memory_db.get("memory", {})
         memory['group_id'] = group_id
-        return AutoChatMemory(**memory)
+        return AutoChatGroupMemory(**memory)
     
     def save(self):
         memory_db = get_file_db(f"data/chat/autochat_memory_db/{self.group_id}.json", logger)
-        all_memory = memory_db.get("autochat_memory", {})
-        memory = all_memory.get(self.group_id, {})
+        memory = memory_db.get("memory", {})
         for k, v in self.__dict__.items():
             memory[k] = v
-        all_memory[self.group_id] = memory
-        memory_db.set("autochat_memory", all_memory)
+        memory_db.set("memory", memory)
+
+@dataclass
+class AutoChatGlobalMemory:
+    scheduler: Optional[List[SchedulerItem]] = None
+
+    @staticmethod
+    def load():
+        memory_db = get_file_db(f"data/chat/autochat_memory_db/global.json", logger)
+        memory = memory_db.get("memory", {})
+        return AutoChatGlobalMemory(**memory)
+    
+    def save(self):
+        memory_db = get_file_db(f"data/chat/autochat_memory_db/global.json", logger)
+        memory = memory_db.get("memory", {})
+        for k, v in self.__dict__.items():
+            memory[k] = v
+        memory_db.set("memory", memory)
 
 
 autochat_on = CmdHandler(["/autochat_on"], logger, priority=100)
@@ -730,10 +751,11 @@ async def _(ctx: HandlerContext):
         if event.user_id == self_id: return
         # / 开头的消息不触发
         if msg_text.startswith("/"): return
-        # 没有文本的消息不触发
-        # if not msg_text: return
 
+        # 设置和群组记忆、全局记忆
         cfg = AutoChatConfig.get_config()
+        global_memory = AutoChatGlobalMemory.load()
+        group_memory = AutoChatGroupMemory.load(group_id)
 
         # 检测是否触发
         is_trigger = False
@@ -746,6 +768,11 @@ async def _(ctx: HandlerContext):
         # 概率触发
         elif random.random() <= chat_prob: 
             is_trigger = True
+        # 关键词触发
+        for keyword, prob in cfg.trigger_keywords.items():
+            if keyword in msg_text and random.random() <= prob:
+                is_trigger = True
+                break
 
         # 正在回复的群聊不触发
         if group_id in replying_group_ids: return
@@ -754,7 +781,6 @@ async def _(ctx: HandlerContext):
         
         if not is_trigger: return
         logger.info(f"群聊 {group_id} 自动聊天触发 消息id {event.message_id}")
-        memory = AutoChatMemory.load(group_id)
 
         # 获取内容
         await asyncio.sleep(2)
@@ -771,7 +797,7 @@ async def _(ctx: HandlerContext):
         prompt = prompt_template.format(
             group_name=await get_group_name(bot, group_id),
             recent_msgs="\n".join(recent_texts),
-            self_history="\n".join(memory.self_history)
+            self_history="\n".join(group_memory.self_history)
         ).strip()
 
         # 生成回复
@@ -835,10 +861,11 @@ async def _(ctx: HandlerContext):
         msg = await ctx.asend_msg(res_text)
         if msg:
             autochat_msg_ids.add(int(msg['message_id']))
-            memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
-            while len(memory.self_history) > cfg.self_history_num:
-                memory.self_history.pop(0)
-            memory.save()
+            group_memory.self_history.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} msg_id={msg['message_id']}: {res_text}")
+            while len(group_memory.self_history) > cfg.self_history_num:
+                group_memory.self_history.pop(0)
+            group_memory.save()
+            global_memory.save()
 
     except:
         logger.print_exc(f"群聊 {group_id} 自动聊天失败")

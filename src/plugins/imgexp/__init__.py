@@ -33,22 +33,16 @@ async def _(ctx: HandlerContext):
     assert_and_reply('image' in cqs, f"请使用 /search 回复一张图片")
   
     img_url = cqs['image'][0]['url']
-    logger.info(f'搜索图片: {img_url}')
-    res_img, res_info = await search_image(img_url)
-    logger.info(f'搜索图片成功: {img_url} 共 {len(res_info)} 个结果')
-    assert_and_reply(res_info, f"无搜索结果")
+    img, results = await search_image(img_url)
     
-    msg = await get_image_cq(res_img)
-    source_urls = {}
-    for info in res_info:
-        source, url = info['source'], info['url']
-        if source not in source_urls:
-            source_urls[source] = []
-        source_urls[source].append(url)
-    for source in source_urls:
-        for i, url in enumerate(source_urls[source]):
-            msg += f"NO.{i+1} from {source}:\n{url}\n"
-    return await ctx.asend_fold_msg_adaptive(msg, threshold=0)
+    msg = ""
+    for result in results:
+        if result.results:
+            msg += f"来自 {result.source} 的结果:\n"
+            for i, item in enumerate(result.results):
+                msg += f"#{i+1}\n{item.url}\n"
+
+    return await ctx.asend_multiple_fold_msg([await get_image_cq(img), msg.strip()])
 
 
 async def aget_video_info(url):

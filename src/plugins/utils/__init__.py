@@ -791,7 +791,7 @@ async def send_multiple_fold_msg(bot, event, contents):
             "nickname": BOT_NAME,
             "content": content
         }
-    } for content in contents]
+    } for content in contents if content]
     if is_group_msg(event):
         return await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
     else:
