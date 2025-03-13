@@ -519,7 +519,7 @@ async def _(ctx: HandlerContext):
 
 # ------------------------------------------ 自动聊天 ------------------------------------------ #
 
-AUTO_CHAT_CONFIG_PATH = "data/chat/autochat_config.yaml"
+AUTO_CHAT_CONFIG_PATH = "autochat_config.yaml"
 autochat_sub = SubHelper("自动聊天", file_db, logger)
 autochat_msg_ids = set()
 replying_group_ids = set()

@@ -20,7 +20,7 @@ gbl = get_group_black_list(file_db, logger, 'imgexp')
 
 DOWNLOAD_MAXSIZE = 1024 * 1024 * 10
 
-search = CmdHandler(['/search'], logger)
+search = CmdHandler(['/search', '/搜图'], logger)
 search.check_cdrate(cd).check_wblist(gbl)
 @search.handle()
 async def _(ctx: HandlerContext):
