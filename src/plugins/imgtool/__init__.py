@@ -12,6 +12,7 @@ from io import BytesIO
 from aiohttp import ClientSession
 from enum import Enum
 from tenacity import retry, wait_fixed, stop_after_attempt
+import rembg
 
 
 config = get_config('imgtool')
@@ -269,8 +270,9 @@ async def get_multi_images(ctx: HandlerContext) -> List[Image.Image]:
         user_id = str(ctx.user_id)
         img_urls = get_image_list(user_id).get(user_id, [])
         assert_and_reply(img_urls, """
-图片列表为空，请先使用 /img push 添加图片
-也可以直接回复包含多张图片的消息或折叠转发消息
+请指定要操作的图片！
+方法1. 回复包含单张、多张图片的消息、折叠转发消息
+方法2. 使用图片列表，请使用 /img push 回复包含图片以添加图片
 """.strip())
         
     # 下载图片
@@ -283,6 +285,9 @@ async def get_multi_images(ctx: HandlerContext) -> List[Image.Image]:
             await ctx.asend_reply_msg(f"获取图片 {img_url} 失败")
             raise NoReplyException()
         imgs.append(img)
+
+    if len(imgs) == 1:
+        return imgs[0]
     return imgs
 
 # 进行图片操作
@@ -317,18 +322,17 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
         cur_type = ops[i][0].input_type
         assert_and_reply(pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配")
 
-    # 如果回复的是转发消息，则即使不是Multiple输入也尝试使用多图
-    reply_msg = await ctx.aget_reply_msg()
-    cqs = extract_cq_code(reply_msg)
-    reply_forward = 'forward' in cqs
-
     # 获取图片，并检查初始输入类型是否匹配
-    fst_input_type = ops[0][0].input_type
-    if fst_input_type == ImageType.Multiple or reply_forward:
-        img = await get_multi_images(ctx)
-    else:
-        img = await get_reply_fst_image(ctx)
-        assert_and_reply(fst_input_type.check_img(img), f"回复的图片类型与 1.{ops[0][0].name} 的输入类型 {ops[0][0].input_type} 不匹配")
+    img = await get_multi_images(ctx)
+    img_num = 1 if isinstance(img, Image.Image) else len(img)
+    img_type = ImageType.get_type(img)
+    first_input_type = ops[0][0].input_type
+    if img_num == 1:
+        assert_and_reply(first_input_type.check_img(img), f"初始图片类型不匹配, 需要 {first_input_type}, 实际为 {img_type}")
+    elif img_num > 1:
+        if first_input_type != ImageType.Multiple:
+            for i, item in enumerate(img):
+                assert_and_reply(first_input_type.check_img(item), f"第{i+1}张图片类型不匹配, 需要 {first_input_type}, 实际为 {ImageType.get_type(item)}")
 
     # 执行操作序列
     for i, (op, args) in enumerate(ops):
@@ -339,8 +343,7 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
             raise ReplyException(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
         
     # 清空图片列表
-    if fst_input_type == ImageType.Multiple:
-        await clear_image_list(ctx, reply=False)    
+    await clear_image_list(ctx, reply=False)    
         
     logger.info(f"{len(ops)}个图片操作全部执行完毕")
 
@@ -1130,6 +1133,21 @@ class DemirageOperation(ImageOperation):
         surface = surface.convert('RGB')
         hidden = hidden.convert('RGB')
         return [surface, hidden]
+
+class CutoutOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("cutout", ImageType.Any, ImageType.Any, 'batch')
+        self.help = """
+抠图
+""".strip()
+        
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(not args, "该操作不接受参数")
+    
+    def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        img = img.convert('RGBA')
+        img = rembg.remove(img)
+        return img
 
 
 # 注册所有图片操作

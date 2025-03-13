@@ -47,6 +47,7 @@
 - [`saturate` 饱和度调节](#saturate)
 - [`blur` 模糊](#blur)
 - [`demirage` 揭露幻影坦克](#demirage)
+- [`cutout` 抠图](#cutout)
 
 ---
 
@@ -588,6 +589,20 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 - **示例**
 
     `demirage`
+
+
+## `cutout`
+```
+抠图
+```
+
+- **输入输出**
+
+    `任意 -> 任意`
+
+- **示例**
+
+    `coutout`
 
 
 --- 
