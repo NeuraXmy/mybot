@@ -175,6 +175,21 @@ def msg_user(group_id, user_id):
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
+# 获取指定时间之前的若干条消息
+def msg_before(group_id, time, limit):
+    conn = get_conn(group_id)
+    cursor = conn.cursor()
+    query = f'''
+        SELECT * FROM {MSG_TABLE_NAME.format(group_id)}
+        WHERE time <= ?
+        ORDER BY time DESC
+        LIMIT ?
+    '''
+    cursor.execute(query, (time.timestamp(), limit))
+    rows = cursor.fetchall()
+    logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 时间在 {time} 之前的 {limit} 条消息 {len(rows)} 条")
+    return [msg_row_to_ret(row) for row in rows]
+
 
 # 插入到文本表
 def text_insert(group_id, time, msg_id, user_id, nickname, text):

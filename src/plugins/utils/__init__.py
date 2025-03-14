@@ -20,7 +20,7 @@ import random
 from argparse import ArgumentParser
 import colorsys
 import inspect
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Union, Any
 import shutil
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re

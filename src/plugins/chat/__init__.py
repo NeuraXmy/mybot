@@ -519,6 +519,8 @@ async def _(ctx: HandlerContext):
 
 # ------------------------------------------ 自动聊天 ------------------------------------------ #
 
+# 浪费时间，不想再写了
+
 AUTO_CHAT_CONFIG_PATH = "autochat_config.yaml"
 autochat_sub = SubHelper("自动聊天", file_db, logger)
 autochat_msg_ids = set()
@@ -722,7 +724,7 @@ async def _(ctx: HandlerContext):
     args = ctx.get_args().strip()
     group_id = int(args) if args else ctx.group_id
     group_name = await get_group_name(ctx.bot, group_id)
-    memory = AutoChatMemory.load(group_id)
+    memory = AutoChatGroupMemory.load(group_id)
     memory.self_history = []
     memory.save()
     if group_id == ctx.group_id:
@@ -732,6 +734,7 @@ async def _(ctx: HandlerContext):
 
 
 autochat = CmdHandler([""], logger, block=False, priority=1)
+autochat.check_group()
 @autochat.handle()
 async def _(ctx: HandlerContext):
     bot, event = ctx.bot, ctx.event
