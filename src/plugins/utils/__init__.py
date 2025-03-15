@@ -832,8 +832,10 @@ async def send_private_msg_by_bot(bot, user_id, message):
 
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
-async def send_fold_msg_adaptive(bot, handler, event, message, threshold=100, need_reply=True):
-    if is_group_msg(event) and len(message) > threshold:
+async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None):
+    if text_len is None: 
+        text_len = get_str_appear_length(message)
+    if is_group_msg(event) and text_len > threshold:
         return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
     if need_reply:
         return await send_reply_msg(handler, event, message)
@@ -1610,8 +1612,8 @@ class HandlerContext:
     def asend_at_msg(self, msg: str):
         return send_at_msg(self.nonebot_handler, self.event, msg)
 
-    def asend_fold_msg_adaptive(self, msg: str, threshold=100, need_reply=True):
-        return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply)
+    def asend_fold_msg_adaptive(self, msg: str, threshold=200, need_reply=True, text_len=None):
+        return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply, text_len)
 
     async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True):
         if show_cmd:

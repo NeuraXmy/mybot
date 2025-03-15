@@ -34,8 +34,10 @@ SYSTEM_PROMPT_PATH       = "data/chat/system_prompt.txt"
 SYSTEM_PROMPT_TOOLS_PATH = "data/chat/system_prompt_tools.txt"
 TOOLS_TRIGGER_WORDS_PATH = "data/chat/tools_trigger_words.txt"
 SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
+
 CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
 NOTHINK_TRIGGER_WORDS = ['nothink', 'noreason']
+IMAGE_RESPONSE_TRIGGER_WORDS = ['GI', '生成图片', 'gen image', 'gen_image', 'generate image', 'generate_image']
 
 FORWARD_MSG_INPUT_LIMIT = 10
 
@@ -74,12 +76,12 @@ async def use_tool(handle, session, type, data, event):
 # 获取某个群组当前的模型名
 def get_group_model_name(group_id, mode):
     group_model_dict = file_db.get("group_chat_model_dict", {})
-    return group_model_dict.get(str(group_id), DEFAULT_GROUP_MODEL_NAME)[mode]
+    return group_model_dict.get(str(group_id), DEFAULT_GROUP_MODEL_NAME).get(mode, DEFAULT_GROUP_MODEL_NAME[mode])
 
 # 获取某个用户私聊当前的模型名
 def get_private_model_name(user_id, mode):
     private_model_dict = file_db.get("private_chat_model_dict", {})
-    return private_model_dict.get(str(user_id), DEFAULT_PRIVATE_MODEL_NAME)[mode]
+    return private_model_dict.get(str(user_id), DEFAULT_PRIVATE_MODEL_NAME).get(mode, DEFAULT_PRIVATE_MODEL_NAME[mode])
 
 # 获取某个event的模型名
 def get_model_name(event, mode):
@@ -163,21 +165,21 @@ async def _(ctx: HandlerContext):
         # 群组名单检测
         if not gwl.check(event, allow_private=True, allow_super=True): return
 
-        #  如果不是/chat触发的消息，在群组内或者自己对自己的私聊，只有at机器人的消息才会被回复
-        if not triggered_by_chat_cmd:
-            if is_group_msg(event) or check_self(event):
-                has_at = False
-                if "at" in query_cqs:
-                    for cq in query_cqs["at"]:
-                        if cq["qq"] == bot.self_id:
-                            has_at = True
-                            break
-                if "text" in query_cqs:
-                    for cq in query_cqs["text"]:
-                        if f"@{BOT_NAME}" in cq['text']:
-                            has_at = True
-                            break
-                if not has_at: return
+        # 如果不是/chat触发的消息，并且在群组内或者自己对自己的私聊，则只有at机器人的消息才会被回复
+        has_true_at = False
+        has_text_at = False
+        if "at" in query_cqs:
+            for cq in query_cqs["at"]:
+                if cq["qq"] == bot.self_id:
+                    has_true_at = True
+                    break
+        if "text" in query_cqs:
+            for cq in query_cqs["text"]:
+                if f"@{BOT_NAME}" in cq['text']:
+                    has_text_at = True
+                    break
+        if not triggered_by_chat_cmd and (is_group_msg(event) or check_self(event)):
+            if not (has_true_at or has_text_at): return
         
         # cd检测
         if not (await chat_cd.check(event)): return
@@ -187,8 +189,12 @@ async def _(ctx: HandlerContext):
 
         # 用于备份的session_id
         session_id_backup = None
-
         model_name = None
+
+        # 清除文本形式的at
+        if has_text_at:
+            query_text = query_text.replace(f"@{BOT_NAME}", "")
+
         # 如果在对话中指定模型名
         if "model:" in query_text:
             if is_group_msg(event) and not check_superuser(event): 
@@ -198,7 +204,8 @@ async def _(ctx: HandlerContext):
                 ChatSession.check_model_name(model_name)
             except Exception as e:
                 return await ctx.asend_reply_msg(f"{e}")
-            query_text = query_text.replace(f"model:{model_name}", "").strip()       
+            query_text = query_text.replace(f"model:{model_name}", "").strip()     
+            logger.info(f"使用指定模型: {model_name}")  
 
         # 是否是cleanchat
         if any([word in query_text for word in CLEANCHAT_TRIGGER_WORDS]):
@@ -206,6 +213,7 @@ async def _(ctx: HandlerContext):
                 query_text = query_text.replace(word, "")
             need_tools = False
             system_prompt = None
+            logger.info(f"使用CleanChat模式")
         else:
             # 是否需要使用工具
             tools_trigger_words = []
@@ -228,7 +236,19 @@ async def _(ctx: HandlerContext):
             for word in NOTHINK_TRIGGER_WORDS:
                 query_text = query_text.replace(word, "")
             enable_reasoning = False
+            logger.info(f"使用关闭思考模式")
 
+        # 是否生成图片
+        enable_image_response = False
+        if any([word in query_text for word in IMAGE_RESPONSE_TRIGGER_WORDS]):
+            for word in IMAGE_RESPONSE_TRIGGER_WORDS:
+                query_text = query_text.replace(word, "")
+            enable_image_response = True
+            query_text += "\n生成图片作为回复"
+            system_prompt = None
+            logger.info(f"使用生成图片模式")
+            
+        # 收集回复消息的内容
         reply_msg_obj = await get_reply_msg_obj(bot, query_msg)
         if reply_msg_obj is not None:
             # 回复模式，检测是否在历史会话中
@@ -261,6 +281,7 @@ async def _(ctx: HandlerContext):
                     for forward_msg in forward_msgs:
                         forward_msg_text = extract_text(forward_msg)
                         forward_imgs = extract_image_url(forward_msg)
+                        forward_imgs = [await download_image_to_b64(img) for img in forward_imgs]
                         if forward_msg_text.strip() != "" or forward_imgs:
                             session.append_user_content(forward_msg_text, forward_imgs)
                 # 回复普通内容
@@ -280,7 +301,9 @@ async def _(ctx: HandlerContext):
         # 如果未指定模型，根据配置和消息类型获取模型
         if not model_name:
             mode = "text"
-            if need_tools:
+            if enable_image_response:
+                mode = "image"
+            elif need_tools:
                 mode = "tool"
             elif session.has_multimodal_content():
                 mode = "mm"
@@ -291,11 +314,25 @@ async def _(ctx: HandlerContext):
         tools_additional_info = ""
         rest_quota, provider_name = 0, None
         reasoning = None
+        text_len = 0
 
         for _ in range(3):
             t = datetime.now()
-            resp = await session.get_response(model_name=model_name, enable_reasoning=enable_reasoning)
-            res_text = resp.result
+            resp = await session.get_response(
+                model_name=model_name, 
+                enable_reasoning=enable_reasoning,
+                image_response=enable_image_response,
+            )
+
+            text_len = get_str_appear_length(resp.result)
+            res_text = ""
+            for part in resp.result_list:
+                if isinstance(part, str):
+                    res_text += part
+                else:
+                    res_text += await get_image_cq(part)
+            res_text = res_text.strip()
+
             total_ptokens += resp.prompt_tokens
             total_ctokens += resp.completion_tokens
             total_cost += resp.cost
@@ -350,7 +387,11 @@ async def _(ctx: HandlerContext):
     final_text = tools_additional_info + reasoning_text + res_text + additional_info
 
     # 进行回复
-    ret = await ctx.asend_fold_msg_adaptive(final_text, FOLD_LENGTH_THRESHOLD)
+    ret = await ctx.asend_fold_msg_adaptive(
+        final_text, 
+        threshold=FOLD_LENGTH_THRESHOLD * 2, 
+        text_len=text_len
+    )
 
     # 加入会话历史
     if ret and len(session) < SESSION_LEN_LIMIT:
@@ -370,7 +411,8 @@ async def _(ctx: HandlerContext):
         text_model_name = get_model_name(ctx.event, "text")
         mm_model_name = get_model_name(ctx.event, "mm")
         tool_model_name = get_model_name(ctx.event, "tool")
-        return await ctx.asend_reply_msg(f"当前文本模型: {text_model_name}\n当前多模态模型: {mm_model_name}\n当前工具模型: {tool_model_name}")
+        image_model_name = get_model_name(ctx.event, "image")
+        return await ctx.asend_reply_msg(f"文本模型: {text_model_name}\n多模态模型: {mm_model_name}\n工具模型: {tool_model_name}\n图片生成模型: {image_model_name}")
     # 修改
     else:
         # 群聊中只有超级用户可以修改模型
@@ -393,6 +435,12 @@ async def _(ctx: HandlerContext):
             args = args.replace("tool", "").strip()
             change_model_name(ctx.event, args, "tool")
             return await ctx.asend_reply_msg(f"已切换工具模型: {last_model_name} -> {args}")
+        # 只修改图片生成模型
+        elif "image" in args:
+            last_model_name = get_model_name(ctx.event, "image")
+            args = args.replace("image", "").strip()
+            change_model_name(ctx.event, args, "image")
+            return await ctx.asend_reply_msg(f"已切换图片生成模型: {last_model_name} -> {args}")
         # 同时修改文本和多模态模型
         else:
             msg = ""

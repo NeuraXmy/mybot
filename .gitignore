@@ -148,3 +148,4 @@ dmypy.json
 
 src/plugins/misc/
 src/plugins/llm/api_providers/
+autochat_config.yaml

@@ -18,8 +18,11 @@ CHAT_TIMEOUT = 300
 CHAT_MAX_TOKENS = config['chat_max_tokens']
 session_id_top = 0
 
-# 转化PIL图片为base64
+# 转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
 def get_image_b64(image: Image.Image):
+    """
+    转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
+    """
     tmp_path = f"data/chat/tmp/{rand_filename('jpg')}"
     os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
     try:
@@ -32,6 +35,9 @@ def get_image_b64(image: Image.Image):
 
 # 下载并编码图片为base64
 async def download_image_to_b64(image_path):
+    """
+    下载并编码指定路径的图片为带 "data:image/jpeg;base64," 前缀的base64字符串
+    """
     img = (await download_image(image_path)).convert('RGB')
     return get_image_b64(img)
 
@@ -46,6 +52,8 @@ class ChatSessionResponse:
     cost: float
     quota: float
     reasoning: Optional[str] = None
+    images: List[Image.Image] = field(default_factory=list)
+    result_list: List[Union[str, Image.Image]] = field(default_factory=list)
 
 # 会话类型
 class ChatSession:
@@ -63,6 +71,8 @@ class ChatSession:
         provider, model = api_provider_mgr.find_model(model_name, raise_exc=True)
         if mode == "mm" and not model.is_multimodal:
             raise Exception(f"模型 {model_name} 不支持多模态输入")
+        if mode == "image" and not model.image_response:
+            raise Exception(f"模型 {model_name} 不支持图片回复")
 
     def __init__(self, system_prompt=None):
         global session_id_top
@@ -94,7 +104,9 @@ class ChatSession:
             "content": content
         })
         if verbose:
-            logger.info(f"会话{self.id}添加消息: role:{role} text:{text} + {len(imgs)} img(s), 目前会话长度:{len(self)}")
+            log_text = f"会话{self.id}添加{role}_content: "
+            log_text += text.replace('\n', '\\n') + f" + {len(imgs)}img(s), 目前会话长度:{len(self)}"
+            logger.info(log_text)
 
     # 添加系统消息
     def append_system_content(self, text, verbose=True):
@@ -123,7 +135,7 @@ class ChatSession:
         return self.has_image
 
     # 获取回复 并且自动添加回复到消息列表
-    async def get_response(self, model_name, enable_reasoning=False):
+    async def get_response(self, model_name, enable_reasoning=False, image_response=False):
         logger.info(f"会话{self.id}请求回复, 使用模型: {model_name}")
 
         provider, model = api_provider_mgr.find_model(model_name)
@@ -147,46 +159,65 @@ class ChatSession:
                 })
 
         # 请求回复
-        client = provider.get_client()
-        url = f"{client.base_url}chat/completions"
-        headers = {
-            "Authorization": f"Bearer {client.api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": model.get_model_id(),
-            "messages": content,
-        }
+        extra_body = {}
         if model.include_reasoning:
-            payload["include_reasoning"] = use_reasoning
-        if model.data:
-            if reasoning_effort := model.data.get("reasoning_effort"):
-                payload["reasoning_effort"] = reasoning_effort
+            extra_body["include_reasoning"] = use_reasoning
+        if model.image_response:
+            extra_body["image_response"] = image_response
+        if reasoning_effort := model.data.get("reasoning_effort"):
+            extra_body["reasoning_effort"] = reasoning_effort
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=payload, timeout=CHAT_TIMEOUT) as resp:
-                if resp.status != 200:
-                    raise Exception(f"请求失败 {resp.status} {resp.reason}: {await resp.text()}")
-                response = await resp.json()
-                if "error" in response:
-                    raise Exception(f"请求失败: {response['error']}")
+        client = provider.get_client()
+        response = await client.chat.completions.create(
+            model=model.get_model_id(),
+            messages=content,
+            extra_body=extra_body,
+        )
+        if not isinstance(response, dict):
+            response = response.model_dump()
+
+        if response.get('error'):
+            raise Exception(response['error'])
 
         # 解析回复
         message             = response['choices'][0]['message']
         prompt_tokens       = response['usage']['prompt_tokens']
         completion_tokens   = response['usage']['completion_tokens']
 
-        result = message['content']
-        reasoning = None
+        # 回复内容
+        resp_content = message['content']
+        if isinstance(resp_content, str):
+            # 纯文本回复
+            result = resp_content
+            images = []
+            result_list = [result]
+        else:
+            # 多段回复（文本+图片）
+            result = ""
+            images = []
+            for part in resp_content:
+                if isinstance(part, str):
+                    result += part
+                elif isinstance(part, Image.Image):
+                    result += "[图片]"
+                    images.append(part)
+                result_list = resp_content
+
+        # 推理内容
+        reasoning: str = None
         if 'reasoning_content' in message:
             reasoning = message['reasoning_content']
         elif 'reasoning' in message:
             reasoning = message['reasoning']
-        
-        logger.info(f"会话{self.id}获取回复: {truncate(result, 64)}, 思考:{truncate(reasoning or '无', 64)}, 使用token数: {prompt_tokens}+{completion_tokens}")
+
+        log_text = f"会话{self.id}获取回复，使用token: {prompt_tokens}+{completion_tokens}，内容:\n"
+        if reasoning: log_text += f"【思考】" + truncate(reasoning.replace('\n', '\\n'), 128) + "\n"
+        for part in result_list:
+            log_text += truncate(part.replace('\n', '\\n'), 128) if isinstance(part, str) else "[图片]"
+        logger.info(log_text)
 
         # 添加到对话记录
-        self.append_bot_content(result, verbose=False)
+        self.append_bot_content(result, imgs=[get_image_b64(img) for img in images], verbose=False)
 
         # 计算并更新额度
         cost = model.calc_price(prompt_tokens, completion_tokens)
@@ -201,6 +232,8 @@ class ChatSession:
             cost=cost,
             quota=quota,
             reasoning=reasoning,
+            images=images,
+            result_list=result_list,
         )
 
 
