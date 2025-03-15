@@ -117,8 +117,10 @@ def change_model_name(event, model_name, mode):
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
+# 会话过期时间
+SESSION_EXPIRE_TIME = timedelta(hours=12)
 # 会话列表 索引为最后一次消息的id
-sessions = {}
+sessions: Dict[str, ChatSession] = {}
 # 询问的消息id集合
 query_msg_ids = set()
 
@@ -398,6 +400,12 @@ async def _(ctx: HandlerContext):
         ret_id = str(ret["message_id"])
         sessions[ret_id] = session
         logger.info(f"会话{session.id}加入会话历史:{ret_id}, 长度:{len(session)}")
+
+    # 检查过期会话
+    for k, v in list(sessions.items()):
+        if datetime.now() - v.update_time > SESSION_EXPIRE_TIME:
+            sessions.pop(k)
+            logger.info(f"删除过期的会话{k}")
 
 
 # 获取或修改当前私聊或群聊使用的模型

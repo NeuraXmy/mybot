@@ -85,6 +85,8 @@ class ChatSession:
         if system_prompt:
             self.append_system_content(system_prompt, verbose=False)
 
+        self.update_time = datetime.now()
+
     # 添加一条消息
     def append_content(self, role, text, imgs=None, verbose=True):
         if imgs is None: 
@@ -107,6 +109,7 @@ class ChatSession:
             log_text = f"会话{self.id}添加{role}_content: "
             log_text += text.replace('\n', '\\n') + f" + {len(imgs)}img(s), 目前会话长度:{len(self)}"
             logger.info(log_text)
+        self.update_time = datetime.now()
 
     # 添加系统消息
     def append_system_content(self, text, verbose=True):
@@ -129,6 +132,7 @@ class ChatSession:
         logger.info(f"会话{self.id}清空消息")
         self.content = []
         self.has_image = False
+        self.update_time = datetime.now()
 
     # 是否存在多模态消息
     def has_multimodal_content(self):
@@ -222,6 +226,8 @@ class ChatSession:
         # 计算并更新额度
         cost = model.calc_price(prompt_tokens, completion_tokens)
         quota = await provider.aupdate_quota(-cost)
+
+        self.update_time = datetime.now()
 
         return ChatSessionResponse(
             result=result,
