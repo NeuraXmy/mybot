@@ -87,9 +87,13 @@ class ServerSession(aiorpcx.RPCSession):
         return await coro
 
 
+@async_task('RPC服务器', logger)
 async def start_server():
-    await asyncio.create_task(aiorpcx.serve_ws(ServerSession, SERVER_HOST, SERVER_PORT))
-start_async_task(start_server, logger, 'RPC服务器')
+    async with aiorpcx.serve_ws(ServerSession, SERVER_HOST, SERVER_PORT):
+        try:
+            await asyncio.sleep(1e9)
+        except:
+            return
 
 
 # ------------------------------ RPC Handler ------------------------------ #

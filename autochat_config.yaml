@@ -11,7 +11,7 @@ group_chat_probs:
   "369306583": 1.0
   "758334616": 0.15
 
-self_history_num: 50
+self_history_num: 20
 output_len_limit: 512
 
 image_caption_model_name: gemini-2-flash
