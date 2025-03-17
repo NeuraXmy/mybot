@@ -494,7 +494,7 @@ resize 3.0x 2.0x: 宽缩放3倍高缩放2倍
             if args['h']is not None:
                 h = args['h']
         assert_and_reply(0 < w * h * total_frame <= 1024 * 1024 * 16, f"图片尺寸{w}x{h}超出限制")
-        return img.resize((w, h))
+        return img.resize((w, h), Image.Resampling.BILINEAR)
 
 class MirrorOperation(ImageOperation):
     def __init__(self):

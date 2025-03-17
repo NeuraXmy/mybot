@@ -37,7 +37,7 @@ SYSTEM_PROMPT_PYTHON_RET = "data/chat/system_prompt_python_ret.txt"
 
 CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
 NOTHINK_TRIGGER_WORDS = ['nothink', 'noreason']
-IMAGE_RESPONSE_TRIGGER_WORDS = ['GI', '生成图片', 'gen image', 'gen_image', 'generate image', 'generate_image']
+IMAGE_RESPONSE_TRIGGER_WORDS = ['生成图片', '图片生成', 'imagen', 'Imagen', 'IMAGEN']
 
 FORWARD_MSG_INPUT_LIMIT = 10
 
