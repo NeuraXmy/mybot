@@ -9,7 +9,7 @@
 
 ### 管理指令
 
-- [`/autowater_{类型}_{on|off}` 自动水果开关](#autowater_类型_onoff)
+- [`/autowater` 自动水果设置](#autowater)
 - [`/water_exclude` 自动水果排除特定hash](#water_exclude)
 
 ---
@@ -38,16 +38,22 @@
 
 ---
 
-## `/autowater_{类型}_{on|off}`
+## `/autowater`
 ```
-开启或关闭当前群组的自动水果功能
+设置当前群自动水果检测的消息类型
 支持类型: text, image, stamp, video, forward, json
+支持类型集合: 
+none = 关闭自动水果检测
+low = forward + json
+high = image + video + forward + json
+all = text + image + stamp + video + forward + json
 ```
 - **示例**
 
-    `/autowater_text_on`
+    `/autowater text image`
 
-    `/autowater_image_off`
+    `/autowater all`
+
 
 ## `/water_exclude`
 ```

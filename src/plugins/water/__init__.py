@@ -9,6 +9,25 @@ file_db = get_file_db("data/water/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'water')
 
+autowater_gwls = {
+    t: get_group_white_list(file_db, logger, f'autowater_{t}', is_service=False)
+    for t in ['text', 'image', 'stamp', 'json', 'video', 'forward']
+}
+autowater_type_desc = {
+    'text': '文本',
+    'image': '图片',
+    'stamp': '表情',
+    'json': '分享消息',
+    'video': '视频',
+    'forward': '聊天记录',
+}
+autowater_levels = {
+    'none': [],
+    'all': ['text', 'image', 'stamp', 'json', 'video', 'forward'],
+    'low': ['forward', 'json'],
+    'high': ['image', 'video', 'forward', 'json'],
+}
+
 # 计算图片的phash
 async def calc_phash(image_url):
     # 从网络下载图片
@@ -204,7 +223,7 @@ async def _(ctx: HandlerContext):
 
 
 query_hash = CmdHandler(['/hash'], logger)
-query_hash.check_cdrate(cd).check_wblist(gbl)
+query_hash.check_group().check_cdrate(cd).check_wblist(gbl)
 @query_hash.handle()
 async def _(ctx: HandlerContext):
     reply_msg = await ctx.aget_reply_msg()
@@ -222,6 +241,28 @@ async def _(ctx: HandlerContext):
             msg += phash_to_strmap(h['hash'])+ '\n'
     return await ctx.asend_fold_msg_adaptive(msg.strip())
 
+autowater = CmdHandler(['/autowater', '/自动水果'], logger)
+autowater.check_group().check_wblist(gbl).check_superuser()
+@autowater.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    types = None
+    for level, ts in autowater_levels.items():
+        if args == level:
+            types = ts
+            break
+    if types is None:
+        types = args.split()
+    group_id = ctx.group_id
+    for t, gwl in autowater_gwls.items():
+        if t in types:
+            gwl.add(group_id)
+        else:
+            gwl.remove(group_id)   
+    if types:
+        return await ctx.asend_reply_msg(f"设置本群的自动水果检测目标:\n{' '.join([autowater_type_desc[t] for t in types])}")
+    else:
+        return await ctx.asend_reply_msg("关闭本群的自动水果检测")
 
 water_exclude = CmdHandler(['/water_exclude', '/watered_exclude', '/水果排除'], logger)
 water_exclude.check_group().check_wblist(gbl)
@@ -301,12 +342,6 @@ async def handle_task():
 
 # ------------------------------------------ 自动水果 ------------------------------------------ #
 
-autowater_gwls = {
-    t: get_group_white_list(file_db, logger, f'autowater_{t}', is_service=False)
-    for t in ['text', 'image', 'stamp', 'json', 'video', 'forward']
-}
-
-
 @after_record_hook
 async def check_auto_water(bot: Bot, event: MessageEvent):
     if not is_group_msg(event): return
@@ -338,7 +373,7 @@ async def check_auto_water(bot: Bot, event: MessageEvent):
         htype, brief, original_seg = hash['type'], hash['brief'], hash['original']
         if len(water_info) > 1:
             res += brief
-        res += f"已经水果{len(recs)}次！最早于{get_readable_datetime(fst['time'], show_original_time=False)}被@{fst['nickname']}水果\n"
+        res += f"已经水果{len(recs)}次！最早于{get_readable_datetime(fst['time'], show_original_time=False)}被 @{fst['nickname']} 水果\n"
     
     if res:
         res = f"[CQ:reply,id={event.message_id}]{res.strip()}"
