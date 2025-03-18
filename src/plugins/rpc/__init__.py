@@ -89,11 +89,11 @@ class ServerSession(aiorpcx.RPCSession):
 
 @async_task('RPC服务器', logger)
 async def start_server():
-    async with aiorpcx.serve_ws(ServerSession, SERVER_HOST, SERVER_PORT):
-        try:
+    try:
+        async with aiorpcx.serve_ws(ServerSession, SERVER_HOST, SERVER_PORT):
             await asyncio.sleep(1e9)
-        except:
-            return
+    except Exception as e:
+        logger.warning(f'RPC服务器结束: {e}')
 
 
 # ------------------------------ RPC Handler ------------------------------ #

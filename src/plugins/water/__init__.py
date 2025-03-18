@@ -129,8 +129,7 @@ async def get_hash_from_msg(group_id, msg, types=None):
                             raw += f"[{ftype}]"
                     raw += "\n"
                 ret.append({
-                    'type': 
-                    'forward', 
+                    'type': 'forward', 
                     'hash': get_md5(raw),
                     'brief': f"聊天记录#{type_total[stype]}",
                     'original': seg,
@@ -141,7 +140,23 @@ async def get_hash_from_msg(group_id, msg, types=None):
         elif stype == 'json':
             if not check_type('json'): continue
             data = json.loads(sdata['data'])
-            if 'prompt' in data:
+
+            # 属于转发消息的json
+            if data.get('app') == 'com.tencent.multimsg':
+                type_total['json'] -= 1
+                if 'forward' not in type_total:
+                    type_total['forward'] = 0
+                type_total['forward'] += 1
+
+                uniseq = data['meta']['detail']['uniseq']
+                ret.append({
+                    'type': 'forward', 
+                    'hash': uniseq,
+                    'brief': f"聊天记录#{type_total['forward']}",
+                    'original': seg,
+                })
+
+            elif 'prompt' in data:
                 ret.append({
                     'type': 'json', 
                     'hash': get_md5(data['prompt']),
@@ -345,6 +360,7 @@ async def handle_task():
 @after_record_hook
 async def check_auto_water(bot: Bot, event: MessageEvent):
     if not is_group_msg(event): return
+    if event.user_id == bot.self_id: return
     await asyncio.sleep(1)
 
     group_id = event.group_id
@@ -377,6 +393,6 @@ async def check_auto_water(bot: Bot, event: MessageEvent):
     
     if res:
         res = f"[CQ:reply,id={event.message_id}]{res.strip()}"
-        await bot.send_group_msg(group_id=group_id, message=res)
+        await send_group_msg_by_bot(bot, group_id, res)
 
     
