@@ -1,14 +1,7 @@
-from nonebot import on_message
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
-from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from ..utils import *
-from ..record.sql import text_content_match, img_id_match
-from ..record import record_hook
-from .sql import query_by_phash, query_by_msg_id, insert_phash, query_by_img_unique
-from PIL import Image
-import requests
-from asyncio import CancelledError
+from ..record import before_record_hook, after_record_hook
+from .sql import insert_hash, query_by_hash, query_by_unique_id
+from asyncio import CancelledError, Queue
 
 config = get_config("water")
 logger = get_logger("Water")
@@ -16,11 +9,9 @@ file_db = get_file_db("data/water/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, 'water')
 
-
 # 计算图片的phash
 async def calc_phash(image_url):
     # 从网络下载图片
-    # logger.info(f"下载图片 {image_url}")
     image = await download_image(image_url)
     def calc(image):
         # 缩小尺寸
@@ -34,9 +25,8 @@ async def calc_phash(image_url):
         return str(hash)
     return await run_in_pool(calc, image)
 
-
 # 图片phash到字符画
-def phash_to_str(phash):
+def phash_to_strmap(phash):
     phash = int(phash)
     phash_map = [[0 for _ in range(8)] for _ in range(8)]
     for i in range(8):
@@ -45,108 +35,224 @@ def phash_to_str(phash):
     phash_map = "\n".join(["".join([str(x) for x in row]) for row in phash_map])
     return phash_map
 
+# 计算消息中的所有hash
+async def get_hash_from_msg(group_id, msg, types=None):
+    def check_type(t):
+        return not types or t in types
+
+    # 消除at和reply
+    msg = [seg for seg in msg if seg['type'] not in ['at', 'reply']]
+
+    # 纯文本
+    if len(msg) == 1 and msg[0]['type'] == 'text':
+        if not check_type('text'): return []
+        return [{
+            'type': 'text', 
+            'hash': get_md5(msg[0]['data']['text']), 
+            'brief': f"\"{truncate(msg[0]['data']['text'], 10)}\"",
+            "original": msg[0],
+        }]
+
+    ret = []
+    type_total = {}
+
+    for seg in msg:
+        stype, sdata = seg['type'], seg['data']
+        if stype not in type_total:
+            type_total[stype] = 0
+        type_total[stype] += 1
+
+        # 图片
+        if stype == 'image':
+            subtype = sdata.get('sub_type', 0)
+            if subtype == 0 and not check_type('image'): continue
+            if subtype == 1 and not check_type('stamp'): continue
+
+            # 查找之前有没有计算过phash
+            file_unique = sdata.get('file_unique', "")
+            phash = None
+            if file_unique:
+                if rec := query_by_unique_id(group_id, 'image', file_unique):
+                    phash = rec[0]['hash']
+            # 没有计算过则计算phash
+            if not phash:
+                phash = await calc_phash(sdata['url'])
+            ret.append({
+                'type': 'image', 
+                'hash': phash, 
+                'sub_type': subtype, 
+                'file_unique': file_unique,
+                'brief': f"图片#{type_total[stype]}",
+                'original': seg,
+            })
+        # 视频
+        elif stype == 'video':
+            if not check_type('video'): continue
+            ret.append({
+                'type': 'video', 
+                'hash': sdata['file'],
+                'brief': f"视频#{type_total[stype]}",
+                'original': seg,
+            })
+        # 转发
+        elif stype == 'forward':
+            if not check_type('forward'): continue
+            try:
+                bot = get_bot()
+                raw = ""
+                for forward_msg in (await get_forward_msg(bot, sdata['id']))['messages']:
+                    raw += f"{forward_msg['user_id']} {forward_msg['time']}: "
+                    for fmseg in forward_msg['message']:
+                        ftype, fdata = fmseg['type'], fmseg['data']
+                        if ftype == 'text':
+                            raw += fdata['text']
+                        else:
+                            raw += f"[{ftype}]"
+                    raw += "\n"
+                ret.append({
+                    'type': 
+                    'forward', 
+                    'hash': get_md5(raw),
+                    'brief': f"聊天记录#{type_total[stype]}",
+                    'original': seg,
+                })
+            except Exception as e:
+                logger.warning(f'获取转发消息hash失败: {e}')
+        # json
+        elif stype == 'json':
+            if not check_type('json'): continue
+            data = json.loads(sdata['data'])
+            if 'prompt' in data:
+                ret.append({
+                    'type': 'json', 
+                    'hash': get_md5(data['prompt']),
+                    'brief': f"分享消息#{type_total[stype]}",
+                    'original': seg,
+                })
+    return ret
+
+# 获取消息的水果数据
+async def get_hashes_water_info(group_id, msg_id, hashes):
+    ret = []
+    for h in hashes:
+        recs = query_by_hash(group_id, h['type'], h['hash'])
+        recs = [rec for rec in sorted(recs, key=lambda x: x['time']) if rec['msg_id'] != msg_id]    # 排序并去掉查询的消息本身
+        fst, lst, topk_users = None, None, None
+        if recs:
+            fst, lst = recs[0], recs[-1]
+            # 统计水果用户比例
+            TOP_K = 5
+            user_count, user_nickname = {}, {}
+            for rec in recs:
+                uid, nickname = rec['user_id'], rec['nickname']
+                user_nickname[uid] = nickname
+                if uid not in user_count:
+                    user_count[uid] = 0
+                user_count[uid] += 1
+            topk_uids = sorted(user_count.items(), key=lambda x: x[1], reverse=True)[:TOP_K]
+            topk_users = [{
+                'uid': uid,
+                'nickname': user_nickname[uid],
+                'cnt': cnt,
+                'ratio': cnt/len(recs)*100,
+            } for uid, cnt in topk_uids]
+        ret.append({
+            'hash': h,
+            'recs': recs,
+            'topk_users': topk_users,
+            'fst': fst,
+            'lst': lst,
+        })
+    return ret
+
 
 # ------------------------------------------ 聊天逻辑 ------------------------------------------ #
 
-water = CmdHandler(['/water', '/watered'], logger)
+water = CmdHandler(['/water', '/watered', '/水果'], logger)
 water.check_group().check_wblist(gbl).check_cdrate(cd)
 @water.handle()
 async def _(ctx: HandlerContext):
-    # 获取回复的内容
-    reply_msg = await ctx.aget_reply_msg()
-    if not reply_msg:
-        raise Exception("请回复一条文字或图片消息")
-
-    reply_text = extract_text(reply_msg)
-    reply_imgs = extract_image_id(reply_msg)
-    reply_img_urls = extract_image_url(reply_msg)
+    reply_msg_obj = await ctx.aget_reply_msg_obj()
+    reply_msg_id = reply_msg_obj['message_id']
+    reply_msg = reply_msg_obj['message']
+    assert_and_reply(reply_msg, "请回复一条消息")
     group_id = ctx.group_id
 
-    if not reply_text and not reply_imgs:
-        raise Exception("不支持的消息格式！只支持查询文字或图片水果")
+    hashes = await get_hash_from_msg(group_id, reply_msg)
+    water_info = await get_hashes_water_info(group_id, reply_msg_id, hashes)
+    res = ''
+    for item in water_info:
+        hash, recs, topk_users, fst, lst = item['hash'], item['recs'], item['topk_users'], item['fst'], item['lst']
+        logger.info(f"水果查询: {hash['brief']} 匹配到 {len(recs)} 条记录")
 
-    if len(reply_imgs) > 0:
-        # 图片只查询第一张
-        logger.info(f'查询图片水果：{reply_imgs[0]}')
-        recs = img_id_match(group_id=group_id, img_id=reply_imgs[0])
-        logger.info(f'通过图片id查询到{len(recs)}条记录')
-
-        try:
-            phash = await calc_phash(reply_img_urls[0])
-            logger.info(f'计算图片phash：{phash}')
-            phash_recs = query_by_phash(group_id=group_id, phash=phash)
-            logger.info(f'通过phash查询到{len(phash_recs)}条记录')
-            recs += phash_recs
-        except Exception as e:
-            logger.print_exc(f'匹配图片phash失败')
-
-        recs = unique_by(recs, "msg_id")
-        logger.info(f'合并查询结果：{len(recs)}条记录')
-
-    else:
-        logger.info(f'查询文本水果：{reply_text}')
-        recs = text_content_match(group_id=group_id, text=reply_text)
-    
-    logger.info(f'查询到{len(recs)}条记录')
-    if len(recs) <= 1:
-        res = "没有水果"
-    else:
-        recs = sorted(recs, key=lambda x: x['time'])[:-1]
-        fst, lst = recs[0], recs[-1]
+        if not recs:
+            res += f"{hash['brief']} 没有水果\n"
+            continue
         
-        user_count = {}
-        for rec in recs:
-            uid = rec['user_id']
-            if uid not in user_count:
-                user_count[uid] = (0, rec['nickname'])
-            cnt = user_count[uid][0]
-            user_count[uid] = (cnt+1, rec['nickname'])
-        TOP_K = 5
-        top_users = sorted(user_count.items(), key=lambda x: x[1][0], reverse=True)[:TOP_K]
-
         if len(recs) > 1:
-            res = f"水果总数：{len(recs)}\n"
-            res += f"最早水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
-            res += f"上次水果：{lst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {lst['nickname']}({lst['user_id']})\n"
-            res += f"水果比例：\n"
-            for uid, (cnt, nickname) in top_users:
-                res += f"{nickname}({uid})：{cnt/len(recs)*100:.2f}%\n"
+            res = f"* {hash['brief']} 水果总数：{len(recs)}\n"
+            res += f"* 最早水果\n{get_readable_datetime(fst['time'])}\nby {fst['nickname']}({fst['user_id']})\n"
+            res += f"* 上次水果\n{get_readable_datetime(lst['time'])}\nby {lst['nickname']}({lst['user_id']})\n"
+            res += f"* 水果比例\n"
+            for u in topk_users:
+                res += f"{u['nickname']}({u['uid']}) {u['ratio']:.2f}%\n"
         else:
-            res = f"水果总数：{len(recs)}\n"
-            res += f"上次水果：{fst['time'].strftime('%Y-%m-%d %H:%M:%S')} by {fst['nickname']}({fst['user_id']})\n"
+            res = f"{hash['brief']} 水果总数：{len(recs)}\n"
+            res += f"上次：{get_readable_datetime(fst['time'])}\nby {fst['nickname']}({fst['user_id']})\n"
 
     return await ctx.asend_reply_msg(res.strip())
 
 
-
-query_phash = CmdHandler(['/phash'], logger)
-query_phash.check_cdrate(cd).check_wblist(gbl)
-@query_phash.handle()
+query_hash = CmdHandler(['/hash'], logger)
+query_hash.check_cdrate(cd).check_wblist(gbl)
+@query_hash.handle()
 async def _(ctx: HandlerContext):
-    reply_msg_obj = await ctx.aget_reply_msg_obj()
-    reply_msg_id = reply_msg_obj['message_id']
+    reply_msg = await ctx.aget_reply_msg()
+    assert_and_reply(reply_msg, "请回复一条消息")
+    hashes = await get_hash_from_msg(ctx.group_id, reply_msg)
+    msg = ''
+    for h in hashes:
+        if h['type'] != 'text':
+            msg += f"【{h['brief']}】\n"
+        msg += f"type={h['type']}\n"
+        msg += f"hash={h['hash']}\n"
+        if h['type'] == 'image':
+            msg += f"sub_type={'图片' if h['sub_type'] == 0 else '表情'}\n"
+            msg += f"file_unique={h['file_unique']}\n"
+            msg += phash_to_strmap(h['hash'])+ '\n'
+    return await ctx.asend_fold_msg_adaptive(msg.strip())
 
-    phash_records = query_by_msg_id(ctx.group_id, reply_msg_id)
-    if len(phash_records) == 0:
-        raise Exception("该消息不包含图片或Phash未计算")
 
-    smsg = ""
-    for rec in phash_records:
-        smsg += f"phash: {rec['phash']}\n"
-        smsg += phash_to_str(rec['phash']).strip() + "\n"
-    return await ctx.asend_reply_msg(smsg.strip())
+water_exclude = CmdHandler(['/water_exclude', '/watered_exclude', '/水果排除'], logger)
+water_exclude.check_group().check_wblist(gbl)
+@water_exclude.handle()
+async def _(ctx: HandlerContext):
+    reply_msg = await ctx.aget_reply_msg()
+    assert_and_reply(reply_msg, "请回复一条消息")
+    group_id = ctx.group_id
+    hashes = await get_hash_from_msg(group_id, reply_msg)
 
+    ret = "在当前群聊排除以下hash的自动水果检测:\n"
+    excluded_hashes = file_db.get('excluded_hashes', {})
+    if str(group_id) not in excluded_hashes:
+        excluded_hashes[str(group_id)] = []
+    for h in hashes:
+        hs = f"[{h['type']}] {h['hash']}"
+        excluded_hashes[str(group_id)].append(hs)
+        ret += hs + '\n'
+    file_db.set('excluded_hashes', excluded_hashes)
 
-# ------------------------------------------ PHASH记录 ------------------------------------------ #
+    return await ctx.asend_reply_msg(ret.strip())
 
+    
 
-from asyncio import Queue
+# ------------------------------------------ Hash记录 ------------------------------------------ #
+
 task_queue = Queue()
 MAX_TASK_NUM = 50
 
-
-# 任务添加
-@record_hook
+# 添加HASH记录任务
+@before_record_hook
 async def record_new_message(bot, event):
     if not is_group_msg(event): return
     group_id = event.group_id
@@ -161,9 +267,8 @@ async def record_new_message(bot, event):
         'msg': msg_obj['message'],
     })
 
-
-# 任务处理
-@async_task('PHash计算', logger, 10)
+# HASH记录任务任务处理
+@async_task('Hash记录', logger)
 async def handle_task():
     while True:
         while task_queue.qsize() > MAX_TASK_NUM:
@@ -174,45 +279,69 @@ async def handle_task():
         except CancelledError:
             break
         if not task: break 
-        current_q_size = task_queue.qsize()
 
         try:
-            cqs = extract_cq_code(task['msg'])
-            img_cqs = cqs.get('image', [])
-        except Exception as e:
-            logger.print_exc(f'处理消息 {task["msg_id"]} 失败')
-
-        for i, img_cq in enumerate(img_cqs):
-            try:    
-                if 'url' not in img_cq: continue
-
-                if 'file_unique' in img_cq:
-                    img_unique = img_cq['file_unique']
-                elif 'file_id' in img_cq:
-                    img_unique = img_cq['file_id']
-                else:
-                    img_unique = ""
-
-                phash = None
-                if img_unique:
-                    rec = query_by_img_unique(task['group_id'], img_unique)
-                    if rec: 
-                        phash = rec['phash']
-                
-                if not phash:
-                    phash = await calc_phash(img_cq['url'])
-
-                insert_phash(
+            hashes = await get_hash_from_msg(task['group_id'], task['msg'])
+            for hash in hashes:
+                insert_hash(
                     group_id=task['group_id'],
-                    phash=str(phash),
+                    type=hash['type'],
+                    hash=hash['hash'],
                     msg_id=task['msg_id'],
                     user_id=task['user_id'],
                     nickname=task['nickname'],
-                    time=datetime.fromtimestamp(task['time']),
-                    img_unique=img_unique,
+                    time=task['time'],
+                    unique_id=hash.get('file_unique', ""),
                 )
-                # logger.info(f'记录消息 {task["msg_id"]} 图片 {i} 的 phash: {phash}, 队列剩余 {current_q_size} 个任务')
+                logger.debug(f'添加hash记录: {task["msg_id"]} {hash["type"]} {hash["hash"]}')
 
-            except Exception as e:
-                logger.print_exc(f'计算消息 {task["msg_id"]} 图片 {i} 的 phash 失败')
+        except Exception as e:
+            logger.print_exc(f'记录消息 {task["msg_id"]} 的Hash失败')
 
+
+# ------------------------------------------ 自动水果 ------------------------------------------ #
+
+autowater_gwls = {
+    t: get_group_white_list(file_db, logger, f'autowater_{t}', is_service=False)
+    for t in ['text', 'image', 'stamp', 'json', 'video', 'forward']
+}
+
+
+@after_record_hook
+async def check_auto_water(bot: Bot, event: MessageEvent):
+    if not is_group_msg(event): return
+    await asyncio.sleep(1)
+
+    group_id = event.group_id
+    check_types = {t for t, gwl in autowater_gwls.items() if gwl.check_id(group_id)}
+    if not check_types: return
+
+    msg = await get_msg(bot, event.message_id)
+    hashes = await get_hash_from_msg(group_id, msg, check_types)
+    all_water_info = await get_hashes_water_info(group_id, event.message_id, hashes)
+
+    # 过滤没有水果和排除的hash
+    excluded_hashes = set(file_db.get('excluded_hashes', {}).get(str(group_id), []))
+    water_info = []
+    for item in all_water_info:
+        hash = item['hash']
+        if not item['recs']: continue
+        if f"[{hash['type']}] {hash['hash']}" in excluded_hashes: continue
+        water_info.append(item)
+
+    if not water_info: return
+    logger.info(f"自动水果检测: 群聊 {group_id} 消息 {event.message_id} 的 {len(water_info)} 个片段检测到水果")
+
+    res = ""
+    for item in water_info:
+        hash, recs, topk_users, fst, lst = item['hash'], item['recs'], item['topk_users'], item['fst'], item['lst']
+        htype, brief, original_seg = hash['type'], hash['brief'], hash['original']
+        if len(water_info) > 1:
+            res += brief
+        res += f"已经水果{len(recs)}次！最早于{get_readable_datetime(fst['time'], show_original_time=False)}被@{fst['nickname']}水果\n"
+    
+    if res:
+        res = f"[CQ:reply,id={event.message_id}]{res.strip()}"
+        await bot.send_group_msg(group_id=group_id, message=res)
+
+    

@@ -248,6 +248,8 @@ mysekai_blueprint_material_cost             = get_sekai_master_data("Mysekai蓝�
 mysekai_fixture_only_disassemble_materials  = get_sekai_master_data("Mysekai家具唯一拆解材料数据", "mysekaiFixtureOnlyDisassembleMaterials.json")
 music_vocals                                = get_sekai_master_data("曲目歌手数据", "musicVocals.json")
 outside_characters                          = get_sekai_master_data("外部角色数据", "outsideCharacters.json")
+mysekai_gate_levels                         = get_sekai_master_data("Mysekai门等级数据", "mysekaiGateLevels.json")
+myskeia_gate_material_groups                = get_sekai_master_data("Mysekai门升级材料组数据", "mysekaiGateMaterialGroups.json")
 
 
 # ================================ 静态图片资源 ================================ #

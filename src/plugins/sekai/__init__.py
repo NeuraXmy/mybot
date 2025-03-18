@@ -1983,21 +1983,6 @@ async def compose_mysekai_res_image(qid, show_harvested, check_time):
                 if (datetime.now() - read_time).days < 1:
                     read_cids = set(read_info['cids'])
 
-    # read_cids = set()
-    # for item in chara_visit_data['mysekaiCharacterTalkWithReadHistories']:
-    #     if not item['isRead']: 
-    #         continue
-    #     tid = item['mysekaiCharacterTalkId']
-    #     talk = find_by(await res.mysekai_character_talks.get(), "id", tid)
-    #     condition_id = talk['mysekaiCharacterTalkConditionGroupId']
-    #     if condition_id >= 1000: 
-    #         continue
-    #     cgid = talk['mysekaiGameCharacterUnitGroupId']
-    #     group = find_by(await res.mysekai_game_character_unit_groups.get(), "id", cgid)
-    #     for k, v in group.items():
-    #         if k != 'id':
-    #             read_cids.add(v)
-
     # 计算资源数量
     site_res_num = {}
     harvest_maps = mysekai_info['updatedResources']['userMysekaiHarvestMaps']

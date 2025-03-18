@@ -63,6 +63,13 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+def get_md5(s: str):
+    import hashlib
+    m = hashlib.md5()
+    m.update(s.encode())
+    return m.hexdigest()
+
+
 def count_dict(d, level):
     if level == 1:
         return len(d)

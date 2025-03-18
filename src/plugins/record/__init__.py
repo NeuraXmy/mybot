@@ -17,10 +17,16 @@ cd = ColdDown(file_db, logger, config['cd'])
 message_id_set = set()
 
 
-# 记录消息的钩子: 异步函数 hook(bot, event)
-record_hook_funcs = []
-def record_hook(func):
-    record_hook_funcs.append(func)
+# 记录消息前的钩子: 异步函数 hook(bot, event)
+before_record_hook_funcs = []
+def before_record_hook(func):
+    before_record_hook_funcs.append(func)
+    return func
+
+# 记录消息后的钩子: 异步函数 hook(bot, event)
+after_record_hook_funcs = []
+def after_record_hook(func):
+    after_record_hook_funcs.append(func)
     return func
 
 
@@ -45,11 +51,9 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
     if not is_group_msg(event) and event.user_id == event.self_id: return
     message_id_set.add(event.message_id)
 
-    for hook in record_hook_funcs:
-        try:
-            await hook(bot, event)
-        except Exception as e:
-            logger.print_exc(f"消息记录hook {hook.__name__} error: {e}")
+    for hook in before_record_hook_funcs:
+        try: await hook(bot, event)
+        except: logger.print_exc(f"记录消息前hook {hook.__name__} 执行失败")
 
     time = datetime.fromtimestamp(event.time)
     msg_obj = await get_msg_obj(bot, event.message_id)
@@ -114,6 +118,10 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
         )
 
     commit()
+
+    for hook in after_record_hook_funcs:
+        try: await hook(bot, event)
+        except: logger.print_exc(f"记录消息后hook {hook.__name__} 执行失败")
 
 
 
@@ -197,7 +205,7 @@ async def _(ctx: HandlerContext):
 
 
 # 私聊转发hook
-@record_hook
+@before_record_hook
 async def private_forward_hook(bot: Bot, event: MessageEvent):
     user_id = event.sender.user_id
     nickname = event.sender.nickname

@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from datetime import datetime
 from nonebot import get_bot
 from ..record.sql import msg_recent
-from ..record import record_hook
+from ..record import before_record_hook
 import aiohttp
 import json
 from ..utils import *
@@ -37,7 +37,7 @@ def get_md5(s):
 message_pool = {}
 
 # 记录新消息
-@record_hook
+@before_record_hook
 async def record_new_message(bot, event):
     if not is_group_msg(event): return
     msg_obj = await get_msg_obj(bot, event.message_id)
