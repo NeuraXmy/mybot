@@ -25,6 +25,7 @@ autowater_levels = {
     'none': [],
     'all': ['text', 'image', 'stamp', 'json', 'video', 'forward'],
     'low': ['forward', 'json'],
+    'med': ['video', 'forward', 'json'],
     'high': ['image', 'video', 'forward', 'json'],
 }
 
@@ -284,22 +285,36 @@ water_exclude.check_group().check_wblist(gbl)
 @water_exclude.handle()
 async def _(ctx: HandlerContext):
     reply_msg = await ctx.aget_reply_msg()
-    assert_and_reply(reply_msg, "请回复一条消息")
     group_id = ctx.group_id
-    hashes = await get_hash_from_msg(group_id, reply_msg)
+    if reply_msg:
+        hashes = await get_hash_from_msg(group_id, reply_msg)
 
-    ret = "在当前群聊排除以下hash的自动水果检测:\n"
-    excluded_hashes = file_db.get('excluded_hashes', {})
-    if str(group_id) not in excluded_hashes:
-        excluded_hashes[str(group_id)] = []
-    for h in hashes:
-        hs = f"[{h['type']}] {h['hash']}"
-        excluded_hashes[str(group_id)].append(hs)
-        ret += hs + '\n'
-    file_db.set('excluded_hashes', excluded_hashes)
+        ret = "在当前群聊排除以下hash的自动水果检测:\n"
+        excluded_hashes = file_db.get('excluded_hashes', {})
+        if str(group_id) not in excluded_hashes:
+            excluded_hashes[str(group_id)] = []
+        for h in hashes:
+            hs = f"[{h['type']}] {h['hash']}"
+            excluded_hashes[str(group_id)].append(hs)
+            ret += hs + '\n'
+        file_db.set('excluded_hashes', excluded_hashes)
 
-    return await ctx.asend_reply_msg(ret.strip())
+        return await ctx.asend_reply_msg(ret.strip())
+    else:
+        cqs = extract_cq_code(reply_msg)
+        ats = cqs.get('at', [])
+        assert_and_reply(ats, "请回复一条消息或者at用户")
 
+        ret = "在当前群聊排除以下用户的自动水果检测:\n"
+        excluded_users = file_db.get('excluded_users', {})
+        if str(group_id) not in excluded_users:
+            excluded_users[str(group_id)] = []
+        for at in ats:
+            uid = at['qq']
+            if uid not in excluded_users[str(group_id)]:
+                excluded_users[str(group_id)].append(uid)
+                ret += f"{uid}\n"
+        file_db.set('excluded_users', excluded_users)
     
 
 # ------------------------------------------ Hash记录 ------------------------------------------ #
@@ -360,7 +375,11 @@ async def handle_task():
 @after_record_hook
 async def check_auto_water(bot: Bot, event: MessageEvent):
     if not is_group_msg(event): return
-    if event.user_id == bot.self_id: return
+
+    if event.user_id == int(bot.self_id): return
+    excluded_users = set(file_db.get('excluded_users', {}).get(str(event.group_id), []))
+    if event.user_id in excluded_users: return
+
     await asyncio.sleep(1)
 
     group_id = event.group_id
@@ -389,7 +408,8 @@ async def check_auto_water(bot: Bot, event: MessageEvent):
         htype, brief, original_seg = hash['type'], hash['brief'], hash['original']
         if len(water_info) > 1:
             res += brief
-        res += f"已经水果{len(recs)}次！最早于{get_readable_datetime(fst['time'], show_original_time=False)}被 @{fst['nickname']} 水果\n"
+        nickname = await get_group_member_name(bot, group_id, int(fst['user_id']))
+        res += f"已经水果{len(recs)}次！最早于{get_readable_datetime(fst['time'], show_original_time=False)}被 @{nickname} 水果\n"
     
     if res:
         res = f"[CQ:reply,id={event.message_id}]{res.strip()}"

@@ -45,6 +45,7 @@
 支持类型集合: 
 none = 关闭自动水果检测
 low = forward + json
+med = video + forward + json
 high = image + video + forward + json
 all = text + image + stamp + video + forward + json
 ```
@@ -57,7 +58,7 @@ all = text + image + stamp + video + forward + json
 
 ## `/water_exclude`
 ```
-指定回复消息中的hash不被自动水果检测
+指定回复消息中的hash或者指定用户不被自动水果检测
 ```
 - **指令别名**
 
@@ -66,6 +67,8 @@ all = text + image + stamp + video + forward + json
 - **示例**
 
     `(回复一条消息) /water_exclude`
+
+    `/water_exclude @用户`
 
 --- 
 
