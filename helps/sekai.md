@@ -461,7 +461,7 @@ Live类型可选: 协力、单人、auto
 
     `/msf` 查询家具列表
 
-    `/msf 123` 查询ID=123的家具详情
+    `/msf 123 234` 查询ID=123和ID=234的家具详情
 
 
 ## `/pjsk mysekai photo`
