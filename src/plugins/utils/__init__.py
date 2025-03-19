@@ -1577,7 +1577,7 @@ def remove_by(lst, key, value):
 @dataclass
 class HandlerContext:
     time: datetime = None
-    handler = None
+    handler: "CmdHandler" = None
     nonebot_handler = None
     bot: Bot = None
     event: MessageEvent = None
@@ -1587,6 +1587,7 @@ class HandlerContext:
     user_id: int = None
     group_id: int = None
     logger: Logger = None
+    block_ids: List[str] = field(default_factory=list)
 
     # --------------------------  数据获取 -------------------------- #
 
@@ -1631,6 +1632,20 @@ class HandlerContext:
             msgs = [cmd_msg] + msgs
         return await send_multiple_fold_msg(self.bot, self.event, msgs)
 
+    # -------------------------- 其他 -------------------------- # 
+
+    async def block(self, block_id: str = "", timeout: int = 3 * 60):
+        block_id = str(block_id)
+        block_start_time = datetime.now()
+        while True:
+            if block_id not in self.handler.block_set:
+                break
+            if (datetime.now() - block_start_time).seconds > timeout:
+                raise Exception(f'指令执行繁忙(block_id={block_id})，请稍后再试')
+            await asyncio.sleep(1)
+        self.handler.block_set.add(block_id)
+        self.block_ids.append(block_id)
+
 
 cmd_history: List[HandlerContext] = []
 MAX_CMD_HISTORY = 100
@@ -1665,6 +1680,7 @@ class CmdHandler:
         self.banned_cmds = banned_cmds or []
         if isinstance(self.banned_cmds, str):
             self.banned_cmds = [self.banned_cmds]
+        self.block_set = set()
 
     def check_group(self):
         self.private_group_check = "group"
@@ -1761,6 +1777,9 @@ class CmdHandler:
                     if self.error_reply:
                         et = f"{type(e).__name__}: " if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
                         await context.asend_reply_msg(truncate(f"指令处理失败: {et}{e}", 256))
+                finally:
+                    for block_id in context.block_ids:
+                        self.block_set.discard(block_id)
                         
             return func
         return decorator

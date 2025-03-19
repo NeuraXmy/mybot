@@ -385,7 +385,7 @@ async def tts(text):
     
 # -------------------------------- 文本翻译相关 -------------------------------- #
 
-async def translate_text(text, additional_info=None, dst_lang="中文", timeout=20, default=None):
+async def translate_text(text, additional_info=None, dst_lang="中文", timeout=20, default=None, model='gpt-4o-mini'):
     text_translations = file_db.get("text_translations", {})
     if text not in text_translations:
         logger.info(f"翻译文本: {truncate(text, 64)} 额外信息: {truncate(additional_info, 64)} 目标语言: {dst_lang}")
@@ -397,8 +397,7 @@ async def translate_text(text, additional_info=None, dst_lang="中文", timeout=
                 additional_info = ""
             prompt = f"翻译文本到{dst_lang}{additional_info}，请直接输出翻译结果并结束，不要包含其他内容:\n{text}"
             session.append_user_content(prompt)
-            model_name = "gpt-4o-mini"
-            response = await asyncio.wait_for(session.get_response(model_name), timeout=timeout)
+            response = await asyncio.wait_for(session.get_response(model), timeout=timeout)
             result = response.result.strip()
             logger.info(f"翻译结果: {truncate(result, 64)}")
             text_translations[text] = result
@@ -408,5 +407,4 @@ async def translate_text(text, additional_info=None, dst_lang="中文", timeout=
 
     file_db.set("text_translations", text_translations)
     return text_translations[text]
-    
     

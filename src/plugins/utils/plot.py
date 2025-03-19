@@ -183,6 +183,8 @@ class Painter:
         self.region_stack = []
 
     def set_region(self, pos: Position, size: Size):
+        assert isinstance(pos[0], int) and isinstance(pos[1], int), "Position must be integer"
+        assert isinstance(size[0], int) and isinstance(size[1], int), "Size must be integer"
         self.region_stack.append((self.offset, self.size))
         self.offset = pos
         self.size = size
@@ -604,7 +606,7 @@ class Widget:
                 raise ValueError(f'Content size is too large with ({content_w}, {content_h}) > ({content_w_limit}, {content_h_limit})')
             self._calc_w = content_w_limit + self.hmargin * 2 + self.hpadding * 2
             self._calc_h = content_h_limit + self.vmargin * 2 + self.vpadding * 2
-        return (self._calc_w, self._calc_h)
+        return (int(self._calc_w), int(self._calc_h))
 
     def _get_content_pos(self):
         w, h = self._get_self_size()
@@ -1014,11 +1016,11 @@ class Grid(Widget):
                 iw, ih = item._get_self_size()
                 gw = max(gw, iw)
                 gh = max(gh, ih)
-        return (r, c), (gw, gh)
+        return (int(r), int(c)), (int(gw), int(gh))
     
     def _get_content_size(self):
         (r, c), (gw, gh) = self._get_grid_rc_and_size()
-        return (c * gw + self.hsep * (c - 1), r * gh + self.vsep * (r - 1))
+        return (int(c * gw + self.hsep * (c - 1)), int(r * gh + self.vsep * (r - 1)))
     
     def _draw_content(self, p: Painter):
         (r, c), (gw, gh) = self._get_grid_rc_and_size()
@@ -1239,7 +1241,7 @@ class ImageBox(Widget):
         elif self.image_size_mode == 'fill':
             assert self.w is not None or self.h is not None, 'Fill mode requires width or height'
             if self.w and self.h:
-                return (self.w - self.hpadding * 2, self.h - self.vpadding * 2)
+                return (int(self.w - self.hpadding * 2), int(self.h - self.vpadding * 2))
             else:
                 tw = self.w - self.hpadding * 2 if self.w else 1000000
                 th = self.h - self.vpadding * 2 if self.h else 1000000
@@ -1275,6 +1277,7 @@ class Canvas(Frame):
 
     def get_img(self) -> Image.Image:
         size = self._get_self_size()
+        assert size[0] * size[1] < 4096 * 4096, f'Canvas size is too large ({size[0]} x {size[1]})'
         img = Image.new('RGBA', size, TRANSPARENT)
         p = Painter(img)
         self.draw(p)

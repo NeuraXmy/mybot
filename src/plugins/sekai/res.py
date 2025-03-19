@@ -212,6 +212,22 @@ def resource_boxes_map_fn(resource_boxes):
         ret[purpose][bid] = item
     return ret
 
+# event_story_units数据处理映射
+def event_story_units_map_fn(event_story_units):
+    ret = { "events": {}, "banner_event_story_id_set": set() }
+    for item in event_story_units:
+        esid = item["eventStoryId"]
+        unit = item["unit"]
+        relation = item['eventStoryUnitRelation']
+        if esid not in ret['events']:
+            ret['events'][esid] = { "main": None, "sub": [] }
+        if relation == "main":
+            ret['events'][esid]["main"] = unit
+            ret['banner_event_story_id_set'].add(esid)
+        else:
+            ret['events'][esid]["sub"].append(unit)
+    return ret
+
 
 musics                                      = get_sekai_master_data("曲目数据", "musics.json")
 music_diffs                                 = get_sekai_master_data("曲目难度数据", "musicDifficulties.json")
@@ -220,7 +236,7 @@ events                                      = get_sekai_master_data("活动数�
 event_stories                               = get_sekai_master_data("活动故事数据", "eventStories.json")
 event_story_units                           = get_sekai_master_data("活动故事团数据", "eventStoryUnits.json")
 game_characters                             = get_sekai_master_data("角色数据", "gameCharacters.json")
-characters_2ds                              = get_sekai_master_data("角色模型数据", "character2ds.json")
+characters_2ds                              = get_sekai_master_data("角色2D数据", "character2ds.json")
 stamps                                      = get_sekai_master_data("表情数据", "stamps.json")
 cards                                       = get_sekai_master_data("卡牌数据", "cards.json")
 card_supplies                               = get_sekai_master_data("卡牌供给数据", "cardSupplies.json")
@@ -250,7 +266,7 @@ music_vocals                                = get_sekai_master_data("曲目歌�
 outside_characters                          = get_sekai_master_data("外部角色数据", "outsideCharacters.json")
 mysekai_gate_levels                         = get_sekai_master_data("Mysekai门等级数据", "mysekaiGateLevels.json")
 myskeia_gate_material_groups                = get_sekai_master_data("Mysekai门升级材料组数据", "mysekaiGateMaterialGroups.json")
-
+event_story_units                           = get_sekai_master_data("活动故事团数据", "eventStoryUnits.json", map_fn=event_story_units_map_fn)
 
 # ================================ 静态图片资源 ================================ #
 

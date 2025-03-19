@@ -174,6 +174,7 @@ MUSIC_CAPTION_MAP_DICT = {
     "「劇場版プロジェクトセカイ」ver.": "Movie",
 }
 
+
 # ========================================= 绘图相关 ========================================= #
 
 FONT_PATH = get_config('font_path')
@@ -358,17 +359,16 @@ async def get_not_image_asset(path: str, cache=True, allow_error=False, default=
         try:
             async def download():
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        return resp
+                    async with session.get(url, verify_ssl=False) as resp:
+                        if resp.status != 200:
+                            raise Exception(f"请求失败: {resp.status}")
+                        return await resp.read()
         
             if not timeout:
-                resp = await download()
+                data = await download()
             else:
-                resp = await asyncio.wait_for(download(), timeout)
+                data = await asyncio.wait_for(download(), timeout)
 
-            if resp.status != 200:
-                raise Exception(f"请求失败: {resp.status}")
-            data = await resp.read()
             if cache and ok_to_cache:
                 create_parent_folder(cache_path)
                 with open(cache_path, "wb") as f:
@@ -471,6 +471,13 @@ def get_nickname_by_cid(cid):
 async def get_chara_icon_by_unit_id(cuid):
     gcid = find_by(await res.game_character_units.get(), "id", cuid)['gameCharacterId']
     nickname = get_nickname_by_cid(gcid)
+    return res.misc_images.get(f"chara_icon/{nickname}.png")
+
+# 从角色Id获取角色图标
+async def get_chara_icon_by_cid(cid):
+    nickname = get_nickname_by_cid(cid)
+    if not nickname:
+        return None
     return res.misc_images.get(f"chara_icon/{nickname}.png")
 
 # 从字符串中检查难度后缀，返回(难度名, 去掉后缀的字符串) 
@@ -2817,6 +2824,224 @@ async def compose_card_recommend_image(qid, live_type, mid, diff, chara_id=None,
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 获取活动列表
+async def compose_event_list_image() -> Image.Image:
+    events = await res.events.get()
+    total_num = len(events)
+    col_num = int(math.sqrt(total_num))
+
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with Grid(col_count=col_num).set_sep(8, 8).set_item_bg(roundrect_bg()).set_item_align('lt').set_content_align('lt'):
+            for event in events:
+                asset_name = event['assetbundleName']
+                banner_img = await get_asset(f"home/banner/{asset_name}_rip/{asset_name}.png", allow_error=True)
+                style1 = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(50, 50, 50))
+                style2 = TextStyle(font=DEFAULT_FONT, size=10, color=(70, 70, 70))
+                with VSplit().set_padding(8).set_sep(4).set_item_align('lt').set_content_align('lt'):
+                    TextBox(f"【{event['id']}】{event['name']}", style1).set_w(160)
+                    ImageBox(banner_img, size=(None, 40))
+                    start_time = datetime.fromtimestamp(event['startAt'] / 1000).strftime('%Y-%m-%d %H:%M')
+                    end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000).strftime('%Y-%m-%d %H:%M')
+                    TextBox(f"{start_time} ~ {end_time}", style2)
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
+# 根据"昵称箱数"（比如saki1）获取活动
+async def get_event_by_ban_name(ban_name: str) -> dict:
+    m = re.match(r"([a-z]+)(\d+)", ban_name)
+    assert_and_reply(m, "箱活格式不正确，必须是角色昵称+数字，例如：saki1")
+    nickname, idx = m.groups()[0], int(m.groups()[1])
+    assert_and_reply(idx >= 1, "箱数必须大于等于1")
+    cid = get_cid_by_nickname(nickname)
+    assert_and_reply(cid, f"无效的角色昵称：{nickname}")
+    chara_ban_stories = find_by(await res.event_stories.get(), "bannerGameCharacterUnitId", cid, mode="all")
+    banner_event_story_id_set = (await res.event_story_units.get())['banner_event_story_id_set']
+    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in banner_event_story_id_set]
+    assert_and_reply(chara_ban_stories, f"角色{nickname}没有箱活")  
+    event_ids = [s['eventId'] for s in chara_ban_stories]
+    events = []
+    for e in await res.events.get():
+        if e['id'] in event_ids and e['eventType'] in ('marathon', 'cheerful_carnival'):
+            events.append(e)
+    assert_and_reply(idx <= len(events), f"角色{nickname}只有{len(events)}个箱活")
+    events.sort(key=lambda x: x['startAt'])
+    return events[idx-1]
+                                
+# 根据索引获取活动
+async def get_event_by_index(index: str) -> dict:
+    if index.isdigit():
+        events = await res.events.get()
+        events = sorted(events, key=lambda x: x['startAt'])
+        index = int(index)
+        if index < 0:
+            if -index > len(events):
+                raise Exception("活动索引超出范围")
+            return events[index]
+        if e := find_by(events, "id", index):
+            return e
+        raise Exception(f"活动{index}不存在")
+    else:
+        return await get_event_by_ban_name(index)
+
+# 获取活动剧情总结
+async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: bool, summary_model: str = "gemini-2-flash") -> List[str]:
+    eid = event['id']
+    title = event['name']
+    event_asset_name = event['assetbundleName']
+    summary_db = get_file_db(f"data/sekai/story_summary/{eid}.json", logger)
+    summary = summary_db.get("summary", {})
+    if not summary or refresh:
+        await ctx.asend_reply_msg(f"正在生成【{eid}】{title} 的剧情总结...")
+
+    ## 读取数据
+    banner_img = await get_asset(f"home/banner/{event_asset_name}_rip/{event_asset_name}.png", allow_error=True)
+    story = find_by(await res.event_stories.get(), "eventId", eid)
+    outline = story['outline']
+    asset_name = story['assetbundleName']
+    eps = []
+    chara_talk_count = {}
+    for i, ep in enumerate(story['eventStoryEpisodes'], 1):
+        ep_id = ep['scenarioId']
+        ep_title = ep['title']
+        ep_image = await get_asset(f"event_story/{asset_name}/episode_image_rip/{asset_name}_{i:02d}.png", allow_error=True)
+        ep_data = json.loads(await get_not_image_asset(f"event_story/{asset_name}/scenario_rip/{ep_id}.asset"))
+        cids = set([
+            find_by(await res.characters_2ds.get(), 'id', item['Character2dId']).get('characterId', None)
+            for item in ep_data['AppearCharacters']
+        ])
+
+        snippets = []
+        for snippet in ep_data['Snippets']:
+            action = snippet['Action']
+            ref_idx = snippet['ReferenceIndex']
+            if action == 1:     # 对话
+                talk = ep_data['TalkData'][ref_idx]
+                names = talk['WindowDisplayName'].split('・')
+                snippets.append((names, talk['Body']))
+                for name in names:
+                    chara_talk_count[name] = chara_talk_count.get(name, 0) + 1
+            elif action == 6:   # 标题特效
+                effect = ep_data['SpecialEffectData'][ref_idx]
+                if effect['EffectType'] == 8:
+                    snippets.append((None, effect['StringVal']))
+
+        eps.append({
+            'title': ep_title,
+            'image': ep_image,
+            'cids': cids,
+            'snippets': snippets,
+        })
+    chara_talk_count = sorted(chara_talk_count.items(), key=lambda x: x[1], reverse=True)
+
+    ## 获取总结
+    if not summary or refresh:
+        # 获取剧情文本
+        raw_story = ""
+        for i, ep in enumerate(eps, 1):
+            raw_story += f"【EP{i}: {ep['title']}】\n"
+            for names, text in ep['snippets']:
+                if names:
+                    raw_story += f"---\n{' & '.join(names)}:\n{text}\n"
+                else:
+                    raw_story += f"---\n({text})\n"
+            raw_story += "\n"
+        # with open(f"sandbox/raw_story.txt", "w", encoding="utf-8") as f:
+        #     f.write(raw_story)
+
+        summary_prompt_template = Path(f"data/sekai/story_summary_prompt.txt").read_text()
+        summary_prompt = summary_prompt_template.format(
+            title=title,
+            outline=outline,
+            raw_story=raw_story,
+        )
+        
+        @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+        async def do_summary():
+            try:
+                session = ChatSession()
+                session.append_user_content(summary_prompt, verbose=False)
+                resp = await session.get_response(summary_model)
+
+                resp_text = resp.result
+                start_idx = resp_text.find("{")
+                end_idx = resp_text.rfind("}") + 1
+                data = json.loads(resp_text[start_idx:end_idx])
+
+                summary = {}
+                summary['title'] = data['title']
+                summary['outline'] = data['outline']
+                for i, ep in enumerate(eps, 1):
+                    summary[f'ep_{i}_title'] = data[f'ep_{i}_title']
+                    summary[f'ep_{i}_summary'] = data[f'ep_{i}_summary']
+                summary['summary'] = data['summary']
+
+                additional_info = f"生成模型: {resp.model.name} | {resp.prompt_tokens}+{resp.completion_tokens} tokens"
+                if resp.quota > 0:
+                    price_unit = resp.model.get_price_unit()
+                    if resp.cost == 0.0:
+                        additional_info += f" | 0/{resp.quota:.2f}{price_unit}"
+                    elif resp.cost >= 0.0001:
+                        additional_info += f" | {resp.cost:.4f}/{resp.quota:.2f}{price_unit}"
+                    else:
+                        additional_info += f" | <0.0001/{resp.quota:.2f}{price_unit}"
+                summary['additional_info'] = additional_info
+
+                summary_db.set("summary", summary)
+                return summary
+
+            except Exception as e:
+                logger.warning(f"生成剧情总结失败: {e}")
+                raise Exception(f"生成剧情总结失败: {e}")
+
+        summary = await do_summary()
+    
+    ## 生成回复
+    msg_lists = []
+
+    msg_lists.append(f"""
+【{eid}】{title} - {summary.get('title', '')} 
+{await get_image_cq(banner_img)}
+!! 剧透警告 !!
+!! 内容由AI生成，不保证完全准确 !!
+""".strip() + "\n" * 16)
+
+    msg_lists.append(f"【剧情概要】\n{summary.get('outline', '').strip()}")
+    
+    for i, ep in enumerate(eps, 1):
+        with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(8) as canvas:
+            with VSplit().set_sep(8):
+                ImageBox(ep['image'], size=(None, 80))
+                with Grid(col_count=5).set_sep(2, 2):
+                    for cid in ep['cids']:
+                        if not cid: continue
+                        icon = await get_chara_icon_by_cid(cid)
+                        if not icon: continue
+                        ImageBox(icon, size=(32, 32), use_alphablend=True)
+
+        msg_lists.append(f"""
+【第{i}章】{ep['title']} - {summary.get(f'ep_{i}_title', '')}
+{await get_image_cq(await run_in_pool(canvas.get_img))}
+{summary.get(f'ep_{i}_summary', '')}
+""".strip())
+
+    msg_lists.append(f"【剧情总结】\n{summary.get('summary', '').strip()}")
+
+    chara_talk_count_text = "【角色对话次数】\n"
+    for name, count in chara_talk_count:
+        chara_talk_count_text += f"{name}: {count}\n"
+    msg_lists.append(chara_talk_count_text.strip())
+
+    msg_lists.append(f"""
+以上内容由NeuraXmy(ルナ茶)的QQBot生成
+{summary.get('additional_info', '')}
+使用\"/活动剧情 活动id\"查询对应活动总结
+使用\"/活动剧情 活动id refresh\"可刷新AI活动总结
+更多pjsk功能请@bot并发送\"/help sekai\"
+""".strip())
+        
+    return msg_lists
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -3658,6 +3883,39 @@ async def _(ctx: HandlerContext):
 
     await ctx.asend_reply_msg("开始计算组卡...")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_card_recommend_image(ctx.user_id, "challenge", music_id, music_diff, chara_id)))
+
+
+# 活动列表
+pjsk_event_list = CmdHandler(["/pjsk events", "/pjsk_events", "/活动列表"], logger)
+pjsk_event_list.check_cdrate(cd).check_wblist(gbl)
+@pjsk_event_list.handle()
+async def _(ctx: HandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_event_list_image()))
+
+
+# 单个活动
+pjsk_event_list = CmdHandler(["/pjsk event", "/pjsk_event", "/活动"], logger)
+pjsk_event_list.check_cdrate(cd).check_wblist(gbl)
+@pjsk_event_list.handle()
+async def _(ctx: HandlerContext):
+    idx = ctx.get_args().strip()
+    event = await get_event_by_index(idx)
+    return await ctx.asend_reply_msg(f"https://sekai.best/event/{event['id']}")
+
+
+# 活动剧情总结
+pjsk_event_story = CmdHandler(["/pjsk event story", "/pjsk_event_story", "/活动剧情"], logger)
+pjsk_event_story.check_cdrate(cd).check_wblist(gbl)
+@pjsk_event_story.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    refresh = False
+    if 'refresh' in args:
+        refresh = True
+        args = args.replace('refresh', '').strip()
+    event = await get_event_by_index(args)
+    await ctx.block(str(event['id']))
+    return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh))
 
 
 # ========================================= 定时任务 ========================================= #
