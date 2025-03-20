@@ -54,6 +54,7 @@ class ChatSessionResponse:
     reasoning: Optional[str] = None
     images: List[Image.Image] = field(default_factory=list)
     result_list: List[Union[str, Image.Image]] = field(default_factory=list)
+        
 
 # 会话类型
 class ChatSession:

@@ -173,7 +173,7 @@ class Translator:
                             [get_image_b64(img_w_ocr_boxes)],
                             verbose=False
                         )
-                        response = dict(await session.get_response(model_name=self.model_name))
+                        response = asdict(await session.get_response(model_name=self.model_name))
                         response['data'] = self.load_json_from_response(response['result'])
                         return response
 
@@ -245,7 +245,7 @@ class Translator:
                         [get_image_b64(img_w_merged_boxes)],
                         verbose=False
                     )
-                    response = dict(await session.get_response(model_name=self.model_name))
+                    response = asdict(await session.get_response(model_name=self.model_name))
                     response['data'] = self.load_json_from_response(response['result'])
                     if debug:
                         logger.info(f'翻译任务{tid}LLM翻译结果: {response["data"]}')
@@ -271,7 +271,7 @@ class Translator:
                         [get_image_b64(img_w_merged_boxes)],
                         verbose=False
                     )
-                    response = dict(await session.get_response(model_name=self.model_name))
+                    response = asdict(await session.get_response(model_name=self.model_name))
                     response['data'] = self.load_json_from_response(response['result'])
                     if debug:
                         logger.info(f'翻译任务{tid}LLM校对结果: {response["data"]}')

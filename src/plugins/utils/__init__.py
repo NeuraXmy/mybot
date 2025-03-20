@@ -32,7 +32,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from PIL import Image
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import atexit
 from tenacity import retry, stop_after_attempt, wait_fixed
 from uuid import uuid4

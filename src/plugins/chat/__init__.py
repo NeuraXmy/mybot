@@ -545,7 +545,7 @@ async def _(ctx: HandlerContext):
             logger.info("加载翻译模型")
             translator.load_model()
 
-        res: TranslationResult = await translator.translate(ctx, img, lang=lang, debug=debug)
+        res: TranslationResult = await translator.translate(img, lang=lang, debug=debug)
 
         msg = await get_image_cq(res.img)
         msg += f"{res.total_time:.1f}s {res.total_cost:.4f}$"
