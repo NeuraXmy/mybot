@@ -385,8 +385,8 @@ async def tts(text):
     
 # -------------------------------- 文本翻译相关 -------------------------------- #
 
-async def translate_text(text, additional_info=None, dst_lang="中文", timeout=20, default=None, model='gpt-4o-mini'):
-    text_translations = file_db.get("text_translations", {})
+async def translate_text(text, additional_info=None, dst_lang="中文", timeout=20, default=None, model='gemini-2-flash', cache=True):
+    text_translations = file_db.get("text_translations", {}) if cache else {}
     if text not in text_translations:
         logger.info(f"翻译文本: {truncate(text, 64)} 额外信息: {truncate(additional_info, 64)} 目标语言: {dst_lang}")
         try:
@@ -404,7 +404,7 @@ async def translate_text(text, additional_info=None, dst_lang="中文", timeout=
         except Exception as e:
             logger.print_exc(f"翻译失败: {e}")
             return default
-
-    file_db.set("text_translations", text_translations)
+    if cache:
+        file_db.set("text_translations", text_translations)
     return text_translations[text]
     

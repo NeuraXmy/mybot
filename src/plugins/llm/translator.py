@@ -44,11 +44,11 @@ class Translator:
         self.merge_prompt_path = "data/llm/translator/prompt_merge.txt"
         self.trans_prompt_path = "data/llm/translator/prompt_trans.txt"
         self.correct_prompt_path = "data/llm/translator/prompt_correct.txt"
-        self.model_name = "gpt-4o"
+        self.model_name = "gemini-2-flash"
         self.task_id_top = 0
         self.langs = ['ja', 'ko']
         self.max_resolution = 1024 * 768
-        self.merge_method = 'alg'   # alg or llm
+        self.merge_method = 'llm'   # alg or llm
         self.llm_retry = 1
 
     def calc_box_dist(self, b1, b2):
@@ -118,7 +118,7 @@ class Translator:
             return True
         return False
 
-    async def translate(self, ctx: HandlerContext, img: Image.Image, lang=None, debug=False) -> TranslationResult:
+    async def translate(self, img: Image.Image, lang=None, debug=False) -> TranslationResult:
         with Timer() as t_total:
             if not self.model_loaded:
                 raise Exception('OCR模型未加载')
@@ -137,9 +137,6 @@ class Translator:
                 max_size = self.max_resolution // min(w, h)
                 img = resize_keep_ratio(img, max_size)
                 logger.info(f'翻译任务{tid}缩放图片从({w},{h})到{img.size}')
-
-            user_id  = ctx.user_id  if ctx else None
-            group_id = ctx.group_id if ctx else None
 
             logger.info(f'开始图片翻译任务{tid} lang={lang}')
 

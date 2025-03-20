@@ -1410,6 +1410,7 @@ async def compose_music_list_image(diff, lv_musics, qid, show_id):
 async def search_music(
     query, 
     use_id=True, 
+    use_nidx=True,
     use_alias=True, 
     use_emb=True, 
     max_num=4,
@@ -1441,6 +1442,28 @@ async def search_music(
                     ret_musics.append(music)
             else:
                 msg = f"找不到id为{mid}的曲目"
+
+    # 负数索引匹配
+    if not search_type and use_nidx:
+        try:
+            leak = False
+            if '剧透' in query or 'leak' in query:
+                leak = True
+                query = query.replace('剧透', '').replace('leak', '')
+            idx = int(query)
+            assert idx < 0
+        except:
+            idx = None
+        if idx:
+            sorted_musics = sorted(musics, key=lambda x: x['publishedAt'])
+            if not leak:
+                while datetime.fromtimestamp(sorted_musics[-1]['publishedAt'] / 1000) > datetime.now():
+                    sorted_musics.pop()
+            search_type = "nidx"
+            if -idx > len(sorted_musics):
+                msg = f"找不到第{-idx}新的曲目(只有{len(sorted_musics)}首)"
+            else:
+                ret_musics.append(sorted_musics[idx])
 
     # 别名匹配
     if not search_type and use_alias:
@@ -2870,7 +2893,7 @@ async def get_event_by_ban_name(ban_name: str) -> dict:
                                 
 # 根据索引获取活动
 async def get_event_by_index(index: str) -> dict:
-    if index.isdigit():
+    if index.removeprefix('-').isdigit():
         events = await res.events.get()
         events = sorted(events, key=lambda x: x['startAt'])
         index = int(index)
@@ -2889,7 +2912,7 @@ async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: boo
     eid = event['id']
     title = event['name']
     event_asset_name = event['assetbundleName']
-    summary_db = get_file_db(f"data/sekai/story_summary/{eid}.json", logger)
+    summary_db = get_file_db(f"data/sekai/story_summary/event/{eid}.json", logger)
     summary = summary_db.get("summary", {})
     if not summary or refresh:
         await ctx.asend_reply_msg(f"正在生成【{eid}】{title} 的剧情总结...")
@@ -2946,17 +2969,15 @@ async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: boo
                 else:
                     raw_story += f"---\n({text})\n"
             raw_story += "\n"
-        # with open(f"sandbox/raw_story.txt", "w", encoding="utf-8") as f:
-        #     f.write(raw_story)
 
-        summary_prompt_template = Path(f"data/sekai/story_summary_prompt.txt").read_text()
+        summary_prompt_template = Path(f"data/sekai/event_story_summary_prompt.txt").read_text()
         summary_prompt = summary_prompt_template.format(
             title=title,
             outline=outline,
             raw_story=raw_story,
         )
         
-        @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+        @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
         async def do_summary():
             try:
                 session = ChatSession()
@@ -2964,6 +2985,8 @@ async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: boo
                 resp = await session.get_response(summary_model)
 
                 resp_text = resp.result
+                if len(resp_text) > 4096:
+                    raise Exception(f"生成文本超过长度限制({len(resp_text)}>4096)")
                 start_idx = resp_text.find("{")
                 end_idx = resp_text.rfind("}") + 1
                 data = json.loads(resp_text[start_idx:end_idx])
@@ -2992,6 +3015,7 @@ async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: boo
 
             except Exception as e:
                 logger.warning(f"生成剧情总结失败: {e}")
+                await ctx.asend_reply_msg(f"生成剧情总结失败: {e}, 重新生成中...")
                 raise Exception(f"生成剧情总结失败: {e}")
 
         summary = await do_summary()

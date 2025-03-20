@@ -3,7 +3,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from nonebot.adapters.onebot.v11 import MessageEvent
-from ..llm import ChatSession, download_image_to_b64, tts, ChatSessionResponse, api_provider_mgr
+from ..llm import ChatSession, download_image_to_b64, tts, ChatSessionResponse, api_provider_mgr, translate_text
 from ..utils import *
 from ..llm.translator import Translator, TranslationResult
 from datetime import datetime, timedelta
@@ -502,48 +502,49 @@ async def _(ctx: HandlerContext):
 
 
 translator = Translator()
-translating_msg_ids = set()
 
 # 翻译图片
-translate_img = CmdHandler(["/trans", "/translate", "/翻译"], logger, disabled=True)
-translate_img.check_cdrate(img_trans_cd).check_cdrate(img_trans_rate).check_wblist(gwl)
-@translate_img.handle()
+trans = CmdHandler(["/trans", "/translate", "/翻译"], logger)
+trans.check_cdrate(img_trans_cd).check_cdrate(img_trans_rate).check_wblist(gwl)
+@trans.handle()
 async def _(ctx: HandlerContext):
-    try:
-        reply_msg = await ctx.aget_reply_msg()
-        reply_msg_id = (await ctx.aget_reply_msg_obj()).get('message_id', 0)
-        assert reply_msg is not None
-        cqs = extract_cq_code(reply_msg)
-        img_url = cqs['image'][0]['url']
-    except:
-        raise Exception("请回复一张图片")
-    
-    args = ctx.get_args().strip()
+    reply_msg_obj = await ctx.aget_reply_msg_obj()
 
+    # 翻译当前消息内的文本
+    if not reply_msg_obj:
+        text = ctx.get_args().strip()
+        assert_and_reply(text, "请输入要翻译的文本，或回复要翻译的文本/图片")
+        return await ctx.asend_reply_msg(await translate_text(text, cache=False))
+
+    reply_msg = reply_msg_obj["message"]
+    cqs = extract_cq_code(reply_msg)
+    imgs = cqs.get("image", [])
+
+    # 翻译回复消息内的文本
+    if not imgs:
+        text = extract_text(reply_msg)
+        assert_and_reply(text, "请输入要翻译的文本，或回复要翻译的文本/图片")
+        return await ctx.asend_reply_msg(await translate_text(text, cache=False))
+
+    args = ctx.get_args().strip()
     debug = False
     if 'debug' in args:
         debug = True
         args = args.replace('debug', '').strip()
 
-    if args and args not in translator.langs:
-        raise Exception(f"支持语言:{translator.langs}, 指定语言仅影响文本检测，不影响翻译")
-    lang = args if args else None
+    lang = None
+    if args:
+        assert_and_reply(args in translator.langs, f"支持语言:{translator.langs}, 指定语言仅影响文本检测，不影响翻译")
+        lang = args
     
-    try:
-        img = await download_image(img_url)
-    except Exception as e:
-        raise Exception(f"下载图片失败: {e}")
-    
-    if reply_msg_id in translating_msg_ids:
-        raise Exception("该图片正在被翻译，请勿重复提交")
-    translating_msg_ids.add(reply_msg_id)
+    img_url = cqs['image'][0]['url']
+    img = await download_image(img_url)
     
     try:
         if not translator.model_loaded:
             logger.info("加载翻译模型")
             translator.load_model()
 
-        # await ctx.asend_reply_msg(f"翻译任务已提交，预计2分钟内完成")
         res: TranslationResult = await translator.translate(ctx, img, lang=lang, debug=debug)
 
         msg = await get_image_cq(res.img)
@@ -566,10 +567,6 @@ async def _(ctx: HandlerContext):
 
     except Exception as e:
         raise Exception(f"翻译失败: {e}")
-
-    finally:
-        try: translating_msg_ids.remove(reply_msg_id)
-        except: pass
 
 
 
