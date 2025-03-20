@@ -269,6 +269,7 @@ outside_characters                          = get_sekai_master_data("外部角�
 mysekai_gate_levels                         = get_sekai_master_data("Mysekai门等级数据", "mysekaiGateLevels.json")
 myskeia_gate_material_groups                = get_sekai_master_data("Mysekai门升级材料组数据", "mysekaiGateMaterialGroups.json")
 event_story_units                           = get_sekai_master_data("活动故事团数据", "eventStoryUnits.json", map_fn=event_story_units_map_fn)
+card_episodes                               = get_sekai_master_data("卡牌剧情数据", "cardEpisodes.json")
 
 # ================================ 静态图片资源 ================================ #
 

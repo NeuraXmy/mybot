@@ -48,7 +48,7 @@ class Translator:
         self.task_id_top = 0
         self.langs = ['ja', 'ko']
         self.max_resolution = 1024 * 768
-        self.merge_method = 'llm'   # alg or llm
+        self.merge_method = 'alg'   # alg or llm
         self.llm_retry = 1
 
     def calc_box_dist(self, b1, b2):

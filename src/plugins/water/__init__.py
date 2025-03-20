@@ -85,6 +85,8 @@ async def get_hash_from_msg(group_id, msg, types=None):
         # 图片
         if stype == 'image':
             subtype = sdata.get('sub_type', 0)
+            if 'summary' in sdata:
+                subtype = 1
             if subtype == 0 and not check_type('image'): continue
             if subtype == 1 and not check_type('stamp'): continue
 

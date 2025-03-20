@@ -858,8 +858,11 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-async def get_image_cq(image, allow_error=False, logger=None, low_quality=False):
+async def get_image_cq(image, allow_error=False, logger=None, low_quality=False, force_base64=False):
     try:
+        if force_base64 and isinstance(image, str):
+            with open(image, 'rb') as f:
+                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
         if isinstance(image, Image.Image):
             tmp_file_path = 'data/imgtool/tmp/tmp'
             # check if image mode is P

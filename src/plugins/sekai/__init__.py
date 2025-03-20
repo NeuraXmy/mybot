@@ -3066,6 +3066,182 @@ async def get_event_story_summary(ctx: HandlerContext, event: dict, refresh: boo
         
     return msg_lists
 
+# 根据索引获取卡牌
+async def get_card_by_index(index: str) -> dict:
+    index = index.strip()
+    cards = await res.cards.get()
+    if m := re.match(r"([a-z]+)(-?\d+)", index):
+        nickname, seq = m.groups()
+        cid = get_cid_by_nickname(nickname)
+        assert_and_reply(cid, f"无效的角色昵称：{nickname}")
+        chara_cards = find_by(cards, "characterId", cid, mode="all")
+        chara_cards.sort(key=lambda x: x['releaseAt'])
+        if seq.removeprefix('-').isdigit(): 
+            seq = int(seq)
+            assert_and_reply(seq != 0, "卡牌序号只能为负数或正数")
+            if seq < 0:
+                assert_and_reply(-seq <= len(chara_cards), f"角色{nickname}只有{len(chara_cards)}张卡")
+                card = chara_cards[seq]
+                return card
+            else:
+                assert_and_reply(seq <= len(chara_cards), f"角色{nickname}只有{len(chara_cards)}张卡")
+                card = chara_cards[seq-1]
+                return card
+    assert_and_reply(index.isdigit(), "查卡格式必须是卡牌ID或角色昵称+数字(例如mnr1代表mnr的第一张卡，mnr-1代表mnr的最新一张卡)")
+    card = find_by(cards, "id", int(index))
+    assert_and_reply(card, f"卡牌{index}不存在")
+    return card
+
+# 获取卡牌剧情总结
+async def get_card_story_summary(ctx: HandlerContext, card: dict, refresh: bool, summary_model: str = "gemini-2-flash") -> List[str]:
+    cid = card['id']
+    title = card['prefix']
+    cn_title = await translate_text(title, additional_info="该文本是偶像抽卡游戏中卡牌的标题", default=title)
+    
+    card_thumbs = [await get_card_full_thumbnail(card, False)]
+    if has_after_training(card):
+        card_thumbs.append(await get_card_full_thumbnail(card, True))
+    card_thumbs = await get_image_cq(resize_keep_ratio(concat_images(card_thumbs, 'h'), 80, mode='short'))
+
+    summary_db = get_file_db(f"data/sekai/story_summary/card/{cid}.json", logger)
+    summary = summary_db.get("summary", {})
+    if not summary or refresh:
+        await ctx.asend_reply_msg(f"正在生成【{cid}】{title} - {cn_title} 的剧情总结...{card_thumbs}")
+
+    ## 读取数据
+    stories = find_by(await res.card_episodes.get(), "cardId", cid, mode='all')
+    stories.sort(key=lambda x: x['seq'])
+    eps = []
+    for i, story in enumerate(stories, 1):
+        asset_name = story['assetbundleName']
+        scenario_id = story['scenarioId']
+        ep_title = story['title']
+        ep_data = json.loads(await get_not_image_asset(f"character/member/{asset_name}_rip/{scenario_id}.asset"))
+        cids = set([
+            find_by(await res.characters_2ds.get(), 'id', item['Character2dId']).get('characterId', None)
+            for item in ep_data['AppearCharacters']
+        ])
+
+        snippets = []
+        chara_talk_count = {}
+        for snippet in ep_data['Snippets']:
+            action = snippet['Action']
+            ref_idx = snippet['ReferenceIndex']
+            if action == 1:     # 对话
+                talk = ep_data['TalkData'][ref_idx]
+                names = talk['WindowDisplayName'].split('・')
+                snippets.append((names, talk['Body']))
+                for name in names:
+                    chara_talk_count[name] = chara_talk_count.get(name, 0) + 1
+            elif action == 6:   # 标题特效
+                effect = ep_data['SpecialEffectData'][ref_idx]
+                if effect['EffectType'] == 8:
+                    snippets.append((None, effect['StringVal']))
+
+        eps.append({
+            'title': ep_title,
+            'cids': cids,
+            'snippets': snippets,
+            'talk_count': sorted(chara_talk_count.items(), key=lambda x: x[1], reverse=True),
+        })
+    
+    ## 获取总结
+    if not summary or refresh:
+        for i, ep in enumerate(eps, 1):
+            # 获取剧情文本
+            raw_story = ""
+            for names, text in ep['snippets']:
+                if names:
+                    raw_story += f"---\n{' & '.join(names)}:\n{text}\n"
+                else:
+                    raw_story += f"---\n({text})\n"
+            raw_story += "\n"
+
+            summary_prompt_template = Path(f"data/sekai/card_story_summary_prompt.txt").read_text()
+            summary_prompt = summary_prompt_template.format(raw_story=raw_story,)
+            
+            @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
+            async def do_summary():
+                try:
+                    session = ChatSession()
+                    session.append_user_content(summary_prompt, verbose=False)
+                    resp = await session.get_response(summary_model)
+
+                    resp_text = resp.result
+                    if len(resp_text) > 1024:
+                        raise Exception(f"生成文本超过长度限制({len(resp_text)}>1024)")
+                    start_idx = resp_text.find("{")
+                    end_idx = resp_text.rfind("}") + 1
+                    data = json.loads(resp_text[start_idx:end_idx])
+
+                    ep_summary = {}
+                    ep_summary['summary'] = data['summary']
+
+                    additional_info = f"生成模型: {resp.model.name} | {resp.prompt_tokens}+{resp.completion_tokens} tokens"
+                    if resp.quota > 0:
+                        price_unit = resp.model.get_price_unit()
+                        if resp.cost == 0.0:
+                            additional_info += f" | 0/{resp.quota:.2f}{price_unit}"
+                        elif resp.cost >= 0.0001:
+                            additional_info += f" | {resp.cost:.4f}/{resp.quota:.2f}{price_unit}"
+                        else:
+                            additional_info += f" | <0.0001/{resp.quota:.2f}{price_unit}"
+                    ep_summary['additional_info'] = additional_info
+                    return ep_summary
+
+                except Exception as e:
+                    logger.warning(f"生成剧情总结失败: {e}")
+                    await ctx.asend_reply_msg(f"生成剧情总结失败: {e}, 重新生成中...")
+                    raise Exception(f"生成剧情总结失败: {e}")
+
+            summary[ep['title']] = await do_summary()
+        summary_db.set("summary", summary)
+
+    ## 生成回复
+    msg_lists = []
+
+    msg_lists.append(f"""
+【{cid}】{title} - {cn_title} 
+{card_thumbs}
+!! 剧透警告 !!
+!! 内容由AI生成，不保证完全准确 !!
+""".strip() + "\n" * 16)
+    
+    for i, ep in enumerate(eps, 1):
+        with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(8) as canvas:
+            row_count = int(math.sqrt(len(ep['cids'])))
+            with Grid(row_count=row_count).set_sep(2, 2):
+                for cid in ep['cids']:
+                    if not cid: continue
+                    icon = await get_chara_icon_by_cid(cid)
+                    if not icon: continue
+                    ImageBox(icon, size=(32, 32), use_alphablend=True)
+
+        msg_lists.append(f"""
+【{ep['title']}】
+{await get_image_cq(await run_in_pool(canvas.get_img))}
+{summary.get(ep['title'], {}).get('summary', '')}
+""".strip())
+
+        chara_talk_count_text = "【角色对话次数】\n"
+        for name, count in ep['talk_count']:
+            chara_talk_count_text += f"{name}: {count}\n"
+        msg_lists.append(chara_talk_count_text.strip())
+
+    additional_info_text = ""
+    for i, ep in enumerate(eps, 1):
+        additional_info_text += f"EP#{i} {summary.get(ep['title'], {}).get('additional_info', '')}\n"
+
+    msg_lists.append(f"""
+以上内容由NeuraXmy(ルナ茶)的QQBot生成
+{additional_info_text.strip()}
+使用\"/卡牌剧情 卡牌id\"查询对应活动总结
+使用\"/卡牌剧情 卡牌id refresh\"可刷新AI活动总结
+更多pjsk功能请@bot并发送\"/help sekai\"
+""".strip())
+        
+    return msg_lists
+
 
 # ========================================= 会话逻辑 ========================================= #
 
@@ -3353,13 +3529,12 @@ async def _(ctx: HandlerContext):
     card, chara_id = None, None
     cards = await res.cards.get()
 
-    # 尝试解析：单独id作为参数 
+    # 尝试解析：单独查某张卡
     try:
-        card_id = int(args)
-        card = find_by(cards, "id", card_id)
-        assert card is not None
+        card = await get_card_by_index(args)
     except:
         card = None
+        
     # 尝试解析：角色昵称作为参数
     if not card:
         try:
@@ -3437,15 +3612,25 @@ pjsk_card_img = CmdHandler(["/pjsk card img", "/pjsk_card_img", "/查卡面", "/
 pjsk_card_img.check_cdrate(cd).check_wblist(gbl)
 @pjsk_card_img.handle()
 async def _(ctx: HandlerContext):
-    args = ctx.get_args().strip()
-    try:
-        cid = int(args)
-    except:
-        return await ctx.asend_reply_msg("请输入卡牌ID")
-    msg = await get_image_cq(await get_card_image(cid, False))
-    if has_after_training(find_by(await res.cards.get(), "id", cid)):
-        msg += await get_image_cq(await get_card_image(cid, True))
+    card = await get_card_by_index(ctx.get_args().strip())
+    msg = await get_image_cq(await get_card_image(card['id'], False))
+    if has_after_training(card):
+        msg += await get_image_cq(await get_card_image(card['id'], True))
     return await ctx.asend_reply_msg(msg)
+
+
+# 卡牌剧情查询
+pjsk_card_story = CmdHandler(["/pjsk card story", "/pjsk_card_story", "/卡牌剧情", "/卡面剧情", "卡剧情"], logger)
+pjsk_card_story.check_cdrate(cd).check_wblist(gbl)
+@pjsk_card_story.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    refresh = False
+    if 'refresh' in args:
+        args = args.replace('refresh', '').strip()
+        refresh = True
+    card = await get_card_by_index(args)
+    return await ctx.asend_multiple_fold_msg(await get_card_story_summary(ctx, card, refresh))
 
 
 # 绑定id或查询绑定id

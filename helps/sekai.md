@@ -45,6 +45,7 @@ Project Sekai（世界计划）日服游戏相关服务
     - [`/pjsk box` 保有卡组查询](#pjsk-box)
     - [`/pjsk event card` 活动组卡计算](#pjsk-event-card)
     - [`/pjsk challenge card` 挑战组卡计算](#pjsk-challenge-card)
+    - [`/pjsk card story` 卡牌剧情查询](#pjsk-card-story)
 
 - 榜线
     - [`/pjsk sk` 榜线预测查询](#pjsk-sk)
@@ -390,6 +391,8 @@ Project Sekai（世界计划）日服游戏相关服务
 
 ```
 根据ID获取某个角色的卡面图片，包含花前花后
+1. 按照ID查询
+2. 按照角色昵称+序号查询，例如"mnr1"代表mnr的第一张卡，"mnr-1"代表mnr的最后一张卡
 ```
 
 - **指令别名**
@@ -399,6 +402,10 @@ Project Sekai（世界计划）日服游戏相关服务
 - **示例**
 
     `/查卡面 123` 查询 ID 为 123 的卡面信息
+
+    `/查卡面 mnr1` 查询 mnr 的第一张卡面信息
+
+    `/查卡面 mnr-1` 查询 mnr 的最后一张（最新的）卡面信息
 
 
 ## `/pjsk event card`
@@ -461,6 +468,27 @@ Live类型可选: 协力、单人、auto
 
     `/pjsk box box` 仅查询自己有的卡牌
 
+
+## `/pjsk card story`
+
+```
+根据ID获取某个角色的卡面剧情（AI总结），包含前后篇
+1. 按照ID查询
+2. 按照角色昵称+序号查询，例如"mnr1"代表mnr的第一张卡，"mnr-1"代表mnr的最后一张卡
+加上refresh参数能够刷新AI生成的总结
+```
+
+- **指令别名**
+
+    `/卡牌剧情` `/卡面剧情` `/卡剧情`
+
+- **示例**
+
+    `/卡牌剧情 123` 查询 ID 为 123 的卡面剧情
+
+    `/卡牌剧情 mnr1` 查询 mnr 的第一张卡面剧情
+
+    `/卡牌剧情 123 refresh` 查询 ID 为 123 的卡面剧情，并刷新AI生成的总结
 
 ---
 # 榜线
