@@ -50,6 +50,28 @@ DIFF_NAMES = [
     ("append", "apd", "Append", "APPEND", "APD", "Apd"), 
 ]
 CHARACTER_NICKNAMES = json.load(open("data/sekai/character_nicknames.json", "r", encoding="utf-8"))
+UNIT_NAMES = [
+    ('light_sound', 'ln'),
+    ('idol', 'mmj'),
+    ('street', 'vbs'),
+    ('theme_park', 'ws'),
+    ('school_refusal', '25'),
+    ('piapro', 'vs'),
+]
+CID_UNIT_MAP = {
+    1: "light_sound", 2: "light_sound", 3: "light_sound", 4: "light_sound", 
+    5: "idol", 6: "idol", 7: "idol", 8: "idol",
+    9: "street", 10: "street", 11: "street", 12: "street",
+    13: "theme_park", 14: "theme_park", 15: "theme_park", 16: "theme_park",
+    17: "school_refusal", 18: "school_refusal", 19: "school_refusal", 20: "school_refusal",
+    21: "piapro", 22: "piapro", 23: "piapro", 24: "piapro", 25: "piapro", 26: "piapro",
+}
+UNIT_CID_MAP = {
+    "light_sound": [1, 2, 3, 4],
+    "idol": [5, 6, 7, 8],
+    "street": [9, 10, 11, 12],
+    "theme_park": [13, 14, 15, 16],
+}
 CARD_ATTR_NAMES = [
     ("cool", "COOL", "Cool", "蓝星", "蓝", "星"),
     ("happy", "HAPPY", "Happy", "橙心", "橙", "心"),
@@ -201,6 +223,10 @@ GROUP_BGS = {
 DEFAULT_BLUE_GRADIENT_BG = FillBg(LinearGradient(c1=(220, 220, 255, 255), c2=(220, 240, 255, 255), p1=(0, 0), p2=(1, 1)))
 
 def random_bg(group=None):
+    for names in UNIT_NAMES:
+        if any([name == group for name in names]):
+            group = names[1]
+            break
     if group is None:
         bg = random.choice(COMMON_BGS)
     else:
@@ -652,6 +678,18 @@ async def compose_character_all_stamp_image(cid):
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 从文本提取团名
+def extract_unit(text, default=None):
+    all_names = []
+    for names in UNIT_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
+
 # 从文本提取卡牌属性 返回(属性名, 文本)
 def extract_card_attr(text, default=None):
     all_names = []
@@ -792,7 +830,7 @@ async def get_card_full_thumbnail(card, after_training=None, pcard=None, max_lev
     return img
 
 # 合成卡牌列表图片
-async def compose_card_list_image(chara_id, cards, qid):
+async def compose_card_list_image(bg_unit, cards, qid):
     box_card_ids = None
     if qid:
         profile, pmsg = await get_detailed_profile(qid, raise_exc=True)
@@ -819,7 +857,7 @@ async def compose_card_list_image(chara_id, cards, qid):
     card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
 
 
-    with Canvas(bg=random_bg(get_group_by_chara_id(chara_id))).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=random_bg(bg_unit)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_sep(16).set_content_align('lt').set_item_align('lt'):
             if qid:
                 await get_detailed_profile_card(profile, pmsg)
@@ -3530,81 +3568,72 @@ async def _(ctx: HandlerContext):
     cards = await res.cards.get()
 
     # 尝试解析：单独查某张卡
-    try:
-        card = await get_card_by_index(args)
-    except:
-        card = None
-        
-    # 尝试解析：角色昵称作为参数
-    if not card:
-        try:
-            rare, args = extract_card_rare(args)
-            attr, args = extract_card_attr(args)
-            supply, args = extract_card_supply(args)
-            skill, args = extract_card_skill(args)
-            year, args = extract_year(args)
-
-            if 'box' in args:
-                args = args.replace('box', '').strip()
-                box = True
-            else:
-                box = False
-
-            chara_id = get_cid_by_nickname(args)
-            assert chara_id is not None
-        except:
-            chara_id = None
-
-    if not any([chara_id, card]):
-        return await ctx.asend_reply_msg("""使用方式
-按角色查询: /pjsk card miku 绿草 四星 限定 分卡 今年
-根据ID查询: /pjsk card 123""")
-
-    # 直接按id查询
+    try: card = await get_card_by_index(args)
+    except: card = None
     if card:
         logger.info(f"查询卡牌: id={card['id']}")
         return await ctx.asend_reply_msg(f"https://sekai.best/card/{card['id']}")
-    
-    # 按角色查询
-    if chara_id:
-        logger.info(f"查询卡牌: chara_id={chara_id} rare={rare} attr={attr} supply={supply} skill={skill}")
-
-        supplies = await res.card_supplies.get()
-        skills = await res.skills.get()
-
-        res_cards = []
-        for card in cards:
-            if card["characterId"] != int(chara_id): continue
-            if rare and card["cardRarityType"] != rare: continue
-            if attr and card["attr"] != attr: continue
-
-            supply_type = find_by(supplies, "id", card["cardSupplyId"])["cardSupplyType"]
-            card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
-            if supply:
-                search_supplies = []
-                if supply == "all_limited":
-                    search_supplies = CARD_SUPPLIES_SHOW_NAMES.keys()
-                elif supply == "not_limited":
-                    search_supplies = ["normal"]
-                else:
-                    search_supplies = [supply]
-                if supply_type not in search_supplies: continue
-
-            skill_type = find_by(skills, "id", card["skillId"])["descriptionSpriteName"]
-            card["skill_type"] = skill_type
-            if skill and skill_type != skill: continue
-
-            if year and datetime.fromtimestamp(card["releaseAt"] / 1000).year != int(year): continue
-
-            res_cards.append(card)
-
-        logger.info(f"搜索到{len(res_cards)}个卡牌")
-        if len(res_cards) == 0:
-            return await ctx.asend_reply_msg("没有找到相关卡牌")
-
-        qid = ctx.user_id if box else None
         
-        return await ctx.asend_reply_msg(await get_image_cq(await compose_card_list_image(chara_id, res_cards, qid)))
+    # 尝试解析：查多张卡
+    unit, args = extract_unit(args)
+    rare, args = extract_card_rare(args)
+    attr, args = extract_card_attr(args)
+    supply, args = extract_card_supply(args)
+    skill, args = extract_card_skill(args)
+    year, args = extract_year(args)
+    box = False
+    if 'box' in args:
+        args = args.replace('box', '').strip()
+        box = True
+    chara_id = get_cid_by_nickname(args)
+
+    assert_and_reply(any([unit, chara_id, rare, attr, supply, skill, year]), """
+使用方式
+查多张卡: /查卡 miku 绿草 四星 限定 分卡 今年
+查单张卡: /查卡 123 或 /查卡 miku2 或 /查卡 miku-2
+""".strip())
+
+    logger.info(f"查询卡牌: unit={unit} chara_id={chara_id} rare={rare} attr={attr} supply={supply} skill={skill}")
+
+    supplies = await res.card_supplies.get()
+    skills = await res.skills.get()
+
+    res_cards = []
+    for card in cards:
+        card_cid = card["characterId"]
+        if unit and CID_UNIT_MAP.get(card_cid) != unit: continue
+        if chara_id and card_cid != int(chara_id): continue
+        if rare and card["cardRarityType"] != rare: continue
+        if attr and card["attr"] != attr: continue
+
+        supply_type = find_by(supplies, "id", card["cardSupplyId"])["cardSupplyType"]
+        card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
+        if supply:
+            search_supplies = []
+            if supply == "all_limited":
+                search_supplies = CARD_SUPPLIES_SHOW_NAMES.keys()
+            elif supply == "not_limited":
+                search_supplies = ["normal"]
+            else:
+                search_supplies = [supply]
+            if supply_type not in search_supplies: continue
+
+        skill_type = find_by(skills, "id", card["skillId"])["descriptionSpriteName"]
+        card["skill_type"] = skill_type
+        if skill and skill_type != skill: continue
+
+        if year and datetime.fromtimestamp(card["releaseAt"] / 1000).year != int(year): continue
+
+        res_cards.append(card)
+
+    logger.info(f"搜索到{len(res_cards)}个卡牌")
+    if len(res_cards) == 0:
+        return await ctx.asend_reply_msg("没有找到相关卡牌")
+
+    qid = ctx.user_id if box else None
+    
+    bg_unit = unit or (CID_UNIT_MAP.get(int(chara_id), None) if chara_id else None)
+    return await ctx.asend_reply_msg(await get_image_cq(await compose_card_list_image(bg_unit, res_cards, qid)))
         
         
 # 卡面查询
@@ -3630,6 +3659,7 @@ async def _(ctx: HandlerContext):
         args = args.replace('refresh', '').strip()
         refresh = True
     card = await get_card_by_index(args)
+    await ctx.block(str(card['id']))
     return await ctx.asend_multiple_fold_msg(await get_card_story_summary(ctx, card, refresh))
 
 
