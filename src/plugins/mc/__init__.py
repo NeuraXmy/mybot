@@ -204,7 +204,7 @@ class ServerData:
                     if 'has made the advancement' in content:
                         content = content.replace('has made the advancement', '达成了进度')
                         logger.info(f'群聊 {self.group_id} 的服务器: {content}')
-                        self.queue.append(content)
+                        # self.queue.append(content)
 
         if self.listen_mode == 'dynamicmap':
             mute = self.first_update

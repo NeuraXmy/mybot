@@ -254,10 +254,11 @@ async def get_multi_images(ctx: HandlerContext) -> List[Image.Image]:
         reply_cqs = extract_cq_code(reply_msg)
         # 回复转发多张图片
         if 'forward' in reply_cqs:
+            forward_id = reply_cqs['forward'][0]['id']
+            forward_msg = await get_forward_msg(ctx.bot, forward_id)
             img_urls = []
-            for msg_obj in reply_cqs['forward'][0]['content']:
-                msg = msg_obj['message']
-                img_urls.extend(extract_image_url(msg))
+            for msg_obj in forward_msg['messages']:
+                img_urls.extend(extract_image_url(msg_obj['message']))
             assert_and_reply(img_urls, "回复的转发消息中不包含图片")
             assert_and_reply(len(img_urls) <= MULTI_IMAGE_MAX_NUM, f"最多只能处理{MULTI_IMAGE_MAX_NUM}张图片")
         # 回复的消息有图片
@@ -574,6 +575,8 @@ speed 100 设置动图帧间隔为100ms
         
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
         duration = img.info['duration']
+        if not duration: 
+            duration = 100
         if 'speed' in args:
             duration = duration / args['speed']
         elif 'duration' in args:
