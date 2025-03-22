@@ -160,9 +160,12 @@ async def get_hash_from_msg(group_id, msg, types=None):
                 })
 
             elif 'prompt' in data:
+                prompt = data['prompt']
+                if '张图片至群相册' in prompt:
+                    continue
                 ret.append({
                     'type': 'json', 
-                    'hash': get_md5(data['prompt']),
+                    'hash': get_md5(prompt),
                     'brief': f"分享消息#{type_total[stype]}",
                     'original': seg,
                 })
