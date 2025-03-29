@@ -41,8 +41,8 @@ import decord
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'
-_config = None
-def get_config(name=None):
+_config: Dict[str, Any] = None
+def get_config(name: str=None, default={}):
     global _config
     if _config is None:
         print(f'加载配置文件 {CONFIG_PATH}')
@@ -50,7 +50,7 @@ def get_config(name=None):
             _config = yaml.load(f, Loader=yaml.FullLoader)
         print(f'配置文件已加载')
     if name is not None:
-        return _config[name]
+        return _config.get(name, default)
     return _config
 
 SUPERUSER = get_config()['superuser']   
@@ -63,6 +63,14 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+# 从文件读取图片
+def open_image(file_path: Union[str, Path], load=True) -> Image.Image:
+    img = Image.open(file_path)
+    if load:
+        img.load()
+    return img
+
+
 def get_md5(s: str):
     import hashlib
     m = hashlib.md5()
@@ -70,18 +78,27 @@ def get_md5(s: str):
     return m.hexdigest()
 
 
-def count_dict(d, level):
+def count_dict(d: dict, level: int):
+    """
+    计算字典某个层级的元素个数
+    """
     if level == 1:
         return len(d)
     else:
         return sum(count_dict(v, level-1) for v in d.values())
 
 def create_folder(folder_path):
+    """
+    创建文件夹，返回文件夹路径
+    """
     folder_path = str(folder_path)
     os.makedirs(folder_path, exist_ok=True)
     return folder_path
 
 def create_parent_folder(file_path):
+    """
+    创建文件所在的文件夹，返回文件路径
+    """
     parent_folder = os.path.dirname(file_path)
     create_folder(parent_folder)
     return file_path
@@ -112,6 +129,9 @@ def rand_filename(ext: str) -> str:
 
 
 class TempFilePath:
+    """
+    临时文件路径
+    """
     def __init__(self, ext: str):
         self.ext = ext
         self.path = pjoin('data/utils/tmp', rand_filename(ext))
@@ -121,7 +141,7 @@ class TempFilePath:
         return self.path
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        utils_logger.info(f'删除临时文件 {self.path}')
+        # utils_logger.info(f'删除临时文件 {self.path}')
         remove_file(self.path)
 
 
@@ -134,7 +154,7 @@ def get_frames_from_gif(img: Image.Image):
     return [frame.copy() for frame in ImageSequence.Iterator(img)]
 
 # 从帧序列保存透明GIF
-def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str, alpha_threshold: float = 0.0):
+def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str, alpha_threshold: float = 0.5):
     alpha_threshold = max(0.0, min(1.0, alpha_threshold))
     alpha_threshold = int(alpha_threshold * 255)
     if isinstance(frames, Image.Image):
@@ -158,35 +178,43 @@ async def download_image(image_url, force_http=True):
 # 下载svg图片，返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 async def download_and_convert_svg(image_url):
-    from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.common.by import By
-    import time
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    driver = webdriver.Chrome(options=options)
-    try:
-        driver.get(image_url)
-        await asyncio.sleep(1)
-        svg_element = driver.find_element(By.TAG_NAME, 'svg')
-        width = driver.execute_script("return arguments[0].getBoundingClientRect().width;", svg_element)
-        height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", svg_element)
-        driver.set_window_size(width, height)
-        tmp_file = os.path.join("data/utils/svg/tmp", rand_filename(".png"))
-        os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
-        if not driver.save_screenshot(tmp_file):
-            raise Exception("Failed to save screenshot")
-        image = Image.open(tmp_file)
-        os.remove(tmp_file)
-        return image
-    except Exception as e:
-        traceback.print_exc()
-        raise Exception(f"Failed to download SVG image")
-    finally:
-        driver.quit()
+    def download():
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.common.by import By
+        import time
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--start-maximized')
+        options.add_argument('--start-fullscreen')
+        driver = webdriver.Chrome(options=options)
+        try:
+            driver.get(image_url)
+            time.sleep(1)
+            svg_element = driver.find_element(By.TAG_NAME, 'svg')
+            if svg_element.get_attribute('width') and svg_element.get_attribute('height'):
+                width = int(svg_element.get_attribute('width'))
+                height = int(svg_element.get_attribute('height'))
+            else:
+                width = driver.execute_script("return arguments[0].getBoundingClientRect().width;", svg_element)
+                height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", svg_element)
+            driver.set_window_size(width, height)
+            tmp_file = os.path.join("data/utils/svg/tmp", rand_filename(".png"))
+            os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
+            if not driver.save_screenshot(tmp_file):
+                raise Exception("Failed to save screenshot")
+            image = Image.open(tmp_file)
+            os.remove(tmp_file)
+            return image
+        except Exception as e:
+            traceback.print_exc()
+            raise Exception(f"Failed to download SVG image")
+        finally:
+            driver.quit()
+    return await run_in_pool(download)
 
 # markdown转图片
 def markdown_to_image(markdown_text: str) -> Image.Image:
@@ -239,6 +267,7 @@ def markdown_to_image(markdown_text: str) -> Image.Image:
         remove_file(html_save_path)
         remove_file(img_save_path)
 
+
 # 下载文件到本地路径
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 async def download_file(url, file_path):
@@ -288,6 +317,7 @@ class TempNapcatFilePath:
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         remove_file(self.path)
+
 
 # 读取文件为base64字符串
 def read_file_as_base64(file_path):
@@ -858,9 +888,9 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-async def get_image_cq(image, allow_error=False, logger=None, low_quality=False, force_base64=False):
+async def get_image_cq(image, allow_error=False, logger=None, low_quality=False, force_read=False):
     try:
-        if force_base64 and isinstance(image, str):
+        if force_read and isinstance(image, str):
             with open(image, 'rb') as f:
                 return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
         if isinstance(image, Image.Image):
@@ -1014,6 +1044,14 @@ def convert_video_to_gif(video_path, save_path, max_fps=10, max_size=256, max_fr
         img.thumbnail((max_size, max_size), Image.Resampling.BILINEAR)
         resized_frames.append(img)
     resized_frames[0].save(save_path, save_all=True, append_images=resized_frames[1:], duration=1000 / max_fps, loop=0)
+
+# 批量gather
+async def batch_gather(*futs_or_coros, batch_size=32):
+    results = []
+    for i in range(0, len(futs_or_coros), batch_size):
+        results.extend(await asyncio.gather(*futs_or_coros[i:i + batch_size]))
+    return results
+
 
 
 # ------------------------------------------ 聊天控制 ------------------------------------------ #
@@ -1581,7 +1619,7 @@ def remove_by(lst, key, value):
 class HandlerContext:
     time: datetime = None
     handler: "CmdHandler" = None
-    nonebot_handler = None
+    nonebot_handler: Any = None
     bot: Bot = None
     event: MessageEvent = None
     trigger_cmd: str = None
@@ -1684,6 +1722,7 @@ class CmdHandler:
         if isinstance(self.banned_cmds, str):
             self.banned_cmds = [self.banned_cmds]
         self.block_set = set()
+        # utils_logger.info(f'注册指令 {commands[0]}')
 
     def check_group(self):
         self.private_group_check = "group"
@@ -1705,10 +1744,15 @@ class CmdHandler:
         self.superuser_check = { "superuser": superuser }
         return self
 
+    async def additional_context_process(self, context: HandlerContext):
+        return context
+
     def handle(self):
         def decorator(handler_func):
             @self.handler.handle()
             async def func(bot: Bot, event: MessageEvent):
+                # utils_logger.info(f'Handler {self.commands[0]} 收到指令: {event.message.extract_plain_text()}')
+
                 if self.disabled:
                     return
 
@@ -1770,7 +1814,11 @@ class CmdHandler:
                         cmd_history = cmd_history[-MAX_CMD_HISTORY:]
 
                 try:
+                    # 额外处理，用于子类自定义
+                    context = await self.additional_context_process(context)
+                    assert context, "额外处理返回值不能为空"
                     return await handler_func(context)
+                
                 except NoReplyException:
                     return
                 except ReplyException as e:

@@ -1,21 +1,24 @@
 # https://github.com/yunkuangao/koishi-plugin-pjsk-stickers-maker
 
+from ..common import *
 import os
 import math
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
 
+MAKER_BASE_DIR = f"{SEKAI_ASSET_DIR}/stamp_maker"
+
 # ----------------------------------------- configs ----------------------------------------- #
 
-font_path = "data/sekai/maker/fonts/ShangShouFangTangTi.ttf"
-font_jp_path = "data/sekai/maker/fonts/YurukaStd.woff2"
+font_path = f"{MAKER_BASE_DIR}/fonts/ShangShouFangTangTi.ttf"
+font_jp_path = f"{MAKER_BASE_DIR}/fonts/YurukaStd.woff2"
 font_size = 100
 font_jp_size = 80
 s_font_zoom_ratio = 0.8
 
 ttfont_jp = TTFont(font_jp_path)
 
-line_break_symbol = "/"
+line_break_symbol = "\n"
 
 preview_column = 4
 preview_font_size = 32
@@ -310,7 +313,14 @@ def draw_text(
 # ----------------------------------------- functions ----------------------------------------- #
 
 
-def make_sticker(
+def get_stamp_template_img_path(id: int):
+    return f"{MAKER_BASE_DIR}/images/{id:06d}.png"
+
+def check_stamp_can_make(id: int):
+    return os.path.exists(get_stamp_template_img_path(id))
+
+
+def make_stamp(
     id: int,
     character: str,
     text: str,
@@ -347,7 +357,7 @@ def make_sticker(
     :return: Sticker图像
     """
 
-    path = f"data/sekai/maker/images/{id:06d}.png"
+    path = get_stamp_template_img_path(id)
     if not os.path.exists(path):
         return None
 

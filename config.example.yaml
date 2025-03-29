@@ -128,26 +128,7 @@ run_code:
 
 
 sekai:
-  font_path: "/root/.fonts/MicrosoftYaHei/Microsoft Yahei.ttf"
-  data_update_times:  # 定时更新数据的时间[时，分，秒]
-    - [5, 0, 0]
-    - [8, 0, 0]
-    - [11, 0, 0]
-    - [14, 0, 0]
-    - [17, 0, 0]
-    - [20, 0, 0]
-  vlive_start_notify_before_minute:       # 提前多少分钟提醒vlive开始（列表）
-    - 10
-  vlive_end_notify_before_minute:         # 提前多少分钟提醒vlive结束（列表）
-    - 140
   cd: 3               
-  api_status_url:   "https://localhost/api/status"
-  profile_api_url:  "https://localhost/api/user/{uid}/profile"  
-  suite_api_url:    "https://localhost/api/user/{uid}/suite"    
-  mysekai_api_url:  "https://localhost/api/user/{uid}/mysekai"  
-  mysekai_photo_api_url: "https://localhost/api/mysekai/photo/{photo_path}"
-  suite_upload_time_api_url: "https://localhost/api/suite/upload_time"
-  mysekai_upload_time_api_url: "https://localhost/api/mysekai/upload_time"
 
 
 statistics:
