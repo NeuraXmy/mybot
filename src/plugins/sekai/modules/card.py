@@ -120,6 +120,16 @@ def extract_card_skill(text: str, default=None) -> Tuple[str, str]:
             return first_name, text.replace(name, "").strip()
     return default, text
 
+# 判断某个卡牌id的限定类型
+async def get_card_supply_type(cid: int) -> str:
+    ctx = SekaiHandlerContext.from_region('jp')
+    card = await ctx.md.cards.find_by_id(cid)
+    if not card or 'cardSupplyId' not in card:
+        return "normal"
+    if card_supply := await ctx.md.card_supplies.find_by_id(card["cardSupplyId"]):
+        return card_supply["cardSupplyType"]
+    return "normal"
+
 # 获取某个活动的卡牌
 async def get_cards_of_event(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
     cids = [ec['cardId'] for ec in await ctx.md.event_cards.find_by("eventId", event_id, mode='all')]
@@ -187,7 +197,7 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
 
                     bg = RoundRectBg(fill=(255, 255, 255, 150), radius=WIDGET_BG_RADIUS)
                     if card["supply_show_name"]: 
-                        bg.fill = (255, 250, 220, 150)
+                        bg.fill = (255, 250, 220, 200)
                     with Frame().set_content_align('rb').set_bg(bg):
                         skill_type_img = ctx.static_imgs.get(f"skill_{card['skill_type']}.png")
                         ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8)
@@ -492,11 +502,8 @@ async def _(ctx: SekaiHandlerContext):
         if rare and card["cardRarityType"] != rare: continue
         if attr and card["attr"] != attr: continue
 
-        card["supply_show_name"] = None
-        supply_type = await SekaiHandlerContext.from_region('jp').md.card_supplies.find_by_id(card.get("cardSupplyId", -1))
-        if supply_type:
-            supply_type = supply_type["cardSupplyType"]
-            card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
+        supply_type = await get_card_supply_type(card["id"])
+        card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
         
         if supply:
             search_supplies = []
@@ -593,11 +600,8 @@ async def _(ctx: SekaiHandlerContext):
         if rare and card["cardRarityType"] != rare: continue
         if attr and card["attr"] != attr: continue
 
-        card["supply_show_name"] = None
-        supply_type = await SekaiHandlerContext.from_region('jp').md.card_supplies.find_by_id(card.get("cardSupplyId", -1))
-        if supply_type:
-            supply_type = supply_type["cardSupplyType"]
-            card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
+        supply_type = await get_card_supply_type(card["id"])
+        card["supply_show_name"] = CARD_SUPPLIES_SHOW_NAMES.get(supply_type, None)
 
         if supply:
             search_supplies = []

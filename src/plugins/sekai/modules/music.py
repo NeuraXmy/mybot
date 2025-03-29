@@ -10,9 +10,9 @@ from .event import extract_ban_event
 
 
 music_group_sub = SekaiGroupSubHelper("music", "新曲通知", ALL_SERVER_REGIONS)
-music_user_sub = SekaiUserSubHelper("music", "新曲@提醒", ALL_SERVER_REGIONS)
+music_user_sub = SekaiUserSubHelper("music", "新曲@提醒", ALL_SERVER_REGIONS, related_group_sub=music_group_sub)
 apd_group_sub = SekaiGroupSubHelper("apd", "新APD通知", ALL_SERVER_REGIONS)
-apd_user_sub = SekaiUserSubHelper("apd", "新APD@提醒", ALL_SERVER_REGIONS)
+apd_user_sub = SekaiUserSubHelper("apd", "新APD@提醒", ALL_SERVER_REGIONS, related_group_sub=apd_group_sub)
 
 music_name_retriever = get_text_retriever(f"music_name_wip") 
 
@@ -562,7 +562,7 @@ async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_music
 # 设置歌曲别名
 pjsk_alias_set = SekaiCmdHandler([
     "/pjsk alias add", "/pjsk_alias_add", "/pjskalias add", "/pjskalias_add",
-    "/pjsk添加歌曲别名", "/pjsk 添加歌曲别名", "/pjsk歌曲别名添加", "/pjsk 歌曲别名添加",
+    "/添加歌曲别名", "/歌曲别名添加", 
 ])
 pjsk_alias_set.check_cdrate(cd).check_wblist(gbl)
 @pjsk_alias_set.handle()
@@ -626,7 +626,7 @@ async def _(ctx: SekaiHandlerContext):
 # 查看歌曲别名
 pjsk_alias = SekaiCmdHandler([
     "/pjsk alias", "/pjsk_alias", "/pjskalias", "/pjskalias",
-    "/pjsk歌曲别名", "/pjsk 歌曲别名", 
+    "/歌曲别名",  
 ])
 pjsk_alias.check_cdrate(cd).check_wblist(gbl)
 @pjsk_alias.handle()
@@ -652,7 +652,7 @@ async def _(ctx: SekaiHandlerContext):
 # 删除歌曲别名
 pjsk_alias_del = SekaiCmdHandler([
     "/pjsk alias del", "/pjsk_alias_del", "/pjskalias del", "/pjskalias_del",
-    "/pjsk删除歌曲别名", "/pjsk 删除歌曲别名", "/pjsk歌曲别名删除", "/pjsk 歌曲别名删除",
+    "/删除歌曲别名", "/歌曲别名删除",
 ])
 pjsk_alias_del.check_cdrate(cd).check_wblist(gbl).check_superuser()
 @pjsk_alias_del.handle()
@@ -699,7 +699,7 @@ async def _(ctx: SekaiHandlerContext):
 # 取消上次别名添加
 pjsk_alias_cancel = SekaiCmdHandler([
     "/pjsk alias cancel", "/pjsk_alias_cancel", "/pjskalias cancel", "/pjskalias_cancel",
-    "/pjsk取消歌曲别名", "/pjsk 取消歌曲别名", "/pjsk歌曲别名取消", "/pjsk 歌曲别名取消",
+    "/取消歌曲别名", "/歌曲别名取消",
 ])
 pjsk_alias_cancel.check_cdrate(cd).check_wblist(gbl)
 @pjsk_alias_cancel.handle()
@@ -783,7 +783,7 @@ async def _(ctx: SekaiHandlerContext):
     except Exception as e:
         return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
         
-    msg += f"【{mid}】{title} - {diff}\n" + ret.candidate_msg
+    msg += f"【{mid}】{title} ({diff.upper()})\n" + ret.candidate_msg
     return await ctx.asend_reply_msg(msg.strip())
 
 

@@ -1290,7 +1290,7 @@ async def _(ctx: HandlerContext):
     reply_msg = await ctx.aget_reply_msg()
     assert_and_reply(reply_msg, "请回复一条带有markdown内容的消息")
     text = extract_text(reply_msg)
-    img = markdown_to_image(text)
+    img = await markdown_to_image(text)
     return await ctx.asend_reply_msg(await get_image_cq(img))
 
 

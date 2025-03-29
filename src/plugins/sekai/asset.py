@@ -323,6 +323,11 @@ class RegionMasterDataWrapper:
         return find_by(data, key, value, mode)
 
     async def collect_by(self, key: str, values: List[Any]):
+        # 使用索引
+        ind = await self.indices(key)
+        if ind is not None:
+            return [ind.get(value, [None])[0] for value in values]
+        # 没有索引的情况下先存入字典再遍历
         data = await self.get()
         values_set = set(values)
         items = {}
@@ -385,6 +390,8 @@ class RegionMasterDataCollection:
         self.card_episodes                                = RegionMasterDataWrapper(region, "cardEpisodes")
         self.event_cards                                  = RegionMasterDataWrapper(region, "eventCards")
         self.event_musics                                 = RegionMasterDataWrapper(region, "eventMusics")
+        self.costume3ds                                   = RegionMasterDataWrapper(region, "costume3ds")
+        self.card_costume3ds                              = RegionMasterDataWrapper(region, "cardCostume3ds")
         
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
@@ -398,6 +405,7 @@ MasterDataManager.set_index_keys("eventStories", ['id', 'bannerGameCharacterUnit
 MasterDataManager.set_index_keys("mysekaiBlueprints", ['id', 'craftTargetId'])
 MasterDataManager.set_index_keys("mysekaiBlueprintMysekaiMaterialCosts", ['id', 'mysekaiBlueprintId'])
 MasterDataManager.set_index_keys("mysekaiFixtureOnlyDisassembleMaterials", ['id', 'mysekaiFixtureId'])
+MasterDataManager.set_index_keys("cardCostume3ds", ['cardId'])
 
 # ================================ MasterData自定义下载 ================================ #
 
@@ -435,6 +443,11 @@ async def download_resource_boxes(base_url):
             item['details'] = details.get(key, [])
         return resbox
     return await run_in_pool(convert, resbox, resbox_detail)
+
+@MasterDataManager.download_function("costume3ds", regions=COMPACT_DATA_REGIONS)
+def costume3ds_map_fn(base_url):
+    costume3ds = download_json(f"{base_url}/compactCostume3ds.json")
+    return convert_compact_data(costume3ds)
 
 
 # ================================ MasterData自定义转换 ================================ #
@@ -724,6 +737,12 @@ class WebJsonRes:
 
     async def get(self):
         if not self.data or datetime.now() - self.update_time > self.update_interval:
-            await self.download()
+            try:
+                await self.download()
+            except Exception as e:
+                if self.data:
+                    logger.error(f"更新网页Json资源 [{self.name}] 失败: {e}，继续使用旧数据")
+                else:
+                    raise e
         return self.data
     

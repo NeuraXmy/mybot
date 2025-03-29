@@ -7,7 +7,7 @@ from ..sub import SekaiUserSubHelper, SekaiGroupSubHelper
 from .resbox import get_res_box_info
 
 vlive_group_sub = SekaiGroupSubHelper("live", "虚拟Live通知", ALL_SERVER_REGIONS)
-vlive_user_sub = SekaiUserSubHelper("live", "虚拟Live@提醒", ALL_SERVER_REGIONS)
+vlive_user_sub = SekaiUserSubHelper("live", "虚拟Live@提醒", ALL_SERVER_REGIONS, related_group_sub=vlive_group_sub)
 
 # ======================= 处理逻辑 ======================= #
 

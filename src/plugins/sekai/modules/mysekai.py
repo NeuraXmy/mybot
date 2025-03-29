@@ -48,9 +48,13 @@ MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
 }
 mysekai_res_icons = {}
 
-mysekairun_data = {}
-mysekairun_mtime = None
-
+mysekairun_friendcode_data = {}
+mysekairun_friendcode_mtime = None
+sekai8823_friendcode_data = WebJsonRes(
+    "sekai.8823家具好友码信息", 
+    "https://pjsk-static.8823.eu.org/api/fixtures/", 
+    update_interval=timedelta(hours=3),
+)
 
 # ======================= 处理逻辑 ======================= #
 
@@ -112,6 +116,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False) 
 
 # 获取玩家mysekai抓包数据的简单卡片 返回 Frame
 async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, basic_profile: dict, err_msg: str) -> Frame:
+    region_name = get_region_name(ctx.region)
     with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
         with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
             if mysekai_info:
@@ -124,7 +129,7 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
-                    TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
                 TextBox(f"获取数据失败:{err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
@@ -752,14 +757,14 @@ async def get_mysekai_photo_and_time(ctx: SekaiHandlerContext, qid: int, seq: in
 
 # 从本地的my.sekai.run网页html提取数据
 async def load_mysekairun_data(ctx: SekaiHandlerContext):
-    global mysekairun_data, mysekairun_mtime
+    global mysekairun_friendcode_data, mysekairun_friendcode_mtime
     path = f"{SEKAI_ASSET_DIR}/mysekairun/{ctx.region}.html"
     if not os.path.exists(path):
         logger.warning(f"my.sekai.run 文件不存在，取消加载")
         return
-    if mysekairun_mtime and os.path.getmtime(path) == mysekairun_mtime:
+    if mysekairun_friendcode_mtime and os.path.getmtime(path) == mysekairun_friendcode_mtime:
         return
-    mysekairun_data = {}
+    mysekairun_friendcode_data = {}
 
     from bs4 import BeautifulSoup
     with open(path, "r", encoding="utf-8") as f:
@@ -775,13 +780,35 @@ async def load_mysekairun_data(ctx: SekaiHandlerContext):
                     _, name, ids = tr.find_all("td")
                     name = str(name.text).strip()
                     ids = list(ids.stripped_strings)
-                    mysekairun_data[name] = ids
+                    mysekairun_friendcode_data[name] = ids
                 except:
                     pass
 
-    mysekairun_mtime = os.path.getmtime(path)
-    logger.info(f"my.sekai.run 数据加载完成: 加载了 {len(mysekairun_data)} 个家具")
+    mysekairun_friendcode_mtime = os.path.getmtime(path)
+    logger.info(f"my.sekai.run 数据加载完成: 加载了 {len(mysekairun_friendcode_data)} 个家具")
 
+# 获取mysekai家具好友码，返回（好友码，来源）
+async def get_mysekai_fixture_friend_codes(ctx: SekaiHandlerContext, fid: int) -> Tuple[List[str], str]:
+    fixture = await ctx.md.mysekai_fixtures.find_by_id(fid)
+    assert_and_reply(fixture, f"家具{fid}不存在")
+
+    try:
+        data = await sekai8823_friendcode_data.get()
+        friend_codes = find_by(data['fixtures'], 'id', fid)['friendCodes']
+        return friend_codes, "sekai.8823.eu.org"
+    except Exception as e:
+        logger.warning(f"从 sekai.8823.eu.org 获取家具 {fid} 好友码失败: {e}")
+
+    try:
+        await load_mysekairun_data(ctx)
+        fname = fixture['name']
+        friend_codes = mysekairun_friendcode_data.get(fname.strip())
+        return friend_codes, "my.sekai.run"
+    except Exception as e:
+        logger.warning(f"从 my.sekai.run 获取家具 {fid} 好友码失败: {e}")
+    
+    return [], ""
+    
 # 获取mysekai家具详情卡片控件 返回Widget
 async def get_mysekai_fixture_detail_image_card(ctx: SekaiHandlerContext, fid: int) -> Widget:
     await load_mysekairun_data(ctx)
@@ -852,7 +879,7 @@ async def get_mysekai_fixture_detail_image_card(ctx: SekaiHandlerContext, fid: i
     elif blueprint and is_disassembled:
         recycle_materials = [(img, quantity // 2) for img, quantity in cost_materials if quantity > 1]
     # 抄写好友码
-    friend_codes = mysekairun_data.get(fname.strip())
+    friendcodes, friendcode_source = await get_mysekai_fixture_friend_codes(ctx, fid)
 
     w = 600
     with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16) as vs:
@@ -940,12 +967,13 @@ async def get_mysekai_fixture_detail_image_card(ctx: SekaiHandlerContext, fid: i
                 TextBox(tag_text, TextStyle(font=DEFAULT_FONT, size=18, color=(100, 100, 100)), line_count=10, use_real_line_count=True).set_w(w)
 
         # 抄写好友码
-        if friend_codes:
+        if friendcodes:
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(12).set_bg(roundrect_bg()):
                 with HSplit().set_content_align('lb').set_item_align('lb').set_sep(8).set_w(w):
                     TextBox("抄写蓝图可前往", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(50, 50, 50)))
-                    TextBox("(数据来自my.sekai.run)", TextStyle(font=DEFAULT_FONT, size=14, color=(75, 75, 75)))
-                code_text = "  |  ".join(friend_codes)
+                    TextBox(f"(数据来自{friendcode_source})", TextStyle(font=DEFAULT_FONT, size=14, color=(75, 75, 75)))
+                friendcodes = random.sample(friendcodes, min(2, len(friendcodes)))
+                code_text = "      ".join(friendcodes)
                 TextBox(code_text, TextStyle(font=DEFAULT_FONT, size=18, color=(100, 100, 100)), line_count=10, use_real_line_count=True).set_w(w)
 
     return vs
@@ -990,7 +1018,8 @@ pjsk_mysekai_blueprint.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id, show_id='id' in args, only_craftable=True)
+        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id, show_id='id' in args, only_craftable=True),
+        low_quality=True
     ))
 
 
@@ -1008,10 +1037,15 @@ async def _(ctx: SekaiHandlerContext):
     except: fids = None
     # 查询指定家具
     if fids:
-        return await ctx.asend_reply_msg(await get_image_cq(await compose_mysekai_fixture_detail_image(ctx, fids)))
+        assert_and_reply(len(fids) <= 10, "最多一次查询10个家具")
+        return await ctx.asend_reply_msg(await get_image_cq(
+            await compose_mysekai_fixture_detail_image(ctx, fids),
+            low_quality=True
+        ))
     # 查询家具列表
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=None, show_id=True, only_craftable=False)
+        await compose_mysekai_fixture_list_image(ctx, qid=None, show_id=True, only_craftable=False),
+        low_quality=True
     ))
 
 

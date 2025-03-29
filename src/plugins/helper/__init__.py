@@ -15,6 +15,7 @@ cd = ColdDown(file_db, logger, config['cd'])
 HELP_DOCS_WEB_URL = "https://github.com/NeuraXmy/mybot/blob/master/helps/{name}.md"
 HELP_DOCS_PATH = "helps/{name}.md"
 
+
 help = CmdHandler(['/help', '/帮助', 'help', '帮助'], logger, block=True, only_to_me=True, priority=99999)
 help.check_wblist(gbl).check_cdrate(cd)
 @help.handle()
@@ -44,11 +45,34 @@ async def _(ctx: HandlerContext):
         msg += HELP_DOCS_WEB_URL.format(name='main')
         return await ctx.asend_fold_msg_adaptive(msg, threshold=0, need_reply=False)
     else:
-        doc_path = HELP_DOCS_PATH.format(name=args)
-        doc_text = Path(doc_path).read_text()
         try:
-            image = await run_in_pool(markdown_to_image, doc_text)
+            # 尝试从缓存读取
+            doc_path = HELP_DOCS_PATH.format(name=args)
+            doc_mtime = os.path.getmtime(doc_path)
+            cache_mtime = file_db.get('help_img_cache_mtime', {})
+            cache_path = create_parent_folder(f"data/helper/cache/{args}.png")
+            if Path(cache_path).exists() and doc_mtime <= cache_mtime.get(args, 0):
+                return await ctx.asend_reply_msg(await get_image_cq(cache_path, low_quality=True))
+            else:
+                logger.info(f"缓存 {args} 帮助文档不存在或已过期，重新渲染")
+                doc_text = Path(doc_path).read_text()
+                image = await markdown_to_image(doc_text)
+                # 如果长度过长，截成几段再横向拼接发送
+                max_height = 600 * 5
+                if image.height > max_height:
+                    height = math.ceil(image.height / math.ceil(image.height / max_height))
+                    images = []
+                    for i in range(0, image.height, height):
+                        images.append(image.crop((0, i, image.width, i + height)))
+                    image = await run_in_pool(concat_images, images, 'h')
+                # 保存缓存
+                image.save(cache_path)
+                cache_mtime[args] = doc_mtime
+                file_db.set(f'help_img_cache_mtime', cache_mtime)
+                return await ctx.asend_reply_msg(await get_image_cq(image, low_quality=True))
+
         except Exception as e:
-            logger.print_exc(f"渲染{doc_path}帮助文档失败")
+            logger.print_exc(f"渲染 {doc_path} 帮助文档失败")
             return await ctx.asend_reply_msg(f"帮助文档渲染失败, 前往网页获取帮助文档:\n{HELP_DOCS_WEB_URL.format(name=args)}")
-        return await ctx.asend_reply_msg(await get_image_cq(image))
+            
+            

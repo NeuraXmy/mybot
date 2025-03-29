@@ -15,7 +15,7 @@ file_db = get_file_db("data/runcode/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, "runcode")
 
-runcode = CmdHandler(['/code'], logger)
+runcode = CmdHandler(['/code, /run'], logger)
 runcode.check_cdrate(cd).check_wblist(gbl)
 @runcode.handle()
 async def _(ctx: HandlerContext):

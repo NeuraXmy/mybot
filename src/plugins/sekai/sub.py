@@ -143,10 +143,11 @@ USER_UNSUB_COMMANDS = [
 class SekaiUserSubHelper:
     all_subs: List['SekaiUserSubHelper'] = []
 
-    def __init__(self, id: str, name: str, regions: List[str]):
+    def __init__(self, id: str, name: str, regions: List[str], related_group_sub: SekaiGroupSubHelper = None):
         self.id = id
         self.name = name
         self.regions = regions
+        self.related_group_sub = related_group_sub
         self.subs = {
             region: SubHelper(
                 f"{name}({region_name})_用户",
@@ -166,7 +167,12 @@ class SekaiUserSubHelper:
         @sub.handle()
         async def _(ctx: SekaiHandlerContext):
             self.subs[ctx.region].sub(ctx.user_id, ctx.group_id)
-            return await ctx.asend_reply_msg(f"成功订阅 {self.name}({get_region_name(ctx.region)})")
+            msg = f"成功订阅 {self.name}({get_region_name(ctx.region)})\n"
+            # 对应群聊功能未开启
+            if self.related_group_sub and ctx.group_id not in self.related_group_sub.get_all(ctx.region):
+                msg += f"该订阅对应的群聊功能 {self.related_group_sub.name}({get_region_name(ctx.region)}) 在本群未开启！"
+                msg += "如需使用请联系BOT超管"
+            return await ctx.asend_reply_msg(msg.strip())
         
         unsub_commands = [cmd.format(id=self.id) for cmd in USER_UNSUB_COMMANDS]
         unsub = SekaiCmdHandler(unsub_commands, regions=self.regions, priority=101)
@@ -220,13 +226,22 @@ user_sub_list.check_cdrate(cd).check_wblist(gbl)
 @user_sub_list.handle()
 async def _(ctx: HandlerContext):
     msg = "你在当前群聊的订阅:\n"
+    has_related_not_on = False
     for sub in SekaiUserSubHelper.all_subs:
         sub_regions = []
         for region in sub.regions:
             if sub.is_subbed(region, ctx.user_id, ctx.group_id):
+                # 标记对应群聊功能未开启的订阅
+                if sub.related_group_sub and ctx.group_id not in sub.related_group_sub.get_all(region):
+                    has_related_not_on = True
+                    region = region + "*"
                 sub_regions.append(region)
         if sub_regions:
             msg += f"{sub.name}({', '.join(sub_regions)})\n"
+    if has_related_not_on:
+        msg += "---\n"
+        msg += "带*的订阅对应的群聊功能在本群未开启！"
+        msg += "如需使用请联系BOT超管\n"
 
     msg += "---\n"
     msg += "使用 /pjsk订阅{英文项目名} 开启订阅\n"

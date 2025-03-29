@@ -143,7 +143,9 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
     qid = str(qid)
     bind_list: Dict[str, str] = profile_db.get("bind_list", {}).get(ctx.region, {})
     if check_bind and not bind_list.get(qid, None):
-        raise Exception(f"请使用\"/绑定 你的游戏ID\"绑定游戏账号")
+        assert_and_reply(get_profile_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
+        region = "" if ctx.region == "jp" else ctx.region
+        raise Exception(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
     return bind_list.get(qid, None)
 
 # 根据游戏id获取玩家基本信息
@@ -265,7 +267,7 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                     game_data = profile['userGamedata']
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                     colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
-                    TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
                 TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
@@ -289,7 +291,7 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
-                        TextBox(f"ID: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
+                        TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(ctx.static_imgs.get("lv_rank_bg.png"), size=(180, None))
                             TextBox(f"{game_data['rank']}", TextStyle(font=DEFAULT_FONT, size=30, color=WHITE)).set_offset((110, 0))

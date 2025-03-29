@@ -180,92 +180,68 @@ async def download_image(image_url, force_http=True):
 async def download_and_convert_svg(image_url):
     def download():
         from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.common.by import By
+        from selenium.webdriver.firefox.service import Service
+        from selenium.webdriver.firefox.options import Options
         import time
         options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--start-maximized')
-        options.add_argument('--start-fullscreen')
-        driver = webdriver.Chrome(options=options)
+        options.add_argument("--headless") 
+        driver = webdriver.Firefox(service=Service(), options=options)
         try:
             driver.get(image_url)
             time.sleep(1)
-            svg_element = driver.find_element(By.TAG_NAME, 'svg')
-            if svg_element.get_attribute('width') and svg_element.get_attribute('height'):
-                width = int(svg_element.get_attribute('width'))
-                height = int(svg_element.get_attribute('height'))
-            else:
-                width = driver.execute_script("return arguments[0].getBoundingClientRect().width;", svg_element)
-                height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", svg_element)
-            driver.set_window_size(width, height)
-            tmp_file = os.path.join("data/utils/svg/tmp", rand_filename(".png"))
-            os.makedirs(os.path.dirname(tmp_file), exist_ok=True)
-            if not driver.save_screenshot(tmp_file):
-                raise Exception("Failed to save screenshot")
-            image = Image.open(tmp_file)
-            os.remove(tmp_file)
-            return image
-        except Exception as e:
-            traceback.print_exc()
-            raise Exception(f"Failed to download SVG image")
+            with TempFilePath('png') as path:
+                if not driver.save_full_page_screenshot(path):
+                    raise Exception("保存截图失败")
+                return open_image(path)
+        except:
+            utils_logger.print_exc(f'下载SVG图片失败')
         finally:
             driver.quit()
     return await run_in_pool(download)
 
 # markdown转图片
-def markdown_to_image(markdown_text: str) -> Image.Image:
-    html_save_path = f"data/utils/m2i/tmp/{rand_filename('html')}"
-    img_save_path = f"data/utils/m2i/tmp/{rand_filename('png')}"
-    css_content = Path("data/utils/m2i/m2i.css").read_text()
-    try:
-        import mistune
-        md_renderer = mistune.create_markdown()
-        html = md_renderer(markdown_text)
-        # 插入css
-        full_html = f"""
-            <html>
-                <head><style>
-                    {css_content}
-                    .markdown-body {{
-                        padding: 32px;
-                    }}
-                </style></head>
-                <body class="markdown-body">{html}</body>
-            </html>
-        """
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.common.by import By
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        driver = webdriver.Chrome(options=options)
+async def markdown_to_image(markdown_text: str, width: int = 600) -> Image.Image:
+    def draw():
+        css_content = Path("data/utils/m2i/m2i.css").read_text()
+        try:
+            import mistune
+            md_renderer = mistune.create_markdown()
+            html = md_renderer(markdown_text)
+            # 插入css
+            full_html = f"""
+                <html>
+                    <head><style>
+                        {css_content}
+                        .markdown-body {{
+                            padding: 32px;
+                        }}
+                    </style></head>
+                    <body class="markdown-body">{html}</body>
+                </html>
+            """
+            from selenium import webdriver
+            from selenium.webdriver.firefox.service import Service
+            from selenium.webdriver.firefox.options import Options
+            import time
+            options = Options()
+            options.add_argument("--headless") 
+            driver = webdriver.Firefox(service=Service(), options=options)
+            driver.set_window_size(width, width)
+            
+            with TempFilePath('html') as html_path:
+                with open(html_path, 'w') as f:
+                    f.write(full_html)
+                driver.get(f"file://{osp.abspath(html_path)}")
+                time.sleep(1)
+                with TempFilePath('png') as img_path:
+                    driver.save_full_page_screenshot(img_path)
+                    return open_image(img_path)
+        except:
+            utils_logger.print_exc(f'markdown转图片失败')
+        finally:
+            driver.quit()
 
-        create_parent_folder(html_save_path)
-        with open(html_save_path, 'w') as f:
-            f.write(full_html)
-        driver.get(f"file://{osp.abspath(html_save_path)}")
-
-        width = driver.execute_script("return document.body.scrollWidth")
-        height = driver.execute_script("return document.body.scrollHeight")
-        driver.set_window_size(width, height)
-
-        create_parent_folder(img_save_path)
-        driver.save_screenshot(img_save_path)
-        image = Image.open(img_save_path)
-        image.load()
-        return image
-
-    finally:
-        driver.quit()
-        remove_file(html_save_path)
-        remove_file(img_save_path)
+    return await run_in_pool(draw)
 
 
 # 下载文件到本地路径
@@ -1880,6 +1856,9 @@ class SubHelper:
 
 # 拼接图片，mode: 'v' 垂直拼接 'h' 水平拼接 'g' 网格拼接
 def concat_images(images: List[Image.Image], mode) -> Image.Image:
+    """
+    拼接图片，mode: 'v' 垂直拼接 'h' 水平拼接 'g' 网格拼接
+    """
     if mode == 'v':
         max_w = max(img.width for img in images)
         images = [
