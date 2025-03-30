@@ -574,7 +574,7 @@ speed 100 设置动图帧间隔为100ms
         return ret
         
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
-        duration = img.info['duration']
+        duration = img.info.get('duration')
         if not duration: 
             duration = 100
         if 'speed' in args:
