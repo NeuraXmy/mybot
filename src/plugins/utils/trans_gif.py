@@ -151,3 +151,48 @@ def save_transparent_gif(images: List[Image], durations: Union[int, List[int]], 
     """
     root_frame, save_args = _create_animated_gif(images, durations, alpha_threshold)
     root_frame.save(save_file, **save_args)
+
+
+def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: float=0.5):
+    import random
+    import os
+    from PIL.Image import Palette
+    alpha_threshold = int(alpha_threshold * 255)
+    def color_distance(c1, c2):
+        return sum((a - b) ** 2 for a, b in zip(c1, c2))
+    original_img = img
+    retry_num = 0
+    while True:    
+        if retry_num > 20:
+            raise Exception("生成透明GIF失败")
+        img = original_img.copy()
+        transparent_color = (
+            random.randint(0, 255), 
+            random.randint(0, 255), 
+            random.randint(0, 255)
+        )
+        def check_color_exists(pixel):
+            return color_distance(pixel[:3], transparent_color) < 300
+        if any(map(check_color_exists, img.getdata())):
+            retry_num += 1
+            continue
+        def replace_alpha(pixel):
+            return (*transparent_color, 255) if pixel[3] < alpha_threshold else pixel
+        trans_data = list(map(replace_alpha, img.getdata()))
+        img.putdata(trans_data)
+        img: Image = img.convert("RGB")
+        pal_img = img.convert("P", palette=Palette.ADAPTIVE, colors=255) 
+        img = img.quantize(palette=pal_img)
+        palette = img.getpalette()[:768]
+        transparent_color_index, min_dist = None, float("inf")
+        for i in range(256):
+            color = palette[i*3:i*3+3]
+            dist = color_distance(color, transparent_color)
+            if dist < min_dist:
+                transparent_color_index, min_dist = i, dist
+        if transparent_color_index is None:
+            raise Exception("The specific color was not found in the palette.")
+        save_path = os.path.abspath(save_path)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index)
+        break

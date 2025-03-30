@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re
 from .plot import *
 from .trans_gif import save_transparent_gif as _save_transparent_gif
+from .trans_gif import save_high_quality_static_gif
 import math
 import requests
 require("nonebot_plugin_apscheduler")

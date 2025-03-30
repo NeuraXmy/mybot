@@ -540,6 +540,7 @@ def remove_rip_and_add_category(url: str) -> str:
     else:
         logger.warning(f"在startapp和ondemand都找不到: {url}")
         url = f"{part1}ondemand/{part2}"
+    url = url.replace(".asset", ".json")
     return url
 
 # 预设的解包资源url映射方法

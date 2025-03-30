@@ -19,7 +19,7 @@ async def get_stamp_image(ctx: SekaiHandlerContext, sid) -> Image.Image:
 # 获取用于发送的透明表情cq码
 async def get_stamp_image_cq(ctx: SekaiHandlerContext, sid):
     with TempFilePath("gif") as path:
-        save_transparent_gif(await get_stamp_image(ctx, sid), 0, path)
+        save_high_quality_static_gif(await get_stamp_image(ctx, sid), path)
         return await get_image_cq(path, force_read=True)
 
 # 合成某个角色的所有表情图片

@@ -431,7 +431,7 @@ gif 0.8 使用优化算法以80%不透明度阈值生成GIF
         try:
             tmp_path = f"data/imgtool/tmp/{rand_filename('gif')}"
             if args['opt']:
-                save_transparent_gif(img, 0, tmp_path, args['threshold'])
+                save_high_quality_static_gif(img, tmp_path, args['threshold'])
             else:
                 img.convert('RGBA').save(tmp_path, save_all=True, append_images=[], duration=0, loop=0)
             return Image.open(tmp_path)
