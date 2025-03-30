@@ -18,7 +18,7 @@ msr_sub = SekaiUserSubHelper("msr", "烤森资源查询自动推送", ['jp'])
 
 MOST_RARE_MYSEKAI_RES = [
     "mysekai_material_5", "mysekai_material_12", "mysekai_material_20", "mysekai_material_24",
-    "mysekai_fixture_121",
+    "mysekai_fixture_121", "material_17", "material_170",
 ]
 RARE_MYSEKAI_RES = [
     "mysekai_material_32", "mysekai_material_33", "mysekai_material_34", "mysekai_material_61", 
@@ -181,10 +181,13 @@ async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Imag
     img, need_cache = UNKNOWN_IMG, True
     try:
         res_id = int(key.split("_")[-1])
-        # 材料
+        # mysekai材料
         if key.startswith("mysekai_material"):
             name = (await ctx.md.mysekai_materials.find_by_id(res_id))['iconAssetbundleName']
             img = await ctx.rip.img(f"mysekai/thumbnail/material/{name}_rip/{name}.png")
+        # 普通材料
+        elif key.startswith("material"):
+            img = await ctx.rip.img(f"thumbnail/material_rip/material{res_id}.png")
         # 道具
         elif key.startswith("mysekai_item"):
             name = (await ctx.md.mysekai_items.find_by_id(res_id))['iconAssetbundleName']
@@ -202,7 +205,6 @@ async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Imag
             name = (await ctx.md.musics.find_by_id(mid))['assetbundleName']
             img = await ctx.rip.img(f"music/jacket/{name}_rip/{name}.png")
             need_cache = False
-
         # 蓝图
         elif key.startswith("mysekai_blueprint"):
             fixture = await get_fixture_by_blueprint_id(ctx, res_id)

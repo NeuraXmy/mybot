@@ -524,10 +524,29 @@ def event_story_units_map_fn(event_story_units):
 DEFAULT_RIP_ASSET_DIR = f"{SEKAI_ASSET_DIR}/rip"
 DEFAULT_GET_RIP_ASSET_TIMEOUT = 5
 
+
+def remove_rip_and_add_category(url: str) -> str:
+    STARTAPP_PREFIXS = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
+    ONDEMAND_PREFIXS = ['event', 'gacha', 'music', 'mysekai']
+    url = url.replace("_rip", "")
+    idx = url.find("assets/")
+    assert idx != -1, f"解包资源url格式错误: {url}"
+    idx = idx + len("assets/")
+    part1, part2 = url[:idx], url[idx:]
+    if any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXS]):
+        url = f"{part1}startapp/{part2}"
+    elif any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXS]):
+        url = f"{part1}ondemand/{part2}"
+    else:
+        logger.warning(f"在startapp和ondemand都找不到: {url}")
+        url = f"{part1}ondemand/{part2}"
+    return url
+
 # 预设的解包资源url映射方法
 DEFAULT_URL_MAP_METHODS = {
     "none": lambda url: url,
     "remove_rip": lambda url: url.replace("_rip", ""),
+    "remove_rip_and_add_category": remove_rip_and_add_category,
 }
 
 class RegionRipAssetSource:

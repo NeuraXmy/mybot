@@ -149,7 +149,7 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     # 获取卡片图片
     async def get_card_img(cid, card, pcard):
         try: 
-            if pcard: return (cid, await get_card_full_thumbnail(ctx, card, pcard=pcard, max_level=True))
+            if pcard: return (cid, await get_card_full_thumbnail(ctx, card, pcard=pcard, use_max_level=True))
             else:     return (cid, await get_card_full_thumbnail(ctx, card, has_after_training(card)))
         except: 
             return (cid, UNKNOWN_IMG)
@@ -164,7 +164,7 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
-            await get_detailed_profile_card(profile, pmsg)
+            await get_detailed_profile_card(ctx, profile, pmsg)
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                 # 标题
                 with VSplit().set_content_align('lb').set_item_align('lb').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
@@ -376,7 +376,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_boardline_predict = SekaiCmdHandler([
     "/pjsk sk predict", "/pjsk_sk_predict", "/pjsk sk", "/pjsk_sk", "/pjsk board predict", "/pjsk_board_predict",
     "/sk预测", "/榜线预测", 
-], logger)
+], regions=['jp'])
 pjsk_boardline_predict.check_cdrate(cd).check_wblist(gbl)
 @pjsk_boardline_predict.handle()
 async def _(ctx: SekaiHandlerContext):

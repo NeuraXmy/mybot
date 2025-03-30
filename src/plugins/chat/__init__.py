@@ -130,6 +130,7 @@ chat_request = CmdHandler([""], logger, block=False, priority=0)
 async def _(ctx: HandlerContext):
     bot, event = ctx.bot, ctx.event
     global sessions, query_msg_ids, autochat_msg_ids
+    session = None
     try:
         # 获取内容
         query_msg_obj = await get_msg_obj(bot, event.message_id)
@@ -364,11 +365,14 @@ async def _(ctx: HandlerContext):
         return await ctx.asend_reply_msg(ret)
 
     except Exception as error:
-        logger.print_exc(f'会话 {session.id} 失败')
-        if session_id_backup:
-            sessions[session_id_backup] = session
-        ret = truncate(f"会话失败: {error}", 128)
-        return await ctx.asend_reply_msg(ret)
+        if session:
+            logger.print_exc(f'会话 {session.id} 失败')
+            if session_id_backup:
+                sessions[session_id_backup] = session
+            ret = truncate(f"会话失败: {error}", 128)
+            return await ctx.asend_reply_msg(ret)
+        else:
+            return
 
     # 思考内容
     reasoning_text = ""
