@@ -64,12 +64,36 @@ CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
 
+def get_exc_desc(e: Exception) -> str:
+    et = f"{type(e).__name__}" if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
+    e = str(e)
+    if et and e: return f"{et}: {e}"
+    else: return et + e
+
 # 从文件读取图片
 def open_image(file_path: Union[str, Path], load=True) -> Image.Image:
     img = Image.open(file_path)
     if load:
         img.load()
     return img
+
+# 转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
+def get_image_b64(image: Image.Image):
+    """
+    转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
+    """
+    with TempFilePath('jpg') as tmp_path:
+        image.convert('RGB').save(tmp_path, "JPEG")
+        with open(tmp_path, "rb") as f:
+            return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
+
+# 下载并编码图片为base64
+async def download_image_to_b64(image_path):
+    """
+    下载并编码指定路径的图片为带 "data:image/jpeg;base64," 前缀的base64字符串
+    """
+    img = (await download_image(image_path))
+    return get_image_b64(img)
 
 
 def get_md5(s: str):
@@ -166,7 +190,7 @@ def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration
 
 # 下载图片 返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
-async def download_image(image_url, force_http=True):
+async def download_image(image_url, force_http=True) -> Image.Image:
     if force_http and image_url.startswith("https"):
         image_url = image_url.replace("https", "http")
     async with aiohttp.ClientSession() as session:
@@ -178,7 +202,7 @@ async def download_image(image_url, force_http=True):
 
 # 下载svg图片，返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
-async def download_and_convert_svg(image_url):
+async def download_and_convert_svg(image_url) -> Image.Image:
     def download():
         from selenium import webdriver
         from selenium.webdriver.firefox.service import Service
@@ -1803,8 +1827,7 @@ class CmdHandler:
                 except Exception as e:
                     self.logger.print_exc(f'指令\"{context.trigger_cmd}\"处理失败')
                     if self.error_reply:
-                        et = f"{type(e).__name__}: " if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
-                        await context.asend_reply_msg(truncate(f"指令处理失败: {et}{e}", 256))
+                        await context.asend_reply_msg(truncate(f"指令处理失败: {get_exc_desc(e)}", 256))
                 finally:
                     for block_id in context.block_ids:
                         self.block_set.discard(block_id)

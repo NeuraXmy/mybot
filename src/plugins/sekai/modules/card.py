@@ -565,7 +565,7 @@ async def _(ctx: SekaiHandlerContext):
         args = args.replace('refresh', '').strip()
         refresh = True
     card = await get_card_by_index(ctx, args)
-    await ctx.block(str(card['id']))
+    await ctx.block_region(str(card['id']))
     return await ctx.asend_multiple_fold_msg(await get_card_story_summary(ctx, card, refresh, CARD_STORY_SUMMARY_MODEL))
 
 

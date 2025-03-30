@@ -25,9 +25,9 @@ class SekaiHandlerContext(HandlerContext):
         ctx.create_from_region = True
         return ctx
     
-    def block_region(self, timeout=3*60):
+    def block_region(self, key="", timeout=3*60):
         if not self.create_from_region:
-            return self.block(f"region_{self.region}", timeout=timeout)
+            return self.block(f"{self.region}_{key}", timeout=timeout)
 
 
 class SekaiCmdHandler(CmdHandler):

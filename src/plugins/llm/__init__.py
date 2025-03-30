@@ -18,29 +18,6 @@ CHAT_TIMEOUT = 300
 CHAT_MAX_TOKENS = config['chat_max_tokens']
 session_id_top = 0
 
-# 转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
-def get_image_b64(image: Image.Image):
-    """
-    转化PIL图片为带 "data:image/jpeg;base64," 前缀的base64
-    """
-    tmp_path = f"data/chat/tmp/{rand_filename('jpg')}"
-    os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
-    try:
-        image.save(tmp_path, "JPEG")
-        with open(tmp_path, "rb") as f:
-            return f"data:image/jpeg;base64,{base64.b64encode(f.read()).decode('utf-8')}"
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-# 下载并编码图片为base64
-async def download_image_to_b64(image_path):
-    """
-    下载并编码指定路径的图片为带 "data:image/jpeg;base64," 前缀的base64字符串
-    """
-    img = (await download_image(image_path)).convert('RGB')
-    return get_image_b64(img)
-
 # ChatSeesion回复结果类型
 @dataclass
 class ChatSessionResponse:

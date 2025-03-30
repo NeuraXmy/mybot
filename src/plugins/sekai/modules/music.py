@@ -19,30 +19,6 @@ music_name_retriever = get_text_retriever(f"music_name_wip")
 music_cn_titles = WebJsonRes("曲名中文翻译", "https://i18n-json.sekai.best/zh-CN/music_titles.json", update_interval=timedelta(days=1))
 music_en_titles = WebJsonRes("曲名英文翻译", "https://i18n-json.sekai.best/en/music_titles.json", update_interval=timedelta(days=1))
 
-@dataclass
-class ChartSource:
-    url: str
-    regions: List[str]   # 支持的地区
-    require_region: bool  # 是否需要传入region参数
-    region_map: Dict[str, str] = field(default_factory=dict)  # 地区id映射
-
-CHART_SOURCES = [
-    ChartSource(
-        "https://sekai-charts.unipjsk.com/{mid}/{diff}.svg", 
-        ['jp'], False
-    ),
-    ChartSource(
-        "https://storage.sekai.best/sekai-music-charts/{region}/{mid:04d}/{diff}.svg", 
-        ALL_SERVER_REGIONS, True, region_map={"tw": "tc"}
-    ),
-    ChartSource(
-        "https://asset3.pjsekai.moe/music/music_score/{mid:04d}_01/{diff}.svg", 
-        ["jp"], False
-    ),
-]
-
-DOWNLOAD_CHART_TIMEOUT = 30
-
 
 @dataclass
 class MusicSearchOptions:
@@ -143,46 +119,6 @@ async def update_music_name_embs(ctx: SekaiHandlerContext):
                 await music_name_retriever.set_emb(f"{mid} en_trans title", en_title, skip_exist=True)
         except Exception as e:
             logger.warning(f"更新歌曲 {mid} 的曲名嵌入失败: {e}")
-
-# 获取谱面图片cq
-async def get_chart_image_cq(ctx: SekaiHandlerContext, mid: int, diff: str):
-    mid = int(mid)
-    cache_path = create_parent_folder(pjoin(SEKAI_ASSET_DIR, "chart", ctx.region, f"{mid}_{diff}.png"))
-    
-    if not osp.exists(cache_path):
-        ok, last_err = False, "无支持的谱面来源"
-
-        for source in CHART_SOURCES:
-            if ctx.region not in source.regions:
-                continue
-            region = source.region_map.get(ctx.region, ctx.region)
-
-            try:
-                if source.require_region:
-                    url = source.url.format(region=region, mid=mid, diff=diff)
-                else:
-                    url = source.url.format(mid=mid, diff=diff)
-
-                logger.info(f"从 {url} 下载谱面")
-                async def get():
-                    if url.endswith(".svg"):
-                        return await download_and_convert_svg(url)
-                    else:
-                        return await download_image(url)
-                image = await asyncio.wait_for(get(), DOWNLOAD_CHART_TIMEOUT)
-
-                image.save(cache_path)
-                ok = True
-                break
-
-            except Exception as e:
-                last_err = f"{type(e).__name__}: {e}"
-                logger.warning(f"从 {url} 下载谱面失败: {last_err}")
-
-        if not ok:
-            raise Exception(f"从所有谱面来源下载谱面失败: {last_err}")
-        
-    return await get_image_cq(cache_path, low_quality=True)
 
 # 从字符串中获取难度 返回(难度名, 去掉难度后缀的字符串)
 def extract_diff(text: str, default: str="master") -> Tuple[str, str]:
@@ -760,31 +696,6 @@ async def _(ctx: SekaiHandlerContext):
     msg = await get_image_cq(await compose_music_detail_image(ctx, ret.music['id']))
     msg += ret.candidate_msg
     return await ctx.asend_reply_msg(msg)
-
-
-# 谱面查询
-pjsk_chart = SekaiCmdHandler([
-    "/pjsk chart", "/pjsk_chart", "/pjskchart",
-    "/谱面查询", "/铺面查询", "/谱面预览", "/铺面预览", "/谱面", "/铺面"
-])
-pjsk_chart.check_cdrate(cd).check_wblist(gbl)
-@pjsk_chart.handle()
-async def _(ctx: SekaiHandlerContext):
-    query = ctx.get_args().strip()
-    assert_and_reply(query, MUSIC_SEARCH_HELP)
-    diff, query = extract_diff(query)
-    ret = await search_music(ctx, query, MusicSearchOptions(diff=diff))
-
-    mid, title = ret.music['id'], ret.music['title']
-
-    msg = ""
-    try:
-        msg += await get_chart_image_cq(ctx, mid, diff)
-    except Exception as e:
-        return await ctx.asend_reply_msg(f"获取指定曲目{title}难度{diff}的谱面失败: {e}")
-        
-    msg += f"【{mid}】{title} ({diff.upper()})\n" + ret.candidate_msg
-    return await ctx.asend_reply_msg(msg.strip())
 
 
 # 物量查询

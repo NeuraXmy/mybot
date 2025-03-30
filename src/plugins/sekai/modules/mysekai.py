@@ -60,7 +60,7 @@ sekai8823_friendcode_data = WebJsonRes(
 # 从角色UnitId获取角色图标
 async def get_chara_icon_by_chara_unit_id(ctx: SekaiHandlerContext, cuid: int) -> Image.Image:
     cid = (await ctx.md.game_character_units.find_by_id(cuid))['gameCharacterId']
-    return await get_chara_icon_by_chara_id(cid)
+    return get_chara_icon_by_chara_id(cid)
 
 # 获取玩家mysekai抓包数据 返回 (mysekai_info, err_msg)
 async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False) -> Tuple[dict, str]:
@@ -942,8 +942,10 @@ async def get_mysekai_fixture_detail_image_card(ctx: SekaiHandlerContext, fid: i
                 TextBox("角色互动", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(50, 50, 50))).set_w(w)
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8):
                     for i, chara_group_imgs in enumerate(react_chara_group_imgs):
+                        chara_num = len(chara_group_imgs[0]) if chara_group_imgs else None
+                        if not chara_num: continue
                         col_num_dict = { 1: 10, 2: 5, 3: 4, 4: 2 }
-                        col_num = col_num_dict[len(chara_imgs)] if len(chara_imgs) in col_num_dict else 1
+                        col_num = col_num_dict[chara_num]
                         with Grid(col_count=col_num).set_content_align('c').set_sep(6, 4):
                             for imgs in chara_group_imgs:
                                 with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(4).set_bg(RoundRectBg(fill=(230,230,230,255), radius=6)):

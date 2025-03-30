@@ -524,41 +524,69 @@ def event_story_units_map_fn(event_story_units):
 DEFAULT_RIP_ASSET_DIR = f"{SEKAI_ASSET_DIR}/rip"
 DEFAULT_GET_RIP_ASSET_TIMEOUT = 5
 
+def sekai_best_url_map(url: str) -> str:
+    # 程序中的url以sekai.best为准
+    return url
 
-def remove_rip_and_add_category(url: str) -> str:
+def haruki_url_map(url: str) -> str:
     STARTAPP_PREFIXS = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
     ONDEMAND_PREFIXS = ['event', 'gacha', 'music', 'mysekai']
-    url = url.replace("_rip", "")
+
     idx = url.find("assets/")
     assert idx != -1, f"解包资源url格式错误: {url}"
     idx = idx + len("assets/")
     part1, part2 = url[:idx], url[idx:]
+
+    # 移除_rip
+    part2 = part2.replace("_rip", "")
+    # 替换.asset为.json
+    part2 = part2.replace(".asset", ".json")
+    # 添加.txt
+    if 'music_score' in part2:
+        part2 = part2 + ".txt"
+    # 需要删除倒数第二个目录的情况
+    NEED_REMOVE_SECOND_LAST_PREFIXES = ['mysekai/icon/', "mysekai/thumbnail/"]
+    if any([part2.startswith(prefix) for prefix in NEED_REMOVE_SECOND_LAST_PREFIXES]):
+        segs = part2.split('/')
+        segs.pop(-2)
+        part2 = '/'.join(segs)
+    # 添加类别
     if any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXS]):
-        url = f"{part1}startapp/{part2}"
+        category = 'startapp'
     elif any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXS]):
-        url = f"{part1}ondemand/{part2}"
+        category = 'ondemand'
     else:
         logger.warning(f"在startapp和ondemand都找不到: {url}")
-        url = f"{part1}ondemand/{part2}"
-    url = url.replace(".asset", ".json")
+        category = 'ondemand'
+
+    return f"{part1}{category}/{part2}"
+
+def pjsekai_moe_url_map(url: str) -> str:
+    # 移除_rip
+    url = url.replace("_rip", "")
     return url
+
 
 # 预设的解包资源url映射方法
 DEFAULT_URL_MAP_METHODS = {
-    "none": lambda url: url,
-    "remove_rip": lambda url: url.replace("_rip", ""),
-    "remove_rip_and_add_category": remove_rip_and_add_category,
+    "sekai.best": sekai_best_url_map,
+    "haruki": haruki_url_map,
+    "pjsekai.moe": pjsekai_moe_url_map,
 }
 
 class RegionRipAssetSource:
     """
     区服解包资源数据源
     """
-    def __init__(self, name: str, base_url: str, url_map_method_name: str = "none"):
+    def __init__(self, name: str, base_url: str, url_map_method_name: str = None, prefixes: List[str] = None):
         self.name = name
         self.base_url = base_url
-        assert url_map_method_name in DEFAULT_URL_MAP_METHODS, f"未找到 {url_map_method_name} 解包资源url映射方法"
-        self.url_map_method = DEFAULT_URL_MAP_METHODS[url_map_method_name]
+        self.url_map_method = lambda x: x
+        if url_map_method_name:
+            self.url_map_method = DEFAULT_URL_MAP_METHODS[url_map_method_name]
+        elif self.name in DEFAULT_URL_MAP_METHODS:
+            self.url_map_method = DEFAULT_URL_MAP_METHODS[self.name]
+        self.prefixes = prefixes
 
 class RegionRipAssetManger:
     """
@@ -631,8 +659,12 @@ class RegionRipAssetManger:
                 pass
         
         # 尝试从网络下载
-        last_error = None
+        error_list: List[Tuple[str, str]] = []
         for source in self.sources:
+            if source.prefixes and not any([path.startswith(prefix) for prefix in source.prefixes]):
+                continue
+
+            url = None
             try:
                 if not source.base_url.endswith("/"):
                     source.base_url += "/"
@@ -645,15 +677,18 @@ class RegionRipAssetManger:
                 return data
             
             except Exception as e:
-                last_error = f"{type(e).__name__}: {e}"
-                # logger.print_exc(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}")
-                if not allow_error:
-                    logger.warning(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}")
+                e = get_exc_desc(e)
+                error_list.append((source.name, e))
+                # logger.print_exc(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}, url={url}")
+                logger.warning(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}, url={url}")
 
         if not allow_error:
-            raise Exception(f"从所有数据源获取 {self.region} 解包资源 {path} 失败: {last_error}")
+            error_list_text = ""
+            for source_name, err in error_list:
+                error_list_text += f"[{source_name}] {truncate(err, 40)}\n"
+            raise Exception(f"从所有数据源获取 {self.region} 解包资源 {path} 失败:\n{error_list_text.strip()}")
         
-        logger.warning(f"从所有数据源获取 {self.region} 解包资源 {path} 失败: {last_error}，返回默认值")
+        logger.warning(f"从所有数据源获取 {self.region} 解包资源 {path} 失败: {error_list}，返回默认值")
         return default
 
     async def img(

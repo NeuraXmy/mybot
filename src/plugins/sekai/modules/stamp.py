@@ -52,7 +52,7 @@ pjsk_stamp = SekaiCmdHandler(["/pjsk stamp", "/pjsk_stamp", "/pjsk表情", "/pjs
 pjsk_stamp.check_cdrate(cd).check_wblist(gbl)
 @pjsk_stamp.handle()
 async def _(ctx: SekaiHandlerContext):
-    await ctx.block(ctx.region)
+    await ctx.block_region()
 
     args = ctx.get_args().strip()
     sid, cid, text = None, None, None
