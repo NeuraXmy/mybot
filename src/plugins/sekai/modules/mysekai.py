@@ -46,7 +46,6 @@ MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
     5103: "junk.png",
     5104: "junk.png",
 }
-mysekai_res_icons = {}
 
 mysekairun_friendcode_data = {}
 mysekairun_friendcode_mtime = None
@@ -167,44 +166,39 @@ async def get_mysekai_fixture_icon(ctx: SekaiHandlerContext, fixture: dict, colo
 
     if ftype == "surface_appearance":
         suffix = "" if color_count == 1 else f"_{color_idx+1}"
-        return await ctx.rip.img(f"mysekai/thumbnail/surface_appearance/{asset_name}_rip/tex_{asset_name}_{suface_type}{suffix}.png")
+        return await ctx.rip.img(f"mysekai/thumbnail/surface_appearance/{asset_name}_rip/tex_{asset_name}_{suface_type}{suffix}.png", use_img_cache=True)
     else:
         suffix = f"_{color_idx+1}"
-        return await ctx.rip.img(f"mysekai/thumbnail/fixture/{asset_name}{suffix}_rip/{asset_name}{suffix}.png")
+        return await ctx.rip.img(f"mysekai/thumbnail/fixture/{asset_name}{suffix}_rip/{asset_name}{suffix}.png", use_img_cache=True)
 
 # 获取mysekai资源图标
 async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Image:
-    global mysekai_res_icons
-    if key in mysekai_res_icons:
-        return mysekai_res_icons[key]
-    
-    img, need_cache = UNKNOWN_IMG, True
+    img = UNKNOWN_IMG
     try:
         res_id = int(key.split("_")[-1])
         # mysekai材料
         if key.startswith("mysekai_material"):
             name = (await ctx.md.mysekai_materials.find_by_id(res_id))['iconAssetbundleName']
-            img = await ctx.rip.img(f"mysekai/thumbnail/material/{name}_rip/{name}.png")
+            img = await ctx.rip.img(f"mysekai/thumbnail/material/{name}_rip/{name}.png", use_img_cache=True)
         # 普通材料
         elif key.startswith("material"):
-            img = await ctx.rip.img(f"thumbnail/material_rip/material{res_id}.png")
+            img = await ctx.rip.img(f"thumbnail/material_rip/material{res_id}.png", use_img_cache=True)
         # 道具
         elif key.startswith("mysekai_item"):
             name = (await ctx.md.mysekai_items.find_by_id(res_id))['iconAssetbundleName']
-            img = await ctx.rip.img(f"mysekai/thumbnail/item/{name}_rip/{name}.png")
+            img = await ctx.rip.img(f"mysekai/thumbnail/item/{name}_rip/{name}.png", use_img_cache=True)
         # 家具（植物种子）
         elif key.startswith("mysekai_fixture"):
             name = (await ctx.md.mysekai_fixtures.find_by_id(res_id))['assetbundleName']
             try:
-                img = await ctx.rip.img(f"mysekai/thumbnail/fixture/{name}_{res_id}_rip/{name}_{res_id}.png")
+                img = await ctx.rip.img(f"mysekai/thumbnail/fixture/{name}_{res_id}_rip/{name}_{res_id}.png", use_img_cache=True)
             except:
-                img = await ctx.rip.img(f"mysekai/thumbnail/fixture/{name}_rip/{name}.png")
+                img = await ctx.rip.img(f"mysekai/thumbnail/fixture/{name}_rip/{name}.png", use_img_cache=True)
         # 唱片
         elif key.startswith("mysekai_music_record"):
             mid = (await ctx.md.mysekai_musicrecords.find_by_id(res_id))['externalId']
             name = (await ctx.md.musics.find_by_id(mid))['assetbundleName']
-            img = await ctx.rip.img(f"music/jacket/{name}_rip/{name}.png")
-            need_cache = False
+            img = await ctx.rip.img(f"music/jacket/{name}_rip/{name}.png", use_img_cache=True)
         # 蓝图
         elif key.startswith("mysekai_blueprint"):
             fixture = await get_fixture_by_blueprint_id(ctx, res_id)
@@ -212,7 +206,6 @@ async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Imag
                 logger.warning(f"{key}对应的不是家具")
                 return UNKNOWN_IMG
             img = await get_mysekai_fixture_icon(ctx, fixture)
-            need_cache = False
 
         else:
             raise Exception(f"未知的资源类型: {key}")
@@ -220,9 +213,6 @@ async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Imag
     except:
         logger.print_exc(f"获取{key}资源的图标失败")
         return UNKNOWN_IMG
-    
-    if need_cache:
-        mysekai_res_icons[key] = img
     return img
 
 # 合成mysekai资源位置地图图片
@@ -584,7 +574,7 @@ async def get_mysekai_fixture_genre_name_and_image(ctx: SekaiHandlerContext, gid
     else:
         genre = await ctx.md.mysekai_fixture_subgenres.find_by_id(gid)
     asset_name = genre['assetbundleName']
-    image = await ctx.rip.img(f"mysekai/icon/category_icon/{asset_name}_rip/{asset_name}.png")
+    image = await ctx.rip.img(f"mysekai/icon/category_icon/{asset_name}_rip/{asset_name}.png", use_img_cache=True)
     return genre['name'], image
 
 # 合成mysekai家具列表图片

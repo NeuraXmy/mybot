@@ -182,7 +182,7 @@ async def get_chart_image_cq(ctx: SekaiHandlerContext, mid: int, diff: str):
         if not ok:
             raise Exception(f"从所有谱面来源下载谱面失败: {last_err}")
         
-    return await get_image_cq(cache_path)
+    return await get_image_cq(cache_path, low_quality=True)
 
 # 从字符串中获取难度 返回(难度名, 去掉难度后缀的字符串)
 def extract_diff(text: str, default: str="master") -> Tuple[str, str]:
@@ -506,7 +506,7 @@ async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_music
     for i in range(len(lv_musics)):
         lv, musics = lv_musics[i]
         asset_names = [m['assetbundleName'] for m in musics]
-        covers = await asyncio.gather(*[ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png") for asset_name in asset_names])
+        covers = await asyncio.gather(*[ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", use_img_cache=True) for asset_name in asset_names])
         for m, cover in zip(musics, covers):
             m['cover_img'] = cover
         
@@ -868,7 +868,10 @@ async def _(ctx: SekaiHandlerContext):
     assert_and_reply(lv_musics, "没有找到符合条件的曲目")
     lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
 
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_music_list_image(ctx, diff, lv_musics, ctx.user_id, show_id)))
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_music_list_image(ctx, diff, lv_musics, ctx.user_id, show_id),
+        low_quality=True,
+    ))
 
 
 # ======================= 定时任务 ======================= #

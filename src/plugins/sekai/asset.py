@@ -2,7 +2,7 @@ from ..utils import *
 from .common import *
 import threading
 
-REGION_ASSET_CONFIG_PATH = f"{SEKAI_ASSET_DIR}/region_config.yaml"
+REGION_ASSET_CONFIG_PATH = f"{SEKAI_DATA_DIR}/asset_config.yaml"
 
 # ================================ MasterData资源 ================================ #
 
@@ -571,6 +571,7 @@ class RegionRipAssetManger:
         self.region = region
         self.sources = sources
         self.cache_dir = pjoin(DEFAULT_RIP_ASSET_DIR, region)
+        self.cached_images: Dict[str, Image.Image] = {}
         create_folder(self.cache_dir)
     
     @classmethod
@@ -663,6 +664,8 @@ class RegionRipAssetManger:
         default=UNKNOWN_IMG, 
         cache_expire_secs=None, 
         timeout=DEFAULT_GET_RIP_ASSET_TIMEOUT,
+        use_img_cache=False,
+        img_cache_max_res=128,
     ) -> Image.Image:
         """
         获取图片类型解包资源，参数：
@@ -672,10 +675,20 @@ class RegionRipAssetManger:
         - `default`: 允许错误的情况下的默认值
         - `cache_expire_secs`: 缓存过期时间
         - `timeout`: 超时时间
+        - `use_img_cache`: 是否使用图片缓存
+        - `img_cache_max_res`: 图片缓存最大分辨率，None则不缩放
         """
+        # 尝试从图片缓存加载
+        if use_img_cache and path in self.cached_images:
+            return self.cached_images[path]
         data = await self.get_asset(path, use_cache, allow_error, default, cache_expire_secs, timeout)
         try: 
-            return open_image(io.BytesIO(data))
+            img = open_image(io.BytesIO(data))
+            if use_img_cache:
+                if img_cache_max_res and max(img.size) > img_cache_max_res:
+                    img = resize_keep_ratio(img, img_cache_max_res)
+                self.cached_images[path] = img
+            return img
         except: pass
         if not allow_error:
             raise Exception(f"解析下载的 {self.region} 解包资源 {path} 为图片失败")

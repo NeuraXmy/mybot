@@ -171,7 +171,7 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
     eid = event['id']
     title = event['name']
     event_asset_name = event['assetbundleName']
-    banner_img_cq = await get_image_cq(await ctx.rip.img(f"home/banner/{event_asset_name}_rip/{event_asset_name}.png"))
+    banner_img_cq = await get_image_cq(await ctx.rip.img(f"home/banner/{event_asset_name}_rip/{event_asset_name}.png", use_img_cache=True))
     summary_db = get_file_db(f"{SEKAI_DATA_DIR}/story_summary/event/{ctx.region}/{eid}.json", logger)
     summary = summary_db.get("summary", {})
     if not summary or refresh:

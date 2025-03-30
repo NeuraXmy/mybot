@@ -6,6 +6,7 @@ from ..draw import *
 from .honor import compose_full_honor_image
 
 SEKAI_PROFILE_DIR = f"{SEKAI_DATA_DIR}/profile"
+PROFILE_CONFIG_PATH = f"{SEKAI_DATA_DIR}/profile_config.yaml"
 profile_db = get_file_db(f"{SEKAI_PROFILE_DIR}/db.json", logger)
 
 @dataclass
@@ -36,7 +37,10 @@ async def get_card_thumbnail(ctx: SekaiHandlerContext, cid: int, after_training:
     image_type = "after_training" if after_training else "normal"
     card = await ctx.md.cards.find_by_id(cid)
     assert_and_reply(card, f"找不到ID为{cid}的卡牌")
-    return await ctx.rip.img(f"thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.png")
+    return await ctx.rip.img(
+        f"thumbnail/chara_rip/{card['assetbundleName']}_{image_type}.png", 
+        use_img_cache=True, img_cache_max_res=128,
+    )
 
 # 获取角色卡牌完整缩略图（包括边框、星级等）
 async def get_card_full_thumbnail(ctx: SekaiHandlerContext, card_or_card_id: Dict, after_training: bool=None, pcard: Dict=None, use_max_level: bool=False):
@@ -131,10 +135,9 @@ async def get_unit_by_card_id(ctx: SekaiHandlerContext, card_id: int) -> str:
 
 # 获取profile相关配置
 def get_profile_config(ctx: SekaiHandlerContext) -> RegionProfileConfig:
-    config_path = f"{SEKAI_PROFILE_DIR}/region_config.yaml"
-    if not os.path.exists(config_path):
+    if not os.path.exists(PROFILE_CONFIG_PATH):
         return {}
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(PROFILE_CONFIG_PATH, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     return RegionProfileConfig(**(config.get(ctx.region) or {}))
 
@@ -491,7 +494,10 @@ async def _(ctx: SekaiHandlerContext):
         uid = get_uid_from_qid(ctx, ctx.user_id)
     res_profile = await get_basic_profile(ctx, uid)
     logger.info(f"绘制名片 region={ctx.region} uid={uid}")
-    return await ctx.asend_reply_msg(await get_image_cq(await compose_profile_image(ctx, res_profile)))
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_profile_image(ctx, res_profile),
+        low_quality=True,
+    ))
 
 
 # 查询注册时间

@@ -17,11 +17,11 @@ async def get_res_icon(ctx: SekaiHandlerContext, res_type: str, res_id: int = No
     获取资源图标
     """
     if res_type in ['jewel', 'virtual_coin', 'coin']:
-        res_image = await ctx.rip.img(f"thumbnail/common_material_rip/{res_type}.png")
+        res_image = await ctx.rip.img(f"thumbnail/common_material_rip/{res_type}.png", use_img_cache=True)
     elif res_type == 'boost_item':
-        res_image = await ctx.rip.img(f"thumbnail/boost_item_rip/boost_item{res_id}.png")                   
+        res_image = await ctx.rip.img(f"thumbnail/boost_item_rip/boost_item{res_id}.png", use_img_cache=True)               
     elif res_type == 'material':
-        res_image = await ctx.rip.img(f"thumbnail/material_rip/material{res_id}.png")
+        res_image = await ctx.rip.img(f"thumbnail/material_rip/material{res_id}.png", use_img_cache=True)
     elif res_type == 'honor':
         asset_name = (await ctx.md.honors.find_by_id(res_id))['assetbundleName']
         res_image = await ctx.rip.img(f"honor/{asset_name}_rip/degree_main.png")
