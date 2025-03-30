@@ -2,6 +2,7 @@ from .card import *
 from .chart import *
 from .event import *
 from .honor import *
+from .misc import *
 from .music import *
 from .mysekai import *
 from .profile import *

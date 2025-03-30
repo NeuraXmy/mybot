@@ -392,6 +392,7 @@ class RegionMasterDataCollection:
         self.event_musics                                 = RegionMasterDataWrapper(region, "eventMusics")
         self.costume3ds                                   = RegionMasterDataWrapper(region, "costume3ds")
         self.card_costume3ds                              = RegionMasterDataWrapper(region, "cardCostume3ds")
+        self.ng_words                                     = RegionMasterDataWrapper(region, "ngWords")
         
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
@@ -517,6 +518,10 @@ def event_story_units_map_fn(event_story_units):
         else:
             ret['events'][esid]["sub"].append(unit)
     return ret
+
+@MasterDataManager.map_function("ngWords")
+def ng_words_map_fn(ng_words):
+    return set([item['word'] for item in ng_words])
 
 
 # ================================ 解包Asset资源 ================================ #
