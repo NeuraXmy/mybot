@@ -1572,11 +1572,14 @@ async def asave_json(path, data):
 
 
 # 下载json文件，返回json
-async def download_json(url):
+async def download_json(url, show_detailed_error=True):
     async with aiohttp.ClientSession() as session:
         async with session.get(url, verify_ssl=False) as resp:
             if resp.status != 200:
-                raise Exception(f"下载 {url} 失败: {resp.status} {resp.reason}: {await resp.text()}", resp)
+                if show_detailed_error:
+                    raise Exception(f"下载 {url} 失败: {resp.status} {resp.reason}: {await resp.text()}", resp)
+                else:
+                    raise Exception(f"{resp.status} {resp.reason}")
             if "text/plain" in resp.content_type:
                 return json.loads(await resp.text())
             if "application/octet-stream" in resp.content_type:
@@ -1926,7 +1929,7 @@ def concat_images(images: List[Image.Image], mode) -> Image.Image:
 
 
 # 设置群聊开启
-enable_group = CmdHandler(['/enable'], utils_logger, check_group_enabled=False)
+enable_group = CmdHandler(['/enable'], utils_logger, check_group_enabled=False, only_to_me=True)
 enable_group.check_superuser()
 @enable_group.handle()
 async def _(ctx: HandlerContext):
@@ -1937,10 +1940,10 @@ async def _(ctx: HandlerContext):
         group_id = ctx.group_id
     group_name = await get_group_name(ctx.bot, group_id)
     set_group_enable(group_id, True)
-    return await ctx.asend_reply_msg(f'已启用群聊 {group_name} ({group_id})')
+    return await ctx.asend_reply_msg(f'已启用群聊 {group_name} ({group_id}) BOT服务')
  
 # 设置群聊关闭
-disable_group = CmdHandler(['/disable'], utils_logger, check_group_enabled=False)
+disable_group = CmdHandler(['/disable'], utils_logger, check_group_enabled=False, only_to_me=True)
 disable_group.check_superuser()
 @disable_group.handle()
 async def _(ctx: HandlerContext):
@@ -1951,7 +1954,7 @@ async def _(ctx: HandlerContext):
         group_id = ctx.group_id
     group_name = await get_group_name(ctx.bot, group_id)
     set_group_enable(group_id, False)
-    return await ctx.asend_reply_msg(f'已禁用群聊 {group_name} ({group_id})')
+    return await ctx.asend_reply_msg(f'已禁用群聊 {group_name} ({group_id}) BOT服务')
 
 # 查看群聊列表的开启状态
 group_status = CmdHandler(['/group_status'], utils_logger)

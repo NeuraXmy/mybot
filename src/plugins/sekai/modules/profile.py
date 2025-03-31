@@ -157,7 +157,7 @@ async def get_basic_profile(ctx: SekaiHandlerContext, uid: int) -> dict:
     try:
         url = get_profile_config(ctx).profile_api_url
         assert_and_reply(url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
-        profile = await download_json(url.format(uid=uid))
+        profile = await download_json(url.format(uid=uid), show_detailed_error=False)
         assert_and_reply(profile, f"找不到ID为 {uid} 的玩家")
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
@@ -207,7 +207,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
 
         # 尝试下载
         try:   
-            profile = await download_json(url.format(uid=uid))
+            profile = await download_json(url.format(uid=uid), show_detailed_error=False)
         except Exception as e:
             if isinstance(e.args[1], aiohttp.ClientResponse):
                 resp: aiohttp.ClientResponse = e.args[1]
@@ -442,7 +442,7 @@ async def _(ctx: SekaiHandlerContext):
     bind_list[ctx.region][str(ctx.user_id)] = args
     profile_db.set("bind_list", bind_list)
 
-    return await ctx.asend_reply_msg(f"绑定成功: {user_name} ({args})")
+    return await ctx.asend_reply_msg(f"绑定成功: {user_name}")
 
 
 # 隐藏详细信息

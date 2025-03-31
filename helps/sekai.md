@@ -13,6 +13,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 - 此BOT自部署的抓包指南（仅IOS）:  
     `https://bot.teaphenby.com/public/tutorial/tutorial.html`
 - 也可以使用 **Haruki工具箱** 进行抓包
+- 抓包仅支持日服和国服
 
 #### 📊 数据来源 & 鸣谢
 - MasterData: **Sekai Viewer** & **Haruki Team**
@@ -96,7 +97,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 ### 绑定账号
 `/绑定` `/pjsk bind` `/pjsk id`
 > 绑定游戏ID，不加ID使用则会显示当前绑定的ID  
-支持服务器: `jp`
+支持服务器: `jp cn`
 
 
 - `/绑定` 查询当前绑定的游戏账号
@@ -106,7 +107,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 ### 查询个人信息
 `/个人信息` `/名片` `/pjsk info`
 > 查询个人信息，附上ID可以查询ID对应的账号信息  
-支持服务器: `jp`
+支持服务器: `jp cn`
 
 
 - `/个人信息` 查询当前绑定的游戏账号信息
@@ -116,7 +117,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 ### 查询注册时间
 `/注册时间` `/pjsk reg time`
 > 查询自己的注册时间，需要📡抓包数据  
-支持服务器: `jp`
+支持服务器: `jp cn`
 
 
 - `/注册时间`

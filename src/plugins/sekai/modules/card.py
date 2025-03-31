@@ -379,7 +379,7 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
         
     return msg_lists
 
-# 合成box图片
+# 合成卡牌一览图片
 async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, show_id: bool, show_box: bool, use_after_training=True):
     profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
     avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
@@ -387,8 +387,11 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
     pcards = profile['userCards']
     # collect card imgs
     async def get_card_full_thumbnail_nothrow(card):
-        after_training = (card['cardRarityType'] in ['rarity_3', 'rarity_4']) and use_after_training
-        return await get_card_full_thumbnail(ctx, card, after_training)
+        if pcard := find_by(pcards, 'cardId', card['id']):
+            return await get_card_full_thumbnail(ctx, card, pcard=pcard)
+        else:
+            after_training = (card['cardRarityType'] in ['rarity_3', 'rarity_4']) and use_after_training
+            return await get_card_full_thumbnail(ctx, card, after_training)
     card_imgs = await batch_gather(*[get_card_full_thumbnail_nothrow(card) for card in cards])
     # collect chara cards
     chara_cards = {}
