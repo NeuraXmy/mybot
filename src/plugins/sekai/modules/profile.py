@@ -64,7 +64,7 @@ async def get_card_full_thumbnail(ctx: SekaiHandlerContext, card_or_card_id: Dic
         try: return open_image(cache_path)
         except: pass
 
-    img = await get_card_thumbnail(ctx, cid, after_training)
+    img = (await get_card_thumbnail(ctx, cid, after_training))
     def draw(img: Image.Image, card):
         attr = card['attr']
         rare = card['cardRarityType']

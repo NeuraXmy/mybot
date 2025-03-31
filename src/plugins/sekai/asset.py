@@ -720,7 +720,7 @@ class RegionRipAssetManger:
         """
         # 尝试从图片缓存加载
         if use_img_cache and path in self.cached_images:
-            return self.cached_images[path]
+            return self.cached_images[path].copy()
         data = await self.get_asset(path, use_cache, allow_error, default, cache_expire_secs, timeout)
         try: 
             img = open_image(io.BytesIO(data))
