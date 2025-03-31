@@ -465,7 +465,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 
 ### 查询烤森蓝图
-`/msb` `mysekai蓝图` `/pjsk mysekai blueprint`
+`/msb` `/mysekai蓝图` `/pjsk mysekai blueprint`
 > 查询烤森蓝图持有情况，需要📡烤森抓包数据  
 使用`id`参数可以展示家具的id，默认不展示  
 支持服务器: `jp`  
@@ -476,7 +476,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 
 ### 查询烤森家具详情
-`/msf` `mysekai家具` `/pjsk mysekai fixture`
+`/msf` `/mysekai家具` `/pjsk mysekai fixture`
 > 查询指定一个或多个烤森家具详情  
 会同时展示能够抄写家具蓝图的好友码  
 支持服务器: `jp`  
@@ -487,7 +487,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 
 ### 查询烤森家具一览
-`/msf` `mysekai家具` `/pjsk mysekai fixture` （和查询烤森家具详情共用相同指令）
+`/msf` `/mysekai家具` `/pjsk mysekai fixture` （和查询烤森家具详情共用相同指令）
 > 查询烤森家具一览，默认会展示id  
 支持服务器: `jp`  
 
@@ -496,7 +496,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 
 ### 查询烤森照片
-`/msp` `mysekai照片` `/pjsk mysekai photo`
+`/msp` `/mysekai照片` `/pjsk mysekai photo`
 > 查询烤森照片，需要📡烤森抓包数据  
 注意每次拍照后需要重新抓包才能查到  
 支持服务器: `jp`  
@@ -546,7 +546,7 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 
 ### 开启/关闭群聊功能
-`/pjsk开启` `/pjsk group sub` `/pjsk关闭` `/pjsk group unsub`
+🛠️ `/pjsk开启` `/pjsk group sub` `/pjsk关闭` `/pjsk group unsub`
 > 在当前群聊开启或关闭指定功能，不加服务名则查看当前开启的和可以开启的功能  
 支持服务器: `所有`
 

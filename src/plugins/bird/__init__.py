@@ -92,7 +92,7 @@ async def handle_bird(ctx: HandlerContext):
     if len(blur_names) > 0:
         res += f"模糊匹配：{', '.join(blur_names)}\n"
     
-    return ctx.asend_reply_msg(res.strip())
+    return await ctx.asend_reply_msg(res.strip())
 
 
 
