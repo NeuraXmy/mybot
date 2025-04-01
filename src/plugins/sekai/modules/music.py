@@ -91,6 +91,15 @@ music_alias_add_history: Dict[str, List[MusicAliasAddHistory]] = {}
 MAX_MUSIC_ALIAS_ADD_HISTORY = 5
 
 
+@dataclass
+class PlayProgressCount:
+    total: int = 0
+    not_clear: int = 0
+    clear: int = 0
+    fc: int = 0
+    ap: int = 0
+
+
 # ======================= 处理逻辑 ======================= #
 
 # 获取曲目翻译名 lang in ['cn', 'en']
@@ -492,6 +501,91 @@ async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_music
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 合成打歌进度图片
+async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: int) -> Image.Image:
+    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
+    bg_unit = (await get_player_avatar_info_by_detailed_profile(ctx, profile)).unit
+
+    count = { lv: PlayProgressCount() for lv in range(1, 40) }
+
+    for music in await ctx.md.musics.get():
+        mid = music['id']
+        level = (await get_music_diff_info(ctx, mid)).level.get(diff)
+        if not level: 
+            continue
+        count[level].total += 1
+
+        result_type = 0
+        all_diff_result = find_by(profile['userMusics'], "musicId", mid)
+        if all_diff_result:
+            all_diff_result = all_diff_result.get('userMusicDifficultyStatuses', [])
+            diff_result = find_by(all_diff_result, "musicDifficulty", diff)
+            if diff_result and diff_result['musicDifficultyStatus'] == "available":
+                full_combo, all_prefect = False, False
+                for item in diff_result["userMusicResults"]:
+                    full_combo = full_combo or item["fullComboFlg"]
+                    all_prefect = all_prefect or item["fullPerfectFlg"]
+                result_type = 1 if len(diff_result["userMusicResults"]) > 0 else 0
+                if full_combo: result_type = 2
+                if all_prefect: result_type = 3
+
+        if result_type:
+            count[level].not_clear += 1
+            if result_type >= 1: count[level].clear += 1
+            if result_type >= 2: count[level].fc += 1
+            if result_type >= 3: count[level].ap += 1
+
+    count = [(lv, c) for lv, c in count.items() if c.total > 0]
+
+    with Canvas(bg=random_unit_bg(bg_unit)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            if profile:
+                await get_detailed_profile_card(ctx, profile, err_msg)
+
+            bar_h, item_h, w = 200, 48, 48
+            font_sz = 24
+
+            with HSplit().set_content_align('c').set_item_align('c').set_bg(roundrect_bg()) \
+                .set_padding(64).set_sep(8):
+
+                def draw_icon(path):
+                    with Frame().set_size((w, item_h)).set_content_align('c'):
+                        ImageBox(path, size=(w // 2, w // 2))
+                
+                # 第一列：进度条的占位 难度占位 not_clear clear fc ap 图标
+                with VSplit().set_content_align('c').set_item_align('c').set_sep(8):
+                    Spacer(w=w, h=bar_h)
+                    Spacer(w=w, h=item_h)
+                    draw_icon(ctx.static_imgs.get("icon_not_clear.png"))
+                    draw_icon(ctx.static_imgs.get("icon_clear.png"))
+                    draw_icon(ctx.static_imgs.get("icon_fc.png"))
+                    draw_icon(ctx.static_imgs.get("icon_ap.png"))
+
+                # 之后的几列：进度条 难度 各个类型的数量
+                for lv, c in count:
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8):
+                        # 进度条
+                        def draw_bar(color, h):
+                            return Frame().set_size((w, h)).set_bg(RoundRectBg(fill=color, radius=4))
+                        with draw_bar(PLAY_RESULT_COLORS['not_clear'], bar_h).set_content_align('b') as f:
+                            if c.clear: draw_bar(PLAY_RESULT_COLORS['clear'], int(bar_h * c.clear / c.total))
+                            if c.fc:    draw_bar(PLAY_RESULT_COLORS['fc'],    int(bar_h * c.fc / c.total))
+                            if c.ap:    draw_bar(PLAY_RESULT_COLORS['ap'],    int(bar_h * c.ap / c.total))
+
+                        # 难度
+                        TextBox(f"{lv}", TextStyle(font=DEFAULT_BOLD_FONT, size=font_sz, color=WHITE), overflow='clip') \
+                            .set_bg(RoundRectBg(fill=DIFF_COLORS[diff], radius=16)) \
+                            .set_size((w, item_h)).set_content_align('c')
+                        # 数量 (第一行虽然图标是not_clear但是实际上是total)
+                        color = PLAY_RESULT_COLORS['not_clear']
+                        draw_shadowed_text(f"{c.total}", DEFAULT_BOLD_FONT, font_sz, color, None,                        w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{c.clear}", DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['clear'], w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{c.fc}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['fc'],    w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{c.ap}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['ap'],    w = w, h = item_h).set_bg(roundrect_bg())
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -781,6 +875,22 @@ async def _(ctx: SekaiHandlerContext):
 
     return await ctx.asend_reply_msg(await get_image_cq(
         await compose_music_list_image(ctx, diff, lv_musics, ctx.user_id, show_id),
+        low_quality=True,
+    ))
+
+
+# 打歌进度
+pjsk_play_progress = SekaiCmdHandler([
+    "/pjsk progress", "/pjsk_progress", 
+    "/pjsk进度", 
+])
+pjsk_play_progress.check_cdrate(cd).check_wblist(gbl)
+@pjsk_play_progress.handle()
+async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    diff, _ = extract_diff(args)
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_play_progress_image(ctx, diff, ctx.user_id),
         low_quality=True,
     ))
 

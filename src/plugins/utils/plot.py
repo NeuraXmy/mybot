@@ -8,6 +8,9 @@ import contextvars
 from dataclasses import dataclass
 import os
 import numpy as np
+from copy import deepcopy
+
+DEBUG_MODE = False
 
 # =========================== 绘图 =========================== #
 
@@ -190,6 +193,8 @@ class Painter:
         self.size = size
         self.w = size[0]
         self.h = size[1]
+        if DEBUG_MODE:
+            print(f"set region {pos} size={size}")
         return self
 
     def shrink_region(self, dlt: Position):
@@ -390,7 +395,6 @@ class Painter:
 
 # =========================== 布局类型 =========================== #
 
-DEBUG_MODE = False
 DEFAULT_PADDING = 0
 DEFAULT_MARGIN = 0
 DEFAULT_SEP = 8
@@ -637,6 +641,7 @@ class Widget:
             s += f"self={self._get_self_size()}"
             s += f"content={self._get_content_size()}"
             p.text(s, (3, 3), font=font, fill=color)
+            print(f"Draw {self.__class__.__name__} at {p.offset} size={p.size}")
         
         if self.bg:
             self.bg.draw(p)
@@ -712,21 +717,22 @@ class Frame(Widget):
         return size
     
     def _draw_content(self, p: Painter):
+        cw, ch = self._get_content_size()
         for item in self.items:
             w, h = item._get_self_size()
             x, y = 0, 0
             if self.content_halign == 'l':
                 x = 0
             elif self.content_halign == 'r':
-                x = p.w - w
+                x = cw - w
             elif self.content_halign == 'c':
-                x = (p.w - w) // 2
+                x = (cw - w) // 2
             if self.content_valign == 't':
                 y = 0
             elif self.content_valign == 'b':
-                y = p.h - h
+                y = ch - h
             elif self.content_valign == 'c':
-                y = (p.h - h) // 2
+                y = (ch - h) // 2
             p.move_region((x, y), (w, h))
             item.draw(p)
             p.restore_region()
@@ -1059,6 +1065,9 @@ class TextStyle:
 
 class TextBox(Widget):
     def __init__(self, text: str = '', style: TextStyle = None, line_count=None, line_sep=2, wrap=True, overflow='shrink', use_real_line_count=False):
+        """
+        overflow: 'shrink', 'clip'
+        """
         super().__init__()
         self.text = text
         self.style = style or TextStyle()
@@ -1185,6 +1194,9 @@ class TextBox(Widget):
 
 class ImageBox(Widget):
     def __init__(self, image: Union[str, Image.Image], image_size_mode=None, size=None, use_alphablend=False, alpha_adjust=1.0):
+        """
+        image_size_mode: 'fit', 'fill', 'original'
+        """
         super().__init__()
         if isinstance(image, str):
             self.image = Image.open(image)
@@ -1283,3 +1295,60 @@ class Canvas(Frame):
         self.draw(p)
         return p.get()
 
+
+
+
+# =========================== 控件函数 =========================== #
+
+# 由带颜色代码的字符串获取彩色文本组件
+def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> HSplit:
+    try:
+        segs = [{ 'text': None, 'color': None }]
+        while True:
+            i = s.find('<#')
+            if i == -1:
+                segs[-1]['text'] = s
+                break
+            j = s.find('>', i)
+            segs[-1]['text'] = s[:i]
+            code = s[i+2:j]
+            if len(code) == 6:
+                r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
+            elif len(code) == 3:
+                r, g, b = int(code[0], 16)*17, int(code[1], 16)*17, int(code[2], 16)*17
+            else:
+                raise ValueError(f"颜色代码格式错误: {code}")
+            segs.append({ 'text': None, 'color': (r, g, b) })
+            s = s[j+1:]
+    except Exception as e:
+        segs = [{ 'text': s, 'color': None }]
+
+    with HSplit().set_padding(padding) as hs:
+        for seg in segs:
+            text, color = seg['text'], seg['color']
+            if text:
+                color_style = deepcopy(style)
+                if color is not None: color_style.color = color
+                TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
+    return hs
+
+# 绘制带阴影的文本
+def draw_shadowed_text(
+    text: str, 
+    font: str,
+    font_size: int, 
+    c1: Color, 
+    c2: Color, 
+    offset: Union[int, Tuple[int, int]] = 2, 
+    w: int = None, 
+    h: int = None,
+    content_align: str = 'c',
+    **textbox_kargs,
+) -> Frame:
+    if isinstance(offset, int):
+        offset = (offset, offset)
+    with Frame().set_size((w, h)).set_content_align(content_align) as frame:
+        if c2:
+            TextBox(text, TextStyle(font=font, size=font_size, color=c2), **textbox_kargs).set_offset(offset)
+        TextBox(text, TextStyle(font=font, size=font_size, color=c1), **textbox_kargs)
+    return frame

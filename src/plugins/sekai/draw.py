@@ -3,40 +3,6 @@ from .common import *
 from .handler import SekaiHandlerContext
 
 
-# 由带颜色代码的字符串获取彩色文本组件
-def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> HSplit:
-    try:
-        segs = [{ 'text': None, 'color': None }]
-        while True:
-            i = s.find('<#')
-            if i == -1:
-                segs[-1]['text'] = s
-                break
-            j = s.find('>', i)
-            segs[-1]['text'] = s[:i]
-            code = s[i+2:j]
-            if len(code) == 6:
-                r, g, b = int(code[:2], 16), int(code[2:4], 16), int(code[4:], 16)
-            elif len(code) == 3:
-                r, g, b = int(code[0], 16)*17, int(code[1], 16)*17, int(code[2], 16)*17
-            else:
-                raise ValueError(f"颜色代码格式错误: {code}")
-            segs.append({ 'text': None, 'color': (r, g, b) })
-            s = s[j+1:]
-    except Exception as e:
-        logger.warning(f"解析颜色代码失败: {e}")
-        segs = [{ 'text': s, 'color': None }]
-
-    with HSplit().set_padding(padding) as hs:
-        for seg in segs:
-            text, color = seg['text'], seg['color']
-            if text:
-                color_style = deepcopy(style)
-                if color is not None: color_style.color = color
-                TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
-    return hs
-
-
 # 通过角色ID获取角色头像
 def get_chara_icon_by_chara_id(cid: int, size: int = None, raise_exc=True, default=None):
     """
@@ -170,5 +136,10 @@ DIFF_COLORS = {
     "master": (187, 51, 238, 255),
     "append": LinearGradient((182, 144, 247, 255), (243, 132, 220, 255), (1.0, 1.0), (0.0, 0.0)),
 }
-
+PLAY_RESULT_COLORS = {
+    'not_clear': (69, 67, 104, 255),
+    'clear': (255, 226, 118, 255),
+    'fc': (253, 167, 249, 255),
+    'ap': (63, 230, 228, 255),
+}
 

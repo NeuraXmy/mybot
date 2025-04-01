@@ -357,12 +357,14 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                             t.set_bg(RoundRectBg(fill=color, radius=3)).set_size((gw, gh)).set_content_align('c')
                         diff_count = basic_profile['userMusicDifficultyClearCount']
                         scores = ['liveClear', 'fullCombo', 'allPerfect']
+                        play_result = ['clear', 'fc', 'ap']
                         for i, score in enumerate(scores):
                             for j, diff in enumerate(DIFF_COLORS.keys()):
                                 bg_color = (255, 255, 255, 100) if j % 2 == 0 else (255, 255, 255, 50)
                                 count = find_by(diff_count, 'musicDifficultyType', diff)[score]
-                                t = TextBox(str(count), TextStyle(font=DEFAULT_FONT, size=20, color=(40, 40, 40, 255)))
-                                t.set_size((gw, gh)).set_content_align('c').set_bg(RoundRectBg(fill=bg_color, radius=3))
+                                draw_shadowed_text(str(count), DEFAULT_FONT, 20, 
+                                                   PLAY_RESULT_COLORS['not_clear'], PLAY_RESULT_COLORS[play_result[i]], 
+                                                   offset=1, w=gw, h=gh).set_bg(RoundRectBg(fill=bg_color, radius=3))
                 
                 with Frame().set_content_align('rb'):
                     hs, vs, gw, gh = 8, 7, 96, 48

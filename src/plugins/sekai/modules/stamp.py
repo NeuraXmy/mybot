@@ -55,52 +55,58 @@ async def _(ctx: SekaiHandlerContext):
     await ctx.block_region()
 
     args = ctx.get_args().strip()
-    sid, cid, text = None, None, None
+    qtype, sid, cid, text = None, None, None, None
 
-    # 尝试解析：单独id作为参数 
-    if not any([sid, cid, text]):
+    # 尝试解析：全都是id
+    if not qtype:
         try:
-            sid = int(args)
-            assert sid >= 0
+            assert all([int(x) >= 0 and int(x) <= 9999 for x in args.split()])
+            sid = [int(x) for x in args.split()]
+            qtype = "id"
         except:
-            sid, cid, text = None, None, None
+            pass
 
     # 尝试解析：单独昵称作为参数
-    if not any([sid, cid, text]):
+    if not qtype:
         try:
             cid = get_cid_by_nickname(args)
             assert cid is not None
+            qtype = "cid"
         except:
-            sid, cid, text = None, None, None
+            pass
 
     # 尝试解析：id+文本作为参数
-    if not any([sid, cid, text]):
+    if not qtype:
         try:
             sid, text = args.split(maxsplit=1)
             sid = int(sid)
-            assert sid >= 0 and sid <= 9999 and text is not None
+            assert sid >= 0 and sid <= 9999 and text
+            qtype = "id_text"
         except:
-            sid, cid, text = None, None, None
+            pass
     
-    if not any([sid, cid, text]):
-        return await ctx.asend_reply_msg("""使用方式
+    if not qtype:
+        return await ctx.asend_reply_msg(f"""使用方式
 根据id查询: /pjsk stamp 123
-根据角色查询: /pjsk stamp miku                                    
-制作表情: /pjsk stamp 123 文本""")
+查询多个: /pjsk stamp 123 456
+查询某个角色所有: /pjsk stamp miku                                    
+制作表情: /pjsk stamp 123 文本
+""".strip())
     
     # id获取表情
-    if sid and not cid and not text:
+    if qtype == "id":
         logger.info(f"获取表情 sid={sid}")
-        return await ctx.asend_reply_msg(await get_stamp_image_cq(ctx, sid))
+        msg = "".join([await get_stamp_image_cq(ctx, x) for x in sid])
+        return await ctx.asend_reply_msg(msg)
     
     # 获取角色所有表情
-    if cid and not sid and not text:
+    if qtype == "cid":
         logger.info(f"合成角色表情: cid={cid}")
         msg = await get_image_cq(await compose_character_all_stamp_image(ctx, cid))
         return await ctx.asend_reply_msg(msg)
 
     # 制作表情
-    if sid and text and not cid:
+    if qtype == "id_text":
         logger.info(f"制作表情: sid={sid} text={text}")
         cid = (await ctx.md.stamps.find_by_id(sid))["characterId1"]
         nickname = get_nicknames_by_chara_id(cid)[0]
