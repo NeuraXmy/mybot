@@ -6,6 +6,17 @@ from ..draw import *
 
 # ======================= 指令处理 ======================= #
 
+pjsk_update = SekaiCmdHandler([
+    "/pjsk update", "/pjsk update",
+])
+pjsk_update.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_update.handle()
+async def _(ctx: SekaiHandlerContext):
+    mgr = RegionMasterDbManager.get(ctx.region)
+    source = await mgr.get_latest_source()
+    return await ctx.asend_reply_msg(f"{get_region_name(ctx.region)} 最新 MasterData 数据源:\n{source.name} - {source.version}")
+
+
 ngword = SekaiCmdHandler([
     "/pjsk ng", "/pjsk ngword", "/pjsk ng word",
     "/pjsk屏蔽词", "/pjsk屏蔽",

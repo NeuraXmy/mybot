@@ -133,6 +133,15 @@ async def get_unit_by_card_id(ctx: SekaiHandlerContext, card_id: int) -> str:
 
 # ======================= 处理逻辑 ======================= #
 
+# 验证uid
+def validate_uid(ctx: SekaiHandlerContext, uid: str) -> bool:
+    uid = str(uid)
+    if not (10 <= len(uid) <= 20) or not uid.isdigit():
+        return False
+    if ctx.region == 'cn':
+        return uid.startswith('7')
+    return True
+
 # 获取profile相关配置
 def get_profile_config(ctx: SekaiHandlerContext) -> RegionProfileConfig:
     if not os.path.exists(PROFILE_CONFIG_PATH):
@@ -266,7 +275,7 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                     TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
-                TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
+                TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(300)
     return f
        
 # 合成个人信息图片
@@ -422,7 +431,8 @@ async def _(ctx: SekaiHandlerContext):
         if not uid:
             return await ctx.asend_reply_msg("在指令后加上游戏ID进行绑定")
         return await ctx.asend_reply_msg(f"已绑定游戏ID: {uid}")
-    assert_and_reply(args.isdigit(), "请输入正确的游戏ID")
+    
+    assert_and_reply(validate_uid(ctx, args), "ID格式错误，请检查是否漏数字或绑错服务器")
 
     # 验证游戏ID
     profile = await get_basic_profile(ctx, args)

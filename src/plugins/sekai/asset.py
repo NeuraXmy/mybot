@@ -550,7 +550,11 @@ def haruki_url_map(url: str) -> str:
     if 'music_score' in part2:
         part2 = part2 + ".txt"
     # 需要删除倒数第二个目录的情况
-    NEED_REMOVE_SECOND_LAST_PREFIXES = ['mysekai/icon/', "mysekai/thumbnail/"]
+    NEED_REMOVE_SECOND_LAST_PREFIXES = [
+        'mysekai/icon/', 
+        "mysekai/thumbnail/",
+        "bonds_honor/word/",
+    ]
     if any([part2.startswith(prefix) for prefix in NEED_REMOVE_SECOND_LAST_PREFIXES]):
         segs = part2.split('/')
         segs.pop(-2)

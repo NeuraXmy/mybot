@@ -381,10 +381,14 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
 
 # 合成卡牌一览图片
 async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, show_id: bool, show_box: bool, use_after_training=True):
-    profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
-    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
-    # user cards
-    pcards = profile['userCards']
+    pcards, bg_unit = [], None
+    if qid:
+        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False)
+        if profile:
+            pcards = profile['userCards']
+            avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
+            bg_unit = avatar_info.unit
+        
     # collect card imgs
     async def get_card_full_thumbnail_nothrow(card):
         if pcard := find_by(pcards, 'cardId', card['id']):
@@ -393,6 +397,7 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
             after_training = (card['cardRarityType'] in ['rarity_3', 'rarity_4']) and use_after_training
             return await get_card_full_thumbnail(ctx, card, after_training)
     card_imgs = await batch_gather(*[get_card_full_thumbnail_nothrow(card) for card in cards])
+
     # collect chara cards
     chara_cards = {}
     for card, img in zip(cards, card_imgs):
@@ -411,34 +416,44 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
     for i in range(len(chara_cards)):
         chara_cards[i][1].sort(key=lambda x: x['archivePublishedAt'])
 
-    with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
+    sz = 48
+    def draw_card(card):
+        with Frame().set_content_align('rt'):
+            ImageBox(card['img'], size=(sz, sz))
+            supply_name = card['supply_show_name']
+            if supply_name in ['期间限定', 'WL限定', '联动限定']:
+                ImageBox(ctx.static_imgs.get(f"card/term_limited.png"), size=(int(sz*0.75), None))
+            elif supply_name in ['Fes限定', '新Fes限定']:
+                ImageBox(ctx.static_imgs.get(f"card/fes_limited.png"), size=(int(sz*0.75), None))
+            if not card['has'] and profile:
+                Spacer(w=sz, h=sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+        if show_id:
+            TextBox(f"{card['id']}", TextStyle(font=DEFAULT_FONT, size=12, color=BLACK)).set_w(sz)
+
+    sorted_card_nums = sorted([len(cards) for _, cards in chara_cards])
+
+    with Canvas(bg=random_unit_bg(bg_unit)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
-            await get_detailed_profile_card(ctx, profile, pmsg)
-            with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(7):
+            if qid:
+                await get_detailed_profile_card(ctx, profile, pmsg)
+            with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(4):
                 for chara_id, cards in chara_cards:
-                    # chara card list
-                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                        sz = 64
-                        # icon
-                        ImageBox(get_chara_icon_by_chara_id(chara_id), size=(sz, sz))
-                        Spacer(w=sz, h=8)
-                        # cards
-                        for card in cards:
-                            with Frame().set_content_align('rt'):
-                                ImageBox(card['img'], size=(sz, sz))
-
-                                supply_name = card['supply_show_name']
-                                if supply_name in ['期间限定', 'WL限定', '联动限定']:
-                                    ImageBox(ctx.static_imgs.get(f"card/term_limited.png"), size=(int(sz*0.75), None))
-                                elif supply_name in ['Fes限定', '新Fes限定']:
-                                    ImageBox(ctx.static_imgs.get(f"card/fes_limited.png"), size=(int(sz*0.75), None))
-
-                                if not card['has']:
-                                    Spacer(w=sz, h=sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
-
-                            if show_id:
-                                TextBox(f"{card['id']}", TextStyle(font=DEFAULT_FONT, size=12, color=BLACK)).set_w(sz)
-
+                    part1, part2 = cards, None
+                    mid_num = sorted_card_nums[len(sorted_card_nums) // 2]
+                    # 如果超过中位数的110%则分两部分显示
+                    if len(cards) > mid_num * 1.1:
+                        part1, part2 = cards[:mid_num], cards[mid_num:]
+                    with HSplit().set_content_align('lt').set_item_align('lt').set_padding(0).set_sep(4):
+                        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
+                            ImageBox(get_chara_icon_by_chara_id(chara_id), size=(sz, sz))
+                            Spacer(w=sz, h=8)
+                            for card in part1: draw_card(card)
+                        if part2:
+                            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
+                                Spacer(w=sz, h=sz)
+                                Spacer(w=sz, h=6)
+                                for card in part2: draw_card(card)
+            
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 

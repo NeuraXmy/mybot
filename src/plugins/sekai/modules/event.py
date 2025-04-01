@@ -109,6 +109,8 @@ async def compose_event_list_image(ctx: SekaiHandlerContext) -> Image.Image:
                 if await is_ban_event(ctx, event):
                     unit_logo = get_unit_icon(get_unit_by_chara_id(banner_card['characterId']))
                     ban_chara_icon = get_chara_icon_by_chara_id(banner_card['characterId'])
+                elif event['eventType'] == 'world_bloom':
+                    unit_logo = get_unit_icon(get_unit_by_chara_id(banner_card['characterId']))
 
                 with HSplit().set_padding(4).set_sep(4).set_item_align('lt').set_content_align('lt').set_bg(bg):
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
