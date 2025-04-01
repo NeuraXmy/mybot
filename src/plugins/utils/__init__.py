@@ -1572,14 +1572,17 @@ async def asave_json(path, data):
 
 
 # 下载json文件，返回json
-async def download_json(url, show_detailed_error=True):
+async def download_json(url):
     async with aiohttp.ClientSession() as session:
         async with session.get(url, verify_ssl=False) as resp:
             if resp.status != 200:
-                if show_detailed_error:
-                    raise Exception(f"下载 {url} 失败: {resp.status} {resp.reason}: {await resp.text()}", resp)
-                else:
-                    raise Exception(f"{resp.status} {resp.reason}")
+                try:
+                    detail = await resp.text()
+                    detail = json.loads(detail)['detail']
+                except:
+                    pass 
+                utils_logger.error(f"下载 {url} 失败: {resp.status} {detail}")
+                raise Exception(f"{resp.status}: {detail}")
             if "text/plain" in resp.content_type:
                 return json.loads(await resp.text())
             if "application/octet-stream" in resp.content_type:

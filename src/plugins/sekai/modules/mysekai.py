@@ -80,15 +80,8 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False) 
         try:
             mysekai_info = await download_json(url.format(uid=uid))
         except Exception as e:
-            if isinstance(e.args[1], aiohttp.ClientResponse):
-                resp: aiohttp.ClientResponse = e.args[1]
-                try: detail = json.loads(await resp.text()).get("detail")
-                except: detail = ""
-                logger.info(f"获取 {qid} 抓包数据失败: {resp.status} {resp.reason}: {detail}")
-                raise Exception(f"{resp.status} {resp.reason}: {detail}")
-            else:
-                logger.info(f"获取 {qid} mysekai抓包数据失败: {e}")
-                raise Exception(f"HTTP ERROR {e}")
+            logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
+            raise ReplyException(f"{get_exc_desc(e)}")
         if not mysekai_info:
             logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
             raise Exception(f"找不到ID为 {uid} 的玩家")

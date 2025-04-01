@@ -157,7 +157,7 @@ async def get_basic_profile(ctx: SekaiHandlerContext, uid: int) -> dict:
     try:
         url = get_profile_config(ctx).profile_api_url
         assert_and_reply(url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
-        profile = await download_json(url.format(uid=uid), show_detailed_error=False)
+        profile = await download_json(url.format(uid=uid))
         assert_and_reply(profile, f"找不到ID为 {uid} 的玩家")
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
@@ -207,17 +207,10 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
 
         # 尝试下载
         try:   
-            profile = await download_json(url.format(uid=uid), show_detailed_error=False)
+            profile = await download_json(url.format(uid=uid))
         except Exception as e:
-            if isinstance(e.args[1], aiohttp.ClientResponse):
-                resp: aiohttp.ClientResponse = e.args[1]
-                try: detail = json.loads(await resp.text()).get("detail")
-                except: detail = ""
-                logger.info(f"获取 {qid} 抓包数据失败: {resp.status} {resp.reason}: {detail}")
-                raise Exception(f"{resp.status} {resp.reason}: {detail}")
-            else:
-                logger.info(f"获取 {qid} 抓包数据失败: {e}")
-                raise Exception(f"HTTP ERROR {e}")
+            logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
+            raise ReplyException(f"{get_exc_desc(e)}")
             
         if not profile:
             logger.info(f"获取 {qid} 抓包数据失败: 找不到ID为 {uid} 的玩家")
@@ -240,7 +233,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             logger.info(f"未找到 {qid} 的缓存抓包数据")
 
         if raise_exc:
-            raise Exception(f"获取抓包数据失败: {e}")
+            raise ReplyException(f"获取抓包数据失败: {e}")
         else:
             return None, str(e)
         
