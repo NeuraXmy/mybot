@@ -11,6 +11,7 @@ from .profile import (
     SEKAI_PROFILE_DIR,
     get_basic_profile,
     get_player_avatar_info_by_basic_profile,
+    get_user_data_mode,
 )
 
 
@@ -63,22 +64,26 @@ async def get_chara_icon_by_chara_unit_id(ctx: SekaiHandlerContext, cuid: int) -
     return get_chara_icon_by_chara_id(cid)
 
 # 获取玩家mysekai抓包数据 返回 (mysekai_info, err_msg)
-async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False) -> Tuple[dict, str]:
+async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None) -> Tuple[dict, str]:
     cache_path = None
     try:
+        # 获取绑定的玩家id
         try:
             uid = get_uid_from_qid(ctx, qid)
         except Exception as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: 未绑定游戏账号")
             raise e
         
-        cache_path = f"{SEKAI_PROFILE_DIR}/mysekai_cache/{ctx.region}/{uid}.json"
-
+        # 服务器不支持
         url = get_profile_config(ctx).mysekai_api_url
         assert url, f"暂不支持 {ctx.region} 的mysekai数据查询"
 
+        # 获取模式
+        mode = mode or get_user_data_mode(ctx, uid)
+
+        # 尝试下载
         try:
-            mysekai_info = await download_json(url.format(uid=uid))
+            mysekai_info = await download_json(url.format(uid=uid) + f"?mode={mode}")
         except Exception as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
             raise ReplyException(f"{get_exc_desc(e)}")
@@ -86,12 +91,15 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False) 
             logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
             raise Exception(f"找不到ID为 {uid} 的玩家")
         
+        # 缓存数据
+        cache_path = f"{SEKAI_PROFILE_DIR}/mysekai_cache/{ctx.region}/{uid}.json"
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(mysekai_info, f, ensure_ascii=False, indent=4)
         logger.info(f"获取 {qid} mysekai抓包数据成功，数据已缓存")
 
     except Exception as e:
+        # 获取失败的情况，尝试读取缓存
         if cache_path and os.path.exists(cache_path):
             with open(cache_path, "r", encoding="utf-8") as f:
                 mysekai_info = json.load(f)
@@ -117,12 +125,16 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = basic_profile['user']
                     mysekai_game_data = mysekai_info['updatedResources']['userMysekaiGamedata']
-                    update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    source = mysekai_info.get('source', '?')
+                    mode = get_user_data_mode(ctx, ctx.user_id)
+                    update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
+                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(update_time, show_original_time=False)})"
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
-                    TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
                 TextBox(f"获取数据失败:{err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(240)
     return f
@@ -1115,3 +1127,39 @@ async def msr_auto_push():
                 try: await send_group_msg_by_bot(bot, gid, f"自动推送用户 {qid} 的{region_name}Mysekai资源查询失败")
                 except: pass
 
+
+# 查询烤森抓包数据
+pjsk_check_mysekai_data = SekaiCmdHandler([
+    "/pjsk check mysekai data", "/pjsk_check_mysekai_data", 
+    "/pjsk烤森抓包数据", "/pjsk烤森抓包",
+    "/msd",
+])
+pjsk_check_mysekai_data.check_cdrate(cd).check_wblist(gbl)
+@pjsk_check_mysekai_data.handle()
+async def _(ctx: SekaiHandlerContext):
+    task1 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="local")
+    task2 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="haruki")
+    (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
+
+    msg = "你的烤森抓包数据状态:\n"
+
+    if local_err:
+        msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
+    else:
+        msg += "【BOT自建服务】\n"
+        upload_time = datetime.fromtimestamp(local_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    if haruki_err:
+        msg += f"【Haruki工具箱】\n获取失败: {haruki_err}\n"
+    else:
+        msg += "【Haruki工具箱】\n"
+        upload_time = datetime.fromtimestamp(haruki_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    mode = get_user_data_mode(ctx, ctx.user_id)
+    msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
+
+    return await ctx.asend_reply_msg(msg)

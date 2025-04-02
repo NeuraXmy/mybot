@@ -192,8 +192,13 @@ async def get_player_avatar_info_by_basic_profile(ctx: SekaiHandlerContext, basi
     unit = await get_unit_by_card_id(ctx, card_id)
     return PlayerAvatarInfo(card_id, cid, unit, avatar_img)
 
+# 查询抓包数据获取模式
+def get_user_data_mode(ctx: SekaiHandlerContext, qid: int) -> str:
+    data_modes = profile_db.get("data_modes", {})
+    return data_modes.get(ctx.region, {}).get(str(qid), "default")
+
 # 根据获取玩家详细信息，返回(profile, err_msg)
-async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False) -> Tuple[dict, str]:
+async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None) -> Tuple[dict, str]:
     cache_path = None
     try:
         # 获取绑定的游戏id
@@ -209,14 +214,17 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             logger.info(f"获取 {qid} 抓包数据失败: 用户已隐藏抓包信息")
             raise Exception("已隐藏抓包信息")
         
-        cache_path = f"{SEKAI_PROFILE_DIR}/suite_cache/{ctx.region}/{uid}.json"
+        # 服务器不支持
         url = get_profile_config(ctx).suite_api_url
         if not url:
             raise Exception(f"暂不支持查询 {ctx.region} 服务器的玩家详细信息")
+        
+        # 数据获取模式
+        mode = mode or get_user_data_mode(ctx, qid)
 
         # 尝试下载
         try:   
-            profile = await download_json(url.format(uid=uid))
+            profile = await download_json(url.format(uid=uid) + f"?mode={mode}")
         except Exception as e:
             logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
             raise ReplyException(f"{get_exc_desc(e)}")
@@ -226,6 +234,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             raise Exception(f"找不到ID为 {uid} 的玩家")
         
         # 缓存数据
+        cache_path = f"{SEKAI_PROFILE_DIR}/suite_cache/{ctx.region}/{uid}.json"
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=4)
@@ -270,10 +279,14 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                 ImageBox(avatar_info.img, size=(80, 80), image_size_mode='fill')
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
-                    update_time = datetime.fromtimestamp(profile['upload_time'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                    source = profile.get('source', '?')
+                    mode = get_user_data_mode(ctx, ctx.user_id)
+                    update_time = datetime.fromtimestamp(profile['upload_time'] / 1000)
+                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(update_time, show_original_time=False)})"
                     colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                     TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
-                    TextBox(f"数据更新时间: {update_time}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
                 TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(300)
     return f
@@ -539,3 +552,68 @@ async def _(ctx: SekaiHandlerContext):
         return await ctx.asend_reply_msg(f"profile查询服务异常: {str(e)}")
     return await ctx.asend_reply_msg("profile查询服务正常")
 
+
+# 设置抓包数据获取模式
+pjsk_data_mode = SekaiCmdHandler([
+    "/pjsk data mode", "/pjsk_data_mode",
+    "/pjsk抓包模式", "/pjsk抓包获取模式",
+])
+pjsk_data_mode.check_cdrate(cd).check_wblist(gbl)
+@pjsk_data_mode.handle()
+async def _(ctx: SekaiHandlerContext):
+    data_modes = profile_db.get("data_modes", {})
+    cur_mode = data_modes.get(ctx.region, {}).get(str(ctx.user_id), "default")
+    help_text = f"""
+你的抓包数据获取模式: {cur_mode} 
+使用\"/pjsk抓包模式 模式名\"来切换模式，可用模式名如下:
+【default】 从该bot自建服务获取失败才尝试从Haruki工具箱获取
+【latest】 同时从两个数据源获取，使用最新的的一个
+【local】 仅从该bot自建服务获取
+【haruki】 仅从Haruki工具箱获取
+""".strip()
+    
+    args = ctx.get_args().strip().lower()
+    assert_and_reply(args in ["default", "latest", "local", "haruki"], help_text)
+
+    if ctx.region not in data_modes:
+        data_modes[ctx.region] = {}
+    data_modes[ctx.region][str(ctx.user_id)] = args
+    profile_db.set("data_modes", data_modes)
+
+    return await ctx.asend_reply_msg(f"切换抓包数据获取模式:\n{cur_mode} -> {args}")
+
+
+# 查询抓包数据
+pjsk_check_data = SekaiCmdHandler([
+    "/pjsk check data", "/pjsk_check_data",
+    "/pjsk抓包", "/pjsk抓包数据", "/pjsk抓包查询",
+])
+pjsk_check_data.check_cdrate(cd).check_wblist(gbl)
+@pjsk_check_data.handle()
+async def _(ctx: SekaiHandlerContext):
+    task1 = get_detailed_profile(ctx, ctx.user_id, raise_exc=False, mode="local")
+    task2 = get_detailed_profile(ctx, ctx.user_id, raise_exc=False, mode="haruki")
+    (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
+
+    msg = "你的抓包数据状态:\n"
+
+    if local_err:
+        msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
+    else:
+        msg += "【BOT自建服务】\n"
+        upload_time = datetime.fromtimestamp(local_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    if haruki_err:
+        msg += f"【Haruki工具箱】\n获取失败: {haruki_err}\n"
+    else:
+        msg += "【Haruki工具箱】\n"
+        upload_time = datetime.fromtimestamp(haruki_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    mode = get_user_data_mode(ctx, ctx.user_id)
+    msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
+
+    return await ctx.asend_reply_msg(msg)
