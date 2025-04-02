@@ -354,8 +354,8 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
             with HSplit().set_bg(roundrect_bg()).set_content_align('lt').set_item_align('lt').set_padding(16).set_sep(4):
                 for chara_id, cards in chara_cards:
                     part1, part2 = cards, None
-                    mid_num = sorted_card_nums[len(sorted_card_nums) // 2]
-                    # 如果超过中位数的110%则分两部分显示
+                    mid_num = sorted_card_nums[int(len(sorted_card_nums) * 0.8)]
+                    # 超过80%的110%的卡牌数，分两部分显示
                     if len(cards) > mid_num * 1.1:
                         part1, part2 = cards[:mid_num], cards[mid_num:]
                     with HSplit().set_content_align('lt').set_item_align('lt').set_padding(0).set_sep(4):

@@ -599,7 +599,7 @@ async def _(ctx: SekaiHandlerContext):
     task2 = get_detailed_profile(ctx, uid, raise_exc=False, mode="haruki")
     (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
 
-    msg = f"@{nickname} 的Suite抓包数据状态"
+    msg = f"@{nickname} 的Suite抓包数据状态\n"
 
     if local_err:
         msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
