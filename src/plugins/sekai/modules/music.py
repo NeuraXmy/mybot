@@ -353,6 +353,11 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
     diff_counts = [diff_info.note_count.get(diff, None) for diff in diffs]
     has_append  = diff_info.has_append
 
+    event = await get_event_of_music(ctx, mid)
+    if event:
+        event_id = event['id']
+        event_banner = await ctx.rip.img(f"home/banner/{event['assetbundleName']}_rip/{event['assetbundleName']}.png")
+
     caption_vocals = {}
     for item in await ctx.md.music_vocals.find_by('musicId', mid, mode='all'):
         vocal = {}
@@ -407,23 +412,8 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                             if not mv_text: mv_text = "无"
                             TextBox(mv_text, style2)
                             TextBox(publish_time, style2)
-
-                # 歌手
-                with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16):
-                    for caption, vocals in sorted(caption_vocals.items(), key=lambda x: len(x[1])):
-                        with HSplit().set_padding(0).set_sep(4).set_content_align('c').set_item_align('c'):
-                            TextBox(caption + "  ver.", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
-                            Spacer(w=16)
-                            for vocal in vocals:
-                                with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(4).set_bg(RoundRectBg(fill=(255, 255, 255, 150), radius=8)):
-                                    if vocal['vocal_name']:
-                                        TextBox(vocal['vocal_name'], TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)))
-                                    else:
-                                        for img in vocal['chara_imgs']:
-                                            ImageBox(img, size=(32, 32), use_alphablend=True)
-                                Spacer(w=8)
-
-                # 难度等级/物量
+                
+                 # 难度等级/物量
                 hs, vs, gw = 8, 12, 180
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(vs).set_padding(32):
                     with Grid(col_count=(6 if has_append else 5), item_size_mode='fixed').set_sep(hsep=hs, vsep=vs):
@@ -441,8 +431,47 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                         for i, count in enumerate(diff_counts):
                             if count is None: continue
                             t = TextBox(f"{count} combo", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=(80, 80, 80, 255)), line_count=1)
-                            t.set_size((gw, 40)).set_content_align('c').set_bg(RoundRectBg(fill=light_diff_color[i], radius=3))                    
-    
+                            t.set_size((gw, 40)).set_content_align('c').set_bg(RoundRectBg(fill=light_diff_color[i], radius=3))        
+
+                # 别名
+                music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
+                aliases = music_alias.get(str(mid), [])
+                alias_text = "，".join(aliases)
+                if ctx.region != 'jp':
+                    jp_music_alias = music_alias_db.get(f"jp_alias", {})
+                    jp_aliases = jp_music_alias.get(str(mid), [])
+                    jp_aliases = [a for a in jp_aliases if a not in aliases]
+                    if jp_aliases:
+                        alias_text += "   日服别名库: " + "，".join(jp_aliases)
+                if alias_text:
+                    with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
+                        TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
+                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)), line_count=1).set_w(800)            
+
+                with HSplit().set_omit_parent_bg(True).set_item_bg(roundrect_bg()).set_padding(0).set_sep(16):
+                    # 歌手
+                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_padding(16):
+                        for caption, vocals in sorted(caption_vocals.items(), key=lambda x: len(x[1])):
+                            with HSplit().set_padding(0).set_sep(4).set_content_align('c').set_item_align('c'):
+                                TextBox(caption + "  ver.", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
+                                Spacer(w=16)
+                                for vocal in vocals:
+                                    with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(4).set_bg(RoundRectBg(fill=(255, 255, 255, 150), radius=8)):
+                                        if vocal['vocal_name']:
+                                            TextBox(vocal['vocal_name'], TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)))
+                                        else:
+                                            for img in vocal['chara_imgs']:
+                                                ImageBox(img, size=(32, 32), use_alphablend=True)
+                                    Spacer(w=8)
+                    # 活动
+                    if event:
+                        with HSplit().set_sep(8):
+                            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(16):
+                                TextBox("关联活动", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
+                                TextBox(f"ID: {event_id}", TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)))
+                            ImageBox(event_banner, size=(None, 100)).set_padding(16)
+
+               
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)    
 
@@ -512,6 +541,8 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
         mid = music['id']
         level = (await get_music_diff_info(ctx, mid)).level.get(diff)
         if not level: 
+            continue
+        if datetime.fromtimestamp(music['publishedAt'] / 1000) > datetime.now():
             continue
         count[level].total += 1
 
