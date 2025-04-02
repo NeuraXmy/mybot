@@ -19,7 +19,7 @@ async def _(ctx: SekaiHandlerContext):
 
 ngword = SekaiCmdHandler([
     "/pjsk ng", "/pjsk ngword", "/pjsk ng word",
-    "/pjsk屏蔽词", "/pjsk屏蔽",
+    "/pjsk屏蔽词", "/pjsk屏蔽", "/pjsk敏感", "/pjsk敏感词",
 ])
 ngword.check_cdrate(cd).check_wblist(gbl)
 @ngword.handle()

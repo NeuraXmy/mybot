@@ -6,13 +6,28 @@ from ..asset import *
 from ..draw import *
 from .profile import get_card_full_thumbnail
 
+
 DEFAULT_EVENT_STORY_SUMMARY_MODEL = "gemini-2-flash"
 
-EVENT_TYPE_NAMES = {
+EVENT_TYPE_NAMES = [
+    ("marathon", "普活"),
+    ("cheerful_carnival", "5v5", "5V5"),
+    ("world_bloom", "WorldLink", "WL", "world link"),
+]
+
+EVENT_TYPE_SHOW_NAMES = {
     "marathon": "",
     "cheerful_carnival": "5v5",
     "world_bloom": "WorldLink",
 }
+
+@dataclass
+class EventListFilter:
+    attr: str = None
+    event_type: str = None
+    unit: str = None
+    cid: int = None
+    year: int = None
 
 # ======================= 处理逻辑 ======================= #
 
@@ -34,6 +49,15 @@ async def extract_ban_event(ctx: SekaiHandlerContext, text: str) -> Tuple[Dict, 
             text = text.replace(ban_event_text, "").strip()
             return event, text
     return None, text
+
+# 从文本中提取活动类型，返回 (活动类型，剩余文本）
+def extract_event_type(text: str, default: str = None) -> Tuple[str, str]:
+    for event_type in EVENT_TYPE_NAMES:
+        for name in event_type:
+            if name in text:
+                text = text.replace(name, "").strip()
+                return event_type[0], text
+    return default, text
 
 # 判断是否是箱活
 async def is_ban_event(ctx: SekaiHandlerContext, event: dict) -> bool:
@@ -61,10 +85,8 @@ async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]
     return events
 
 # 获取活动列表
-async def compose_event_list_image(ctx: SekaiHandlerContext) -> Image.Image:
-    events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'])
-    total_num = len(events)
-    col_num = int(math.sqrt(total_num))
+async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFilter) -> Image.Image:
+    events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'], reverse=True)    
     banner_imgs = await batch_gather(*[
         ctx.rip.img(f"home/banner/{e['assetbundleName']}_rip/{e['assetbundleName']}.png")
         for e in events
@@ -85,7 +107,7 @@ async def compose_event_list_image(ctx: SekaiHandlerContext) -> Image.Image:
     style1 = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(50, 50, 50))
     style2 = TextStyle(font=DEFAULT_FONT, size=10, color=(70, 70, 70))
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
-        with Grid(col_count=col_num).set_sep(4, 4).set_item_align('lt').set_content_align('lt'):
+        with Grid(col_count=5).set_sep(4, 4).set_item_align('lt').set_content_align('lt'):
             for event, banner_img in zip(events, banner_imgs):
                 eid = event['id']
                 cards = event_cards.get(eid, [])[:6]
@@ -94,23 +116,44 @@ async def compose_event_list_image(ctx: SekaiHandlerContext) -> Image.Image:
                 now = datetime.now()
                 start_time = datetime.fromtimestamp(event['startAt'] / 1000)
                 end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
-                bg = roundrect_bg(radius=5, fill=(255, 250, 220, 200)) \
-                    if start_time <= now <= end_time else roundrect_bg(radius=5)
 
-                event_type_name = EVENT_TYPE_NAMES.get(event['eventType'], "")
+                bg_color = WIDGET_BG_COLOR
+                if start_time <= now <= end_time:
+                    bg_color = (255, 250, 220, 200)
+                elif now > end_time:
+                    bg_color = (220, 220, 220, 200)
+                bg = roundrect_bg(bg_color, 5)
+
+                event_type_name = EVENT_TYPE_SHOW_NAMES.get(event['eventType'], "")
                 if event_type_name: event_type_name += "  "
 
-                attr_icon = None
+                attr, attr_icon = None, None
                 if event['eventType'] in ['marathon', 'cheerful_carnival']:
-                    attr_icon = get_attr_icon(banner_card['attr'])
+                    attr = banner_card['attr']
+                    attr_icon = get_attr_icon(attr)
 
-                unit_logo = None
-                ban_chara_icon = None
+                unit, unit_logo = None, None
+                ban_cid, ban_chara_icon = None, None
                 if await is_ban_event(ctx, event):
-                    unit_logo = get_unit_icon(get_unit_by_chara_id(banner_card['characterId']))
-                    ban_chara_icon = get_chara_icon_by_chara_id(banner_card['characterId'])
+                    ban_cid = banner_card['characterId']
+                    unit = get_unit_by_chara_id(ban_cid)
+                    unit_logo = get_unit_icon(unit)
+                    ban_chara_icon = get_chara_icon_by_chara_id(ban_cid)
                 elif event['eventType'] == 'world_bloom':
-                    unit_logo = get_unit_icon(get_unit_by_chara_id(banner_card['characterId']))
+                    unit = get_unit_by_chara_id(banner_card['characterId'])
+                    unit_logo = get_unit_icon(unit)
+
+                # filter
+                if filter:
+                    if filter.attr and filter.attr != attr: continue
+                    if filter.cid and filter.cid != ban_cid: continue
+                    if filter.year and filter.year != start_time.year: continue
+                    if filter.event_type and filter.event_type != event['eventType']: continue
+                    if filter.unit:
+                        if filter.unit == 'blend':
+                            if unit: continue
+                        else:
+                            if filter.unit != unit: continue
 
                 with HSplit().set_padding(4).set_sep(4).set_item_align('lt').set_content_align('lt').set_bg(bg):
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
@@ -338,8 +381,20 @@ pjsk_event_list = SekaiCmdHandler([
 pjsk_event_list.check_cdrate(cd).check_wblist(gbl)
 @pjsk_event_list.handle()
 async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    filter = EventListFilter()
+    filter.attr, args = extract_card_attr(args)
+    filter.event_type, args = extract_event_type(args)
+    filter.unit, args = extract_unit(args)
+    filter.year, args = extract_year(args)
+    if any([x in args for x in ['混活', '混']]):
+        assert_and_reply(not filter.unit, "查混活不能指定团名")
+        filter.unit = "blend"
+        args = args.replace('混活', "").replace('混', "").strip()
+    filter.cid = get_cid_by_nickname(args)
+
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_event_list_image(ctx),
+        await compose_event_list_image(ctx, filter),
         low_quality=True,
     ))
 

@@ -58,6 +58,41 @@ UNIT_COLORS = [
     (136,68,153,255),
 ]
 
+CARD_ATTR_NAMES = [
+    ("cool", "COOL", "Cool", "帅气", "蓝星", "蓝", "星", "八芒星", "爆炸"),
+    ("happy", "HAPPY", "Happy", "快乐", "橙心", "橙", "心", "爱心"),
+    ("mysterious", "MYSTERIOUS", "Mysterious", "神秘", "紫月", "紫", "月", "月亮"),
+    ("cute", "CUTE", "Cute", "可爱", "粉花", "粉", "花", "花朵"),
+    ("pure", "PURE", "Pure", "纯洁", "绿草", "绿", "草", "小草"),
+]
+CARD_RARE_NAMES = [
+    ("rarity_1", "1星", "一星"),
+    ("rarity_2", "2星", "二星", "两星"),
+    ("rarity_3", "3星", "三星"),
+    ("rarity_4", "4星", "四星"),
+    ("rarity_birthday", "生日", "生日卡"),
+]
+CARD_SUPPLIES_NAMES = [
+    ("all_limited", "限定", "限"),
+    ("not_limited", "非限", "非限定"),
+    ("term_limited", "期间限定", "期间"),
+    ("colorful_festival_limited", "fes", "fes限", "fes限定", "Fes", "Fes限定"),
+    ("bloom_festival_limited", "新fes", "新fes限", "新fes限定", "新Fes", "新Fes限定"),
+    ("unit_event_limited", "wl", "wl限", "wl限定", "worldlink", "worldlink限定", "WL"),
+    ("collaboration_limited", "联动", "联动限定"),
+]
+CARD_SUPPLIES_SHOW_NAMES = {
+    "term_limited": "期间限定",
+    "colorful_festival_limited": "Fes限定",
+    "bloom_festival_limited": "新Fes限定",
+    "unit_event_limited": "WL限定",
+    "collaboration_limited": "联动限定",
+}
+CARD_SKILL_NAMES = [
+    ("life_recovery", "奶", "奶卡"),
+    ("score_up", "分", "分卡"),
+    ("judgment_up", "判", "判卡"),
+]
 
 UNKNOWN_IMG = Image.open(f"{SEKAI_ASSET_DIR}/static_images/unknown.png")
 
@@ -90,6 +125,18 @@ def get_cid_by_nickname(nickname: str) -> Optional[int]:
             return item['id']
     return None
 
+# 从角色id获取角色团名
+def get_unit_by_chara_id(cid: int) -> str:
+    return find_by(CHARACTER_NICKNAME_DATA, "id", cid)['unit']
+
+# 从角色昵称获取角色团名
+def get_unit_by_nickname(nickname: str) -> str:
+    for item in CHARACTER_NICKNAME_DATA:
+        if nickname in item['nicknames']:
+            return item['unit']
+    return None
+
+
 # 从文本提取年份 返回(年份, 文本)
 def extract_year(text: str, default=None) -> Tuple[int, str]:
     now_year = datetime.now().year
@@ -116,14 +163,51 @@ def extract_unit(text: str, default=None) -> Tuple[str, str]:
             return first_name, text.replace(name, "").strip()
     return default, text
 
-# 从角色id获取角色团名
-def get_unit_by_chara_id(cid: int) -> str:
-    return find_by(CHARACTER_NICKNAME_DATA, "id", cid)['unit']
+# 从文本提取卡牌属性 返回(属性名, 文本)
+def extract_card_attr(text: str, default=None) -> Tuple[str, str]:
+    all_names = []
+    for names in CARD_ATTR_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
 
-# 从角色昵称获取角色团名
-def get_unit_by_nickname(nickname: str) -> str:
-    for item in CHARACTER_NICKNAME_DATA:
-        if nickname in item['nicknames']:
-            return item['unit']
-    return None
+# 从文本提取卡牌稀有度 返回(稀有度名, 文本)
+def extract_card_rare(text: str, default=None) -> Tuple[str, str]:
+    all_names = []
+    for names in CARD_RARE_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
+
+# 从文本提取卡牌供给类型 返回(供给类型名, 文本)
+def extract_card_supply(text: str, default=None) -> Tuple[str, str]:
+    all_names = []
+    for names in CARD_SUPPLIES_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
+
+# 从文本提取卡牌技能类型 返回(技能类型名, 文本)
+def extract_card_skill(text: str, default=None) -> Tuple[str, str]:
+    all_names = []
+    for names in CARD_SKILL_NAMES:
+        for name in names:
+            all_names.append((names[0], name))
+    all_names.sort(key=lambda x: len(x[1]), reverse=True)
+    for first_name, name in all_names:
+        if name in text:
+            return first_name, text.replace(name, "").strip()
+    return default, text
 

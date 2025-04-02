@@ -15,43 +15,6 @@ from .profile import (
 )
 from .event import extract_ban_event
 
-
-CARD_ATTR_NAMES = [
-    ("cool", "COOL", "Cool", "蓝星", "蓝", "星"),
-    ("happy", "HAPPY", "Happy", "橙心", "橙", "心"),
-    ("mysterious", "MYSTERIOUS", "Mysterious", "紫月", "紫", "月"),
-    ("cute", "CUTE", "Cute", "粉花", "粉", "花"),
-    ("pure", "PURE", "Pure", "绿草", "绿", "草"),
-]
-CARD_RARE_NAMES = [
-    ("rarity_1", "1星", "一星"),
-    ("rarity_2", "2星", "二星", "两星"),
-    ("rarity_3", "3星", "三星"),
-    ("rarity_4", "4星", "四星"),
-    ("rarity_birthday", "生日", "生日卡"),
-]
-CARD_SUPPLIES_NAMES = [
-    ("all_limited", "限定", "限"),
-    ("not_limited", "非限", "非限定"),
-    ("term_limited", "期间限定", "期间"),
-    ("colorful_festival_limited", "fes", "fes限", "fes限定", "Fes", "Fes限定"),
-    ("bloom_festival_limited", "新fes", "新fes限", "新fes限定", "新Fes", "新Fes限定"),
-    ("unit_event_limited", "wl", "wl限", "wl限定", "worldlink", "worldlink限定", "WL"),
-    ("collaboration_limited", "联动", "联动限定"),
-]
-CARD_SUPPLIES_SHOW_NAMES = {
-    "term_limited": "期间限定",
-    "colorful_festival_limited": "Fes限定",
-    "bloom_festival_limited": "新Fes限定",
-    "unit_event_limited": "WL限定",
-    "collaboration_limited": "联动限定",
-}
-CARD_SKILL_NAMES = [
-    ("life_recovery", "奶", "奶卡"),
-    ("score_up", "分", "分卡"),
-    ("judgment_up", "判", "判卡"),
-]
-
 CARD_STORY_SUMMARY_MODEL = "gemini-2-flash"
 
 SEARCH_SINGLE_CARD_HELP = """
@@ -71,54 +34,6 @@ event10 绿 四星 限定 分卡 今年
 """.strip()
 
 # ======================= 处理逻辑 ======================= #
-
-# 从文本提取卡牌属性 返回(属性名, 文本)
-def extract_card_attr(text: str, default=None) -> Tuple[str, str]:
-    all_names = []
-    for names in CARD_ATTR_NAMES:
-        for name in names:
-            all_names.append((names[0], name))
-    all_names.sort(key=lambda x: len(x[1]), reverse=True)
-    for first_name, name in all_names:
-        if name in text:
-            return first_name, text.replace(name, "").strip()
-    return default, text
-
-# 从文本提取卡牌稀有度 返回(稀有度名, 文本)
-def extract_card_rare(text: str, default=None) -> Tuple[str, str]:
-    all_names = []
-    for names in CARD_RARE_NAMES:
-        for name in names:
-            all_names.append((names[0], name))
-    all_names.sort(key=lambda x: len(x[1]), reverse=True)
-    for first_name, name in all_names:
-        if name in text:
-            return first_name, text.replace(name, "").strip()
-    return default, text
-
-# 从文本提取卡牌供给类型 返回(供给类型名, 文本)
-def extract_card_supply(text: str, default=None) -> Tuple[str, str]:
-    all_names = []
-    for names in CARD_SUPPLIES_NAMES:
-        for name in names:
-            all_names.append((names[0], name))
-    all_names.sort(key=lambda x: len(x[1]), reverse=True)
-    for first_name, name in all_names:
-        if name in text:
-            return first_name, text.replace(name, "").strip()
-    return default, text
-
-# 从文本提取卡牌技能类型 返回(技能类型名, 文本)
-def extract_card_skill(text: str, default=None) -> Tuple[str, str]:
-    all_names = []
-    for names in CARD_SKILL_NAMES:
-        for name in names:
-            all_names.append((names[0], name))
-    all_names.sort(key=lambda x: len(x[1]), reverse=True)
-    for first_name, name in all_names:
-        if name in text:
-            return first_name, text.replace(name, "").strip()
-    return default, text
 
 # 判断某个卡牌id的限定类型
 async def get_card_supply_type(cid: int) -> str:
@@ -182,7 +97,7 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
             return UNKNOWN_IMG, UNKNOWN_IMG
     thumbs = await batch_gather(*[get_thumb_nothrow(card) for card in cards])
     card_and_thumbs = [(card, thumb) for card, thumb in zip(cards, thumbs) if thumb is not None]
-    card_and_thumbs.sort(key=lambda x: x[0]['releaseAt'], reverse=True)
+    card_and_thumbs.sort(key=lambda x: (x[0]['releaseAt'], x[0]['id']), reverse=True)
 
 
     with Canvas(bg=random_unit_bg(bg_unit)).set_padding(BG_PADDING) as canvas:
@@ -414,7 +329,7 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
     chara_cards = list(chara_cards.items())
     chara_cards.sort(key=lambda x: x[0])
     for i in range(len(chara_cards)):
-        chara_cards[i][1].sort(key=lambda x: x['archivePublishedAt'])
+        chara_cards[i][1].sort(key=lambda x: (x['releaseAt'], x['id']))
 
     sz = 48
     def draw_card(card):
