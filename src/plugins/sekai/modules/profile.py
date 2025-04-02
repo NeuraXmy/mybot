@@ -282,7 +282,7 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                     source = profile.get('source', '?')
                     mode = get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000)
-                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(update_time, show_original_time=False)})"
+                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
                     colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                     TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -591,11 +591,15 @@ pjsk_check_data = SekaiCmdHandler([
 pjsk_check_data.check_cdrate(cd).check_wblist(gbl)
 @pjsk_check_data.handle()
 async def _(ctx: SekaiHandlerContext):
-    task1 = get_detailed_profile(ctx, ctx.user_id, raise_exc=False, mode="local")
-    task2 = get_detailed_profile(ctx, ctx.user_id, raise_exc=False, mode="haruki")
+    cqs = extract_cq_code(await ctx.aget_msg())
+    uid = int(cqs['at'][0]['qq']) if 'at' in cqs else ctx.user_id
+    nickname = await get_group_member_name(ctx.bot, ctx.group_id, uid)
+    
+    task1 = get_detailed_profile(ctx, uid, raise_exc=False, mode="local")
+    task2 = get_detailed_profile(ctx, uid, raise_exc=False, mode="haruki")
     (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
 
-    msg = "你的抓包数据状态:\n"
+    msg = f"@{nickname} 的Suite抓包数据状态"
 
     if local_err:
         msg += f"【BOT自建服务】\n获取失败: {local_err}\n"

@@ -202,7 +202,7 @@ async def download_image(image_url, force_http=True) -> Image.Image:
 
 # 下载svg图片，返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
-async def download_and_convert_svg(image_url) -> Image.Image:
+async def download_and_convert_svg(svg_url: str) -> Image.Image:
     def download():
         from selenium import webdriver
         from selenium.webdriver.firefox.service import Service
@@ -212,7 +212,7 @@ async def download_and_convert_svg(image_url) -> Image.Image:
         options.add_argument("--headless") 
         driver = webdriver.Firefox(service=Service(), options=options)
         try:
-            driver.get(image_url)
+            driver.get(svg_url)
             time.sleep(1)
             with TempFilePath('png') as path:
                 if not driver.save_full_page_screenshot(path):

@@ -8,9 +8,9 @@ from .music import *
 # ======================= 谱面生成 ======================= #
 # 此部分修改自 https://github.com/xfl03/SekaiMusicChart
 
-from .chart_gen import SUS
+import pjsekai.scores
 
-CHART_CACHE_PATH = SEKAI_ASSET_DIR + "/chart/{region}/{mid}_{diff}{with_skill}.png"
+CHART_CACHE_PATH = SEKAI_ASSET_DIR + "/chart/{region}/{mid}_{diff}.png"
 CHART_ASSET_DIR = f"{SEKAI_ASSET_DIR}/chart_asset"
 
 NOTE_SIZES = {
@@ -19,6 +19,7 @@ NOTE_SIZES = {
     'hard': 1.25,
     'expert': 1.0,
     'master': 0.875,
+    'append': 0.875,
 }
 
 # 生成谱面图片
@@ -27,13 +28,17 @@ async def generate_music_chart(
     music_id: int,
     difficulty: str,
     theme: str,
-    display_skill: bool,
 ) -> Image.Image:
-    with_skill = '_with_skill' if display_skill else ''
-    await ctx.block_region(f"chart_{music_id}_{difficulty}{with_skill}")
+    # 获取信息
+    await ctx.block_region(f"chart_{music_id}_{difficulty}")
     music = await ctx.md.musics.find_by_id(music_id)
     assert_and_reply(music, f'曲目 {music_id} 不存在')
+
     music_title = music['title']
+    cn_title = await get_music_trans_title(music_id, 'cn', None)
+    if cn_title:
+        music_title += f'({cn_title})'
+
     if music['composer'] == music['arranger']:
         artist = music['composer']
     elif music['composer'] in music['arranger'] or music['composer'] == '-':
@@ -46,11 +51,11 @@ async def generate_music_chart(
     if diff_info := await get_music_diff_info(ctx, music_id):
         playlevel = diff_info.level.get(difficulty, '?')
 
-    logger.info(f'生成谱面图片 mid={music_id} {difficulty} {with_skill}')
+    logger.info(f'生成谱面图片 mid={music_id} {difficulty}')
     await ctx.asend_reply_msg(f'正在生成【{music_id}】{music_title} 的谱面图片...')
 
-    chart_asset = await ctx.rip.get_asset(f"music/music_score/{music_id:04d}_01_rip/{difficulty}", allow_error=False)
-    lines = chart_asset.decode().splitlines()
+    # 谱面
+    chart_sus = await ctx.rip.get_asset(f"music/music_score/{music_id:04d}_01_rip/{difficulty}", allow_error=False)
 
     asset_name = music['assetbundleName']
     jacket = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png")
@@ -58,54 +63,44 @@ async def generate_music_chart(
 
     note_host = os.path.abspath(f'{CHART_ASSET_DIR}/notes')
 
-    with TempFilePath('svg') as svg_path:
-        def get_svg():
-            sus = SUS(
-                lines,
-                note_size=NOTE_SIZES[difficulty],
-                note_host=f'file://{note_host}',
-                **({
-                    'title': music['title'],
-                    'artist': artist,
-                    'difficulty': difficulty,
-                    'playlevel': playlevel,
-                    'jacket': jacket,
-                    'meta': None,
-                }),
-            )
-            if theme == 'svg' or theme == 'pjskguess':
-                with open(f'{CHART_ASSET_DIR}/white/css/sus.css', encoding='utf-8') as f:
-                    style_sheet = f.read()
-                with open(f'{CHART_ASSET_DIR}/white/css/master.css') as f:
-                    style_sheet += '\n' + f.read()
-            elif theme == 'color':
-                with open(f'{CHART_ASSET_DIR}/{theme}/css/sus.css', encoding='utf-8') as f:
-                    style_sheet = f.read()
-                with open(f'{CHART_ASSET_DIR}/{theme}/css/{difficulty}.css') as f:
-                    style_sheet += '\n' + f.read()
-            else:
-                with open(f'{CHART_ASSET_DIR}/{theme}/css/sus.css', encoding='utf-8') as f:
-                    style_sheet = f.read()
-                with open(f'{CHART_ASSET_DIR}/{theme}/css/master.css') as f:
-                    style_sheet += '\n' + f.read()
-            sus.export(svg_path, style_sheet=style_sheet, display_skill_extra=display_skill)
+    with TempFilePath('sus') as sus_path:
+        with TempFilePath('svg') as svg_path:
+            def get_svg():
+                with open(sus_path, mode='wb') as f:
+                    f.write(chart_sus)
+                score = pjsekai.scores.Score.open(sus_path, encoding='UTF-8')
+                score.meta = pjsekai.scores.score.Meta(
+                    title=music_title,
+                    artist=artist,
+                    difficulty=difficulty,
+                    playlevel=str(playlevel),
+                    jacket=jacket,
+                    songid=str(music_id),
+                )
+                drawing = pjsekai.scores.Drawing(
+                    score=score,
+                    note_host=f'file://{note_host}',
+                )
+                drawing.svg().saveas(svg_path)
+            await run_in_pool(get_svg)
 
-        await run_in_pool(get_svg)
-        img = await download_and_convert_svg(f"file://{os.path.abspath(svg_path)}")
-        logger.info(f'生成 mid={music_id} {difficulty} {with_skill} 谱面图片完成')
-        return img
+            # 渲染svg
+            img = await download_and_convert_svg(f"file://{os.path.abspath(svg_path)}")
+            if min(img.size) > 1024:
+                img = resize_keep_ratio(img, max_size=1024, mode='short')
+            logger.info(f'生成 mid={music_id} {difficulty} 谱面图片完成')
+            return img
 
 
 # ======================= 处理逻辑 ======================= #
 
 # 获取谱面图片
-async def get_music_chart(ctx: SekaiHandlerContext, mid: int, diff: str, display_skill: bool, use_cache=True) -> Image.Image:
-    with_skill = '_with_skill' if display_skill else ''
-    cache_path = CHART_CACHE_PATH.format(region=ctx.region, mid=mid, diff=diff, with_skill=with_skill)
+async def get_music_chart(ctx: SekaiHandlerContext, mid: int, diff: str, use_cache=True) -> Image.Image:
+    cache_path = CHART_CACHE_PATH.format(region=ctx.region, mid=mid, diff=diff)
     create_parent_folder(cache_path)
     if use_cache and os.path.exists(cache_path):
         return open_image(cache_path)
-    img = await generate_music_chart(ctx, mid, diff, 'svg', display_skill)
+    img = await generate_music_chart(ctx, mid, diff, 'svg')
     img.save(cache_path)
     return img
     
@@ -129,11 +124,6 @@ async def _(ctx: SekaiHandlerContext):
         use_cache = False
         query = query.replace('refresh', '').strip()
 
-    display_skill = False
-    if 'skill' in query:
-        display_skill = True
-        query = query.replace('skill', '').strip()
-
     diff, query = extract_diff(query)
     ret = await search_music(ctx, query, MusicSearchOptions(diff=diff))
 
@@ -142,7 +132,7 @@ async def _(ctx: SekaiHandlerContext):
     msg = ""
     try:
         msg = await get_image_cq(
-            await get_music_chart(ctx, mid, diff, display_skill, use_cache),
+            await get_music_chart(ctx, mid, diff, use_cache),
             low_quality=True,
         )
     except Exception as e:

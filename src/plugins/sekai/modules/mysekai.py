@@ -128,7 +128,7 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                     source = mysekai_info.get('source', '?')
                     mode = get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
-                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(update_time, show_original_time=False)})"
+                    update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
@@ -1067,6 +1067,48 @@ async def _(ctx: SekaiHandlerContext):
     return await ctx.asend_reply_msg(msg)
 
 
+# 查询烤森抓包数据
+pjsk_check_mysekai_data = SekaiCmdHandler([
+    "/pjsk check mysekai data", "/pjsk_check_mysekai_data", 
+    "/pjsk烤森抓包数据", "/pjsk烤森抓包",
+    "/msd",
+])
+pjsk_check_mysekai_data.check_cdrate(cd).check_wblist(gbl)
+@pjsk_check_mysekai_data.handle()
+async def _(ctx: SekaiHandlerContext):
+    cqs = extract_cq_code(await ctx.aget_msg())
+    uid = int(cqs['at'][0]['qq']) if 'at' in cqs else ctx.user_id
+    nickname = await get_group_member_name(ctx.bot, ctx.group_id, uid)
+
+    task1 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="local")
+    task2 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="haruki")
+    (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
+
+    msg = f"@{nickname} 的Mysekai抓包数据状态"
+
+    if local_err:
+        msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
+    else:
+        msg += "【BOT自建服务】\n"
+        upload_time = datetime.fromtimestamp(local_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    if haruki_err:
+        msg += f"【Haruki工具箱】\n获取失败: {haruki_err}\n"
+    else:
+        msg += "【Haruki工具箱】\n"
+        upload_time = datetime.fromtimestamp(haruki_profile['upload_time'] / 1000)
+        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
+        msg += f"{upload_time_text}\n"
+
+    mode = get_user_data_mode(ctx, ctx.user_id)
+    msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
+
+    return await ctx.asend_reply_msg(msg)
+
+
+
 # ======================= 定时任务 ======================= #
 
 # Mysekai资源查询自动推送
@@ -1126,40 +1168,3 @@ async def msr_auto_push():
                 logger.print_exc(f'在 {gid} 中自动推送用户 {qid} 的{region_name}Mysekai资源查询失败')
                 try: await send_group_msg_by_bot(bot, gid, f"自动推送用户 {qid} 的{region_name}Mysekai资源查询失败")
                 except: pass
-
-
-# 查询烤森抓包数据
-pjsk_check_mysekai_data = SekaiCmdHandler([
-    "/pjsk check mysekai data", "/pjsk_check_mysekai_data", 
-    "/pjsk烤森抓包数据", "/pjsk烤森抓包",
-    "/msd",
-])
-pjsk_check_mysekai_data.check_cdrate(cd).check_wblist(gbl)
-@pjsk_check_mysekai_data.handle()
-async def _(ctx: SekaiHandlerContext):
-    task1 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="local")
-    task2 = get_mysekai_info(ctx, ctx.user_id, raise_exc=False, mode="haruki")
-    (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
-
-    msg = "你的烤森抓包数据状态:\n"
-
-    if local_err:
-        msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
-    else:
-        msg += "【BOT自建服务】\n"
-        upload_time = datetime.fromtimestamp(local_profile['upload_time'] / 1000)
-        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
-        msg += f"{upload_time_text}\n"
-
-    if haruki_err:
-        msg += f"【Haruki工具箱】\n获取失败: {haruki_err}\n"
-    else:
-        msg += "【Haruki工具箱】\n"
-        upload_time = datetime.fromtimestamp(haruki_profile['upload_time'] / 1000)
-        upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
-        msg += f"{upload_time_text}\n"
-
-    mode = get_user_data_mode(ctx, ctx.user_id)
-    msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
-
-    return await ctx.asend_reply_msg(msg)
