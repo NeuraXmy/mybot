@@ -986,6 +986,36 @@ async def compose_mysekai_fixture_detail_image(ctx: SekaiHandlerContext, fids: L
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 合成mysekai门升级材料图片
+async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    door_materials = {}
+    for item in await ctx.md.mysekai_gate_material_groups.get():
+        gid = item['groupId'] // 1000
+        level = item['groupId'] % 1000
+        mid = item['mysekaiMaterialId']
+        quantity = item['quantity']
+        if gid not in door_materials:
+            door_materials[gid] = [[] for _ in range(40)]
+        door_materials[gid][level - 1].append((mid, quantity))
+    
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
+            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+                for gid, materials in door_materials.items():
+                    gate_icon = ctx.static_imgs.get(f'mysekai/gate_icon/gate_{gid}.png')
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_item_bg(roundrect_bg()):
+                        ImageBox(gate_icon, size=(None, 40))
+                        for level, items in enumerate(materials, 1):
+                            with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
+                                TextBox(f"{level}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(50, 50, 50)), overflow='clip').set_w(24)
+                                for mid, quantity in items:
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(4):
+                                        img = await get_mysekai_res_icon(ctx, f"mysekai_material_{mid}")
+                                        ImageBox(img, size=(32, 32))
+                                        TextBox(f"x{quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=14, color=(50, 50, 50)), overflow='clip')
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -1107,6 +1137,19 @@ async def _(ctx: SekaiHandlerContext):
 
     return await ctx.asend_reply_msg(msg)
 
+
+# 查询烤森门升级数据
+pjsk_mysekai_gate = SekaiCmdHandler([
+    "/pjsk mysekai gate", "/pjsk_mysekai_gate", 
+    "/msg",
+], regions=['jp'])
+pjsk_mysekai_gate.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_gate.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id),
+        low_quality=True
+    ))
 
 
 # ======================= 定时任务 ======================= #

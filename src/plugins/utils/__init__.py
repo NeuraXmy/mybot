@@ -674,6 +674,13 @@ def extract_image_id(msg):
     return [cq["file"] for cq in cqs["image"] if "file" in cq]
 
 
+# 从消息段提取所有@qq
+def extract_at_qq(msg) -> List[int]:
+    cqs = extract_cq_code(msg)
+    if "at" not in cqs or len(cqs["at"]) == 0: return []
+    return [int(cq["qq"]) for cq in cqs["at"] if "qq" in cq]
+
+
 # 从消息段中提取文本
 def extract_text(msg):
     cqs = extract_cq_code(msg)
@@ -1004,7 +1011,7 @@ def start_repeat_with_interval(interval, func, logger, name, every_output=False,
 # 重复执行某个任务的装饰器
 def repeat_with_interval(interval_secs: int, name: str, logger: Logger, every_output=False, error_output=True, error_limit=5, start_offset=None):
     if start_offset is None:
-        start_offset = 10 + random.randint(0, 5)
+        start_offset = 5 + random.randint(0, 10)
     def wrapper(func):
         start_repeat_with_interval(interval_secs, func, logger, name, every_output, error_output, error_limit, start_offset)
         return func
@@ -1023,7 +1030,7 @@ def start_async_task(func, logger, name, start_offset=5):
 # 开始执行某个任务的装饰器
 def async_task(name: str, logger: Logger, start_offset=None):
     if start_offset is None:
-        start_offset = 10 + random.randint(0, 5)
+        start_offset = 5 + random.randint(0, 10)
     def wrapper(func):
         start_async_task(func, logger, name, start_offset)
         return func

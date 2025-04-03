@@ -393,7 +393,8 @@ class RegionMasterDataCollection:
         self.costume3ds                                   = RegionMasterDataWrapper(region, "costume3ds")
         self.card_costume3ds                              = RegionMasterDataWrapper(region, "cardCostume3ds")
         self.ng_words                                     = RegionMasterDataWrapper(region, "ngWords")
-        
+        self.mysekai_gate_material_groups                 = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
+
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
         return await wrapper.get()

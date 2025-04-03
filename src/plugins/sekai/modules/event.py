@@ -31,6 +31,23 @@ class EventListFilter:
 
 # ======================= 处理逻辑 ======================= #
 
+# 获取当前活动
+async def get_current_event(ctx: SekaiHandlerContext, need_running: bool = True) -> dict:
+    events = sorted(await ctx.md.events.get(), key=lambda x: x['aggregateAt'], reverse=True)
+    for event in events:
+        now = datetime.now()
+        start_time = datetime.fromtimestamp(event['startAt'] / 1000)
+        end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000)
+        if now < start_time: continue
+        if need_running and now > end_time: continue
+        return event
+    return None
+
+# 获取活动banner图
+async def get_event_banner_img(ctx: SekaiHandlerContext, event: dict) -> Image.Image:
+    asset_name = event['assetbundleName']
+    return await ctx.rip.img(f"home/banner/{asset_name}_rip/{asset_name}.png", use_img_cache=True)
+
 # 从文本中提取箱活，返回 (活动，剩余文本）
 async def extract_ban_event(ctx: SekaiHandlerContext, text: str) -> Tuple[Dict, str]:
     all_ban_event_texts = []
@@ -52,6 +69,7 @@ async def extract_ban_event(ctx: SekaiHandlerContext, text: str) -> Tuple[Dict, 
 
 # 从文本中提取活动类型，返回 (活动类型，剩余文本）
 def extract_event_type(text: str, default: str = None) -> Tuple[str, str]:
+    text = text.lower()
     for event_type in EVENT_TYPE_NAMES:
         for name in event_type:
             if name in text:
@@ -87,10 +105,7 @@ async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]
 # 获取活动列表
 async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFilter) -> Image.Image:
     events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'], reverse=True)    
-    banner_imgs = await batch_gather(*[
-        ctx.rip.img(f"home/banner/{e['assetbundleName']}_rip/{e['assetbundleName']}.png")
-        for e in events
-    ])
+    banner_imgs = await batch_gather(*[get_event_banner_img(ctx, event) for event in events])
 
     event_cards = await ctx.md.event_cards.get()
     event_card_cids = [ec['cardId'] for ec in event_cards]
@@ -215,8 +230,7 @@ async def get_event_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
 async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh: bool, summary_model: str) -> List[str]:
     eid = event['id']
     title = event['name']
-    event_asset_name = event['assetbundleName']
-    banner_img_cq = await get_image_cq(await ctx.rip.img(f"home/banner/{event_asset_name}_rip/{event_asset_name}.png", use_img_cache=True))
+    banner_img_cq = await get_image_cq(await get_event_banner_img(ctx, event))
     summary_db = get_file_db(f"{SEKAI_DATA_DIR}/story_summary/event/{ctx.region}/{eid}.json", logger)
     summary = summary_db.get("summary", {})
     if not summary or refresh:
@@ -392,6 +406,8 @@ async def _(ctx: SekaiHandlerContext):
         filter.unit = "blend"
         args = args.replace('混活', "").replace('混', "").strip()
     filter.cid = get_cid_by_nickname(args)
+
+    logger.info(f"查询活动列表，筛选条件={filter}")
 
     return await ctx.asend_reply_msg(await get_image_cq(
         await compose_event_list_image(ctx, filter),

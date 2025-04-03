@@ -476,7 +476,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
     return await run_in_pool(canvas.get_img)    
 
 # 合成歌曲列表图片
-async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_musics: List[Tuple[int, List[Dict]]], qid: int, show_id: bool) -> Image.Image:
+async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_musics: List[Tuple[int, List[Dict]]], qid: int, show_id: bool, show_leak: bool) -> Image.Image:
     for i in range(len(lv_musics)):
         lv, musics = lv_musics[i]
         asset_names = [m['assetbundleName'] for m in musics]
@@ -504,9 +504,17 @@ async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_music
                         
                         with Grid(col_count=10).set_sep(5):
                             for i in range(len(musics)):
+                                is_leak = datetime.fromtimestamp(musics[i]['publishedAt'] / 1000) > datetime.now()
+                                if is_leak and not show_leak:
+                                    continue
+
                                 with VSplit().set_sep(2):
                                     with Frame():
                                         ImageBox(musics[i]['cover_img'], size=(64, 64), image_size_mode='fill')
+
+                                        if is_leak:
+                                            TextBox("LEAK", TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=RED)) \
+                                                .set_bg(roundrect_bg(radius=4)).set_offset((64, 64)).set_offset_anchor('rb')
 
                                         if profile:
                                             mid = musics[i]['id'] 
@@ -851,17 +859,21 @@ async def _(ctx: SekaiHandlerContext):
 # 歌曲列表
 pjsk_music_list = SekaiCmdHandler([
     "/pjsk song list", "/pjsk_song_list", "/pjsk music list", "/pjsk_music_list", 
-    "/歌曲列表"
+    "/歌曲列表", "/难度排行",
 ])
 pjsk_music_list.check_cdrate(cd).check_wblist(gbl)
 @pjsk_music_list.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     show_id = False
+    show_leak = False
     try:
         if 'id' in args:
             args = args.replace('id', '')
             show_id = True
+        if 'leak' in args:
+            args = args.replace('leak', '')
+            show_leak = True
         diff, args = extract_diff(args)
         assert diff
     except:
@@ -905,7 +917,7 @@ async def _(ctx: SekaiHandlerContext):
     lv_musics = sorted(lv_musics.items(), key=lambda x: x[0], reverse=True)
 
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_music_list_image(ctx, diff, lv_musics, ctx.user_id, show_id),
+        await compose_music_list_image(ctx, diff, lv_musics, ctx.user_id, show_id, show_leak),
         low_quality=True,
     ))
 
@@ -935,6 +947,9 @@ async def new_music_notify():
     notified_musics = file_db.get("notified_new_musics", {})
     updated = False
 
+    SEND_LIMIT = 5
+    total_send = 0
+
     for region in ALL_SERVER_REGIONS:
         region_name = get_region_name(region)
         ctx = SekaiHandlerContext.from_region(region)
@@ -949,22 +964,25 @@ async def new_music_notify():
             if publish_time - now > timedelta(minutes=1): continue
             logger.info(f"发送新曲上线提醒: {region} {music['id']} {music['title']}")
 
-            img = await compose_music_detail_image(
-                ctx, mid, title=f"{region_name}新曲上线", 
-                title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20))
-            )
-            msg = await get_image_cq(img)
+            total_send += 1
 
-            for group_id in music_group_sub.get_all(region):
-                if not gbl.check_id(group_id): continue
-                try:
-                    group_msg = msg
-                    for uid in music_user_sub.get_all(region, group_id):
-                        group_msg += f"[CQ:at,qq={uid}]"
-                    await send_group_msg_by_bot(bot, group_id, group_msg.strip())
-                except:
-                    logger.print_exc(f"发送新曲新曲上线提醒: {region} {music['id']} 到群 {group_id} 失败")
-                    continue
+            if total_send <= SEND_LIMIT:
+                img = await compose_music_detail_image(
+                    ctx, mid, title=f"{region_name}新曲上线", 
+                    title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20))
+                )
+                msg = await get_image_cq(img)
+
+                for group_id in music_group_sub.get_all(region):
+                    if not gbl.check_id(group_id): continue
+                    try:
+                        group_msg = msg
+                        for uid in music_user_sub.get_all(region, group_id):
+                            group_msg += f"[CQ:at,qq={uid}]"
+                        await send_group_msg_by_bot(bot, group_id, group_msg.strip())
+                    except:
+                        logger.print_exc(f"发送新曲新曲上线提醒: {region} {music['id']} 到群 {group_id} 失败")
+                        continue
             
             if region not in notified_musics:
                 notified_musics[region] = []
@@ -983,6 +1001,9 @@ async def new_apd_notify():
     no_apd_musics = file_db.get("no_apd_musics", {})
     notified_new_apd = file_db.get("notified_new_apd", {})
     updated = False
+
+    SEND_LIMIT = 5
+    total_send = 0
 
     for region in ALL_SERVER_REGIONS:
         region_name = get_region_name(region)
@@ -1013,23 +1034,26 @@ async def new_apd_notify():
                 continue
             
             logger.info(f"发送新APPEND上线提醒: {region} {music['id']} {music['title']}")
-            
-            img = await compose_music_detail_image(
-                ctx, mid, title=f"新{region_name}APPEND谱面上线", 
-                title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20))
-            )
-            msg = await get_image_cq(img)
 
-            for group_id in apd_group_sub.get_all(region):
-                if not gbl.check_id(group_id): continue
-                try:
-                    group_msg = msg
-                    for uid in apd_user_sub.get_all(region, group_id):
-                        group_msg += f"[CQ:at,qq={uid}]"
-                    await send_group_msg_by_bot(bot, group_id, group_msg.strip())
-                except:
-                    logger.print_exc(f"发送新APPEND上线提醒: {region} {music['id']} 到群 {group_id} 失败")
-                    continue
+            total_send += 1
+            
+            if total_send <= SEND_LIMIT:
+                img = await compose_music_detail_image(
+                    ctx, mid, title=f"新{region_name}APPEND谱面上线", 
+                    title_style=TextStyle(font=DEFAULT_BOLD_FONT, size=35, color=(60, 20, 20))
+                )
+                msg = await get_image_cq(img)
+
+                for group_id in apd_group_sub.get_all(region):
+                    if not gbl.check_id(group_id): continue
+                    try:
+                        group_msg = msg
+                        for uid in apd_user_sub.get_all(region, group_id):
+                            group_msg += f"[CQ:at,qq={uid}]"
+                        await send_group_msg_by_bot(bot, group_id, group_msg.strip())
+                    except:
+                        logger.print_exc(f"发送新APPEND上线提醒: {region} {music['id']} 到群 {group_id} 失败")
+                        continue
             
             # 从无APPEND列表中移除
             if region in no_apd_musics:

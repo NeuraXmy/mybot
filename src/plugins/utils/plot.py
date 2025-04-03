@@ -119,7 +119,7 @@ def resize_keep_ratio(img: Image.Image, max_size: int, mode='long', scale=None) 
         ratio = max_size / h
     if scale:
         ratio *= scale
-    return img.resize((int(w * ratio), int(h * ratio)))
+    return img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.BILINEAR)
 
 
 class Gradient:
@@ -1069,7 +1069,7 @@ class TextBox(Widget):
         overflow: 'shrink', 'clip'
         """
         super().__init__()
-        self.text = text
+        self.text = str(text)
         self.style = style or TextStyle()
         self.line_count = line_count
         self.line_sep = line_sep
@@ -1287,13 +1287,16 @@ class Canvas(Frame):
         self.set_bg(bg)
         self.set_margin(0)
 
-    def get_img(self) -> Image.Image:
+    def get_img(self, scale: float = None) -> Image.Image:
         size = self._get_self_size()
         assert size[0] * size[1] < 4096 * 4096, f'Canvas size is too large ({size[0]} x {size[1]})'
         img = Image.new('RGBA', size, TRANSPARENT)
         p = Painter(img)
         self.draw(p)
-        return p.get()
+        img = p.get()
+        if scale:
+            img = img.resize((int(size[0] * scale), int(size[1] * scale)), Image.Resampling.BILINEAR)
+        return img
 
 
 

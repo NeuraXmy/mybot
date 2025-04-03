@@ -18,6 +18,7 @@ class RegionProfileConfig:
     mysekai_api_url: Optional[str] = None  
     mysekai_photo_api_url: Optional[str] = None 
     mysekai_upload_time_api_url: Optional[str] = None 
+    ranking_api_url: Optional[str] = None
 
 @dataclass
 class PlayerAvatarInfo:
@@ -25,6 +26,9 @@ class PlayerAvatarInfo:
     cid: int
     unit: str
     img: Image.Image
+
+DEFAULT_DATA_MODE = 'latest'
+
 
 # ======================= 卡牌逻辑（防止循环依赖） ======================= #
 
@@ -195,7 +199,7 @@ async def get_player_avatar_info_by_basic_profile(ctx: SekaiHandlerContext, basi
 # 查询抓包数据获取模式
 def get_user_data_mode(ctx: SekaiHandlerContext, qid: int) -> str:
     data_modes = profile_db.get("data_modes", {})
-    return data_modes.get(ctx.region, {}).get(str(qid), "default")
+    return data_modes.get(ctx.region, {}).get(str(qid), DEFAULT_DATA_MODE)
 
 # 根据获取玩家详细信息，返回(profile, err_msg)
 async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None) -> Tuple[dict, str]:
@@ -562,7 +566,7 @@ pjsk_data_mode.check_cdrate(cd).check_wblist(gbl)
 @pjsk_data_mode.handle()
 async def _(ctx: SekaiHandlerContext):
     data_modes = profile_db.get("data_modes", {})
-    cur_mode = data_modes.get(ctx.region, {}).get(str(ctx.user_id), "default")
+    cur_mode = data_modes.get(ctx.region, {}).get(str(ctx.user_id), DEFAULT_DATA_MODE)
     help_text = f"""
 你的抓包数据获取模式: {cur_mode} 
 使用\"/pjsk抓包模式 模式名\"来切换模式，可用模式名如下:
@@ -572,15 +576,26 @@ async def _(ctx: SekaiHandlerContext):
 【haruki】 仅从Haruki工具箱获取
 """.strip()
     
+    ats = extract_at_qq(await ctx.aget_msg())
+    if ats and ats[0] != int(ctx.bot.self_id):
+        # 如果有at则使用at的qid
+        qid = ats[0]
+        assert_and_reply(check_superuser(ctx.event), "只有超级管理能修改别人的模式")
+    else:
+        qid = ctx.user_id
+    
     args = ctx.get_args().strip().lower()
     assert_and_reply(args in ["default", "latest", "local", "haruki"], help_text)
 
     if ctx.region not in data_modes:
         data_modes[ctx.region] = {}
-    data_modes[ctx.region][str(ctx.user_id)] = args
+    data_modes[ctx.region][str(qid)] = args
     profile_db.set("data_modes", data_modes)
 
-    return await ctx.asend_reply_msg(f"切换抓包数据获取模式:\n{cur_mode} -> {args}")
+    if qid == ctx.user_id:
+        return await ctx.asend_reply_msg(f"切换抓包数据获取模式:\n{cur_mode} -> {args}")
+    else:
+        return await ctx.asend_reply_msg(f"切换 {qid} 的抓包数据获取模式:\n{cur_mode} -> {args}")
 
 
 # 查询抓包数据
