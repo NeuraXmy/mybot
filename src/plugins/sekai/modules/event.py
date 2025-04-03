@@ -11,8 +11,8 @@ DEFAULT_EVENT_STORY_SUMMARY_MODEL = "gemini-2-flash"
 
 EVENT_TYPE_NAMES = [
     ("marathon", "普活"),
-    ("cheerful_carnival", "5v5", "5V5"),
-    ("world_bloom", "WorldLink", "WL", "world link"),
+    ("cheerful_carnival", "5v5"),
+    ("world_bloom", "worldlink", "wl", "world link"),
 ]
 
 EVENT_TYPE_SHOW_NAMES = {
@@ -28,6 +28,7 @@ class EventListFilter:
     unit: str = None
     cid: int = None
     year: int = None
+
 
 # ======================= 处理逻辑 ======================= #
 

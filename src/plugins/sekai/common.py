@@ -49,6 +49,7 @@ UNIT_CID_MAP = {
     "idol": [5, 6, 7, 8],
     "street": [9, 10, 11, 12],
     "theme_park": [13, 14, 15, 16],
+    "school_refusal": [17, 18, 19, 20],
 }
 UNIT_COLORS = [
     (68,85,221,255),

@@ -12,6 +12,8 @@ from .profile import (
     get_basic_profile,
     get_player_avatar_info_by_basic_profile,
     get_user_data_mode,
+    get_detailed_profile,
+    get_detailed_profile_card,
 )
 
 
@@ -55,6 +57,15 @@ sekai8823_friendcode_data = WebJsonRes(
     "https://pjsk-static.8823.eu.org/api/fixtures/", 
     update_interval=timedelta(hours=3),
 )
+
+UNIT_GATEID_MAP = {
+    "light_sound": 1,
+    "idol": 2,
+    "street": 3,
+    "theme_park": 4,
+    "school_refusal": 5,
+}
+
 
 # ======================= 处理逻辑 ======================= #
 
@@ -987,32 +998,108 @@ async def compose_mysekai_fixture_detail_image(ctx: SekaiHandlerContext, fids: L
     return await run_in_pool(canvas.get_img)
 
 # 合成mysekai门升级材料图片
-async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
-    door_materials = {}
+async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int, spec_gate_id: int = None, spec_lv: int = None) -> Image.Image:
+    profile = None
+    uid = get_uid_from_qid(ctx, qid, check_bind=False)
+    if uid and spec_lv and spec_gate_id:
+        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False)
+
+    # 获取玩家的材料
+    user_materials = {}
+    if profile:
+        lv_materials = profile.get('userMysekaiMaterials', [])
+        user_materials = {item['mysekaiMaterialId']: item['quantity'] for item in lv_materials}
+
+    # 获取每级升级材料
+    gate_materials = {}
     for item in await ctx.md.mysekai_gate_material_groups.get():
         gid = item['groupId'] // 1000
         level = item['groupId'] % 1000
         mid = item['mysekaiMaterialId']
         quantity = item['quantity']
-        if gid not in door_materials:
-            door_materials[gid] = [[] for _ in range(40)]
-        door_materials[gid][level - 1].append((mid, quantity))
+        if gid not in gate_materials:
+            gate_materials[gid] = [[] for _ in range(40)]
+        gate_materials[gid][level - 1].append({
+            'mid': mid,
+            'quantity': quantity,
+            'color': (50, 50, 50),
+            'sum_quantity': None,
+        })
+
+    # 根据指定lv截断
+    if not spec_lv:
+        spec_lv = 0
+    for gid, lv_materials in gate_materials.items():
+        gate_materials[gid] = lv_materials[spec_lv:]
+
+    # 指定门
+    if spec_gate_id:
+        gate_materials = {spec_gate_id: gate_materials[spec_gate_id]}
+
+    # 统计总和
+    for gid, lv_materials in gate_materials.items():
+        sum_materials = {}
+        for items in lv_materials:
+            for item in items:
+                mid = item['mid']
+                quantity = item['quantity']
+                if mid not in sum_materials:
+                    sum_materials[mid] = 0
+                sum_materials[mid] += quantity
+                item['sum_quantity'] = sum_materials[mid]
+
+    red_color = (200, 0, 0)
+    green_color = (0, 200, 0)
+
+    # 计算玩家材料和需要的材料文本
+    if profile:
+        for gid, lv_materials in gate_materials.items():
+            for items in lv_materials:
+                for item in items:
+                    mid = item['mid']
+                    sum_quantity = item['sum_quantity']
+                    user_quantity = user_materials.get(mid, 0)
+                    if user_quantity >= 10000:
+                        user_quantity_text = f"{user_quantity // 1000}k"
+                    elif user_quantity >= 1000:
+                        user_quantity_text = f"{user_quantity // 1000}k{user_quantity % 1000 // 100}"
+                    else:
+                        user_quantity_text = str(user_quantity)
+                    if user_quantity >= sum_quantity:
+                        item['color'] = green_color
+                        item['sum_quantity'] = f"{user_quantity_text}/{sum_quantity}"
+                    else:
+                        item['color'] = red_color
+                        item['sum_quantity'] = f"{user_quantity_text}/{sum_quantity}"
     
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
-        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
-            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
-                for gid, materials in door_materials.items():
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            if uid:
+                await get_detailed_profile_card(ctx, profile, pmsg)
+
+            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_bg(roundrect_bg()):
+                for gid, lv_materials in gate_materials.items():
                     gate_icon = ctx.static_imgs.get(f'mysekai/gate_icon/gate_{gid}.png')
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_item_bg(roundrect_bg()):
                         ImageBox(gate_icon, size=(None, 40))
-                        for level, items in enumerate(materials, 1):
+                        lv_color = (50, 50, 50) if not profile else green_color
+                        for level, items in enumerate(lv_materials, spec_lv + 1):
+                            for item in items:
+                                if any(i['color'] == red_color for i in items):
+                                    lv_color = red_color
+
                             with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
-                                TextBox(f"{level}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(50, 50, 50)), overflow='clip').set_w(24)
-                                for mid, quantity in items:
-                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(4):
+                                TextBox(f"{level}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=lv_color), overflow='clip').set_w(32)
+                                for item in items:
+                                    mid, quantity, color, sum_quantity = item['mid'], item['quantity'], item['color'], item['sum_quantity']
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(2):
                                         img = await get_mysekai_res_icon(ctx, f"mysekai_material_{mid}")
-                                        ImageBox(img, size=(32, 32))
-                                        TextBox(f"x{quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=14, color=(50, 50, 50)), overflow='clip')
+                                        with Frame():
+                                            sz = 50
+                                            ImageBox(img, size=(sz, sz))
+                                            TextBox(f"x{quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=14, color=(50, 50, 50))) \
+                                                .set_offset((sz, sz)).set_offset_anchor('rb')
+                                        TextBox(sum_quantity, TextStyle(font=DEFAULT_BOLD_FONT, size=12, color=color))
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -1146,8 +1233,20 @@ pjsk_mysekai_gate = SekaiCmdHandler([
 pjsk_mysekai_gate.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_gate.handle()
 async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    try: 
+        unit, args = extract_unit(args)
+        gate_id = UNIT_GATEID_MAP[unit]
+    except: 
+        gate_id = None
+    try: 
+        lv = int(args)
+        assert 0 <= lv <= 39
+    except: 
+        lv = None
+
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id),
+        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id, gate_id, lv),
         low_quality=True
     ))
 

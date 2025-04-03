@@ -1628,6 +1628,33 @@ def unique_by(lst, key):
 def remove_by(lst, key, value):
     return [item for item in lst if key not in item or item[key] != value]
 
+# 用filter func查找某个dict列表中的元素 mode=first/last/all
+def find_by_func(lst, func, mode="first"):
+    if mode not in ["first", "last", "all"]:
+        raise Exception("find_by_func mode must be first/last/all")
+    ret = [item for item in lst if func(item)]
+    if not ret: 
+        return None if mode != "all" else []
+    if mode == "first":
+        return ret[0]
+    if mode == "last":
+        return ret[-1]
+    return ret
+
+# 获取按某个filter func去重后的dict列表
+def unique_by_func(lst, func):
+    val_set = set()
+    ret = []
+    for item in lst:
+        if func(item) not in val_set:
+            val_set.add(func(item))
+            ret.append(item)
+    return ret
+
+# 获取删除某个filter func的dict列表
+def remove_by_func(lst, func):
+    return [item for item in lst if not func(item)]
+
 
 @dataclass
 class HandlerContext:

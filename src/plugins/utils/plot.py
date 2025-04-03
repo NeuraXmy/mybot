@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import os
 import numpy as np
 from copy import deepcopy
+import math
 
 DEBUG_MODE = False
 
@@ -101,7 +102,11 @@ def get_text_offset(font: Font, text: str) -> Position:
     return bbox[0], bbox[1]
 
 def resize_keep_ratio(img: Image.Image, max_size: int, mode='long', scale=None) -> Image.Image:
-    assert mode in ['long', 'short', 'w', 'h']
+    """
+    Resize image to keep the aspect ratio, with a maximum size.  
+    mode in ['long', 'short', 'w', 'h', 'wxh']
+    """
+    assert mode in ['long', 'short', 'w', 'h', 'wxh']
     w, h = img.size
     if mode == 'long':
         if w > h:
@@ -115,8 +120,10 @@ def resize_keep_ratio(img: Image.Image, max_size: int, mode='long', scale=None) 
             ratio = max_size / w
     elif mode == 'w':
         ratio = max_size / w
-    else:
+    elif mode == 'h':
         ratio = max_size / h
+    else:
+        ratio = math.sqrt(max_size / (w * h))
     if scale:
         ratio *= scale
     return img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.BILINEAR)

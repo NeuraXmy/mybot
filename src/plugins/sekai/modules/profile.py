@@ -475,7 +475,7 @@ pjsk_hide = SekaiCmdHandler([
 pjsk_hide.check_cdrate(cd).check_wblist(gbl)
 @pjsk_hide.handle()
 async def _(ctx: SekaiHandlerContext):
-    lst = profile_db.get("hide_list", [])
+    lst = profile_db.get("hide_list", {})
     if ctx.region not in lst:
         lst[ctx.region] = []
     if ctx.user_id not in lst[ctx.region]:
@@ -492,7 +492,7 @@ pjsk_show = SekaiCmdHandler([
 pjsk_show.check_cdrate(cd).check_wblist(gbl)
 @pjsk_show.handle()
 async def _(ctx: SekaiHandlerContext):
-    lst = profile_db.get("hide_list", [])
+    lst = profile_db.get("hide_list", {})
     if ctx.region not in lst:
         lst[ctx.region] = []
     if ctx.user_id in lst[ctx.region]:

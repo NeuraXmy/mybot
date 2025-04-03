@@ -6,7 +6,6 @@ from ..draw import *
 from .music import *
 
 # ======================= 谱面生成 ======================= #
-# 此部分修改自 https://github.com/xfl03/SekaiMusicChart
 
 import pjsekai.scores
 
@@ -27,7 +26,6 @@ async def generate_music_chart(
     ctx: SekaiHandlerContext, 
     music_id: int,
     difficulty: str,
-    theme: str,
 ) -> Image.Image:
     # 获取信息
     await ctx.block_region(f"chart_{music_id}_{difficulty}")
@@ -86,8 +84,9 @@ async def generate_music_chart(
 
             # 渲染svg
             img = await download_and_convert_svg(f"file://{os.path.abspath(svg_path)}")
-            if min(img.size) > 1024:
-                img = resize_keep_ratio(img, max_size=1024, mode='short')
+            MAX_SIZE = 2048 * 2048
+            if img.size[0] * img.size[1] > MAX_SIZE:
+                img = resize_keep_ratio(img, max_size=MAX_SIZE, mode='wxh')
             logger.info(f'生成 mid={music_id} {difficulty} 谱面图片完成')
             return img
 
@@ -100,7 +99,7 @@ async def get_music_chart(ctx: SekaiHandlerContext, mid: int, diff: str, use_cac
     create_parent_folder(cache_path)
     if use_cache and os.path.exists(cache_path):
         return open_image(cache_path)
-    img = await generate_music_chart(ctx, mid, diff, 'svg')
+    img = await generate_music_chart(ctx, mid, diff)
     img.save(cache_path)
     return img
     
