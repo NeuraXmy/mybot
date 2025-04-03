@@ -6,6 +6,9 @@ from .asset import (
     StaticImageRes,
 )
 
+HELP_DOC_PATH = "helps/sekai.md"
+
+
 @dataclass
 class SekaiHandlerContext(HandlerContext):
     region: str = None
@@ -49,6 +52,7 @@ class SekaiCmdHandler(CmdHandler):
         super().__init__(all_region_commands, logger, **kwargs)
 
     async def additional_context_process(self, context: HandlerContext):
+        # 处理指令区服前缀
         cmd_region = self.available_regions[0]
         original_trigger_cmd = context.trigger_cmd
         for region in ALL_SERVER_REGIONS:
@@ -62,6 +66,17 @@ class SekaiCmdHandler(CmdHandler):
             f"该指令不支持 {cmd_region} 服务器，可用的服务器有: {', '.join(self.available_regions)}"
         )
 
+        # 帮助文档
+        HELP_TRIGGER_WORDS = ['help', '帮助']
+        if any(word in context.arg_text for word in HELP_TRIGGER_WORDS):
+            if help_doc := await self.get_help_doc_part():
+                help_doc += f"\n>使用`@{BOT_NAME} /help sekai`查看完整帮助"
+                msg = await get_image_cq(await markdown_to_image(help_doc), low_quality=True)
+            else:
+                msg += "没有找到该指令的帮助\n使用\"@{BOT_NAME}/help sekai\"查看完整帮助"
+            raise ReplyException(msg)
+
+        # 构造新的上下文
         params = context.__dict__.copy()
         params['region'] = cmd_region
         params['original_trigger_cmd'] = original_trigger_cmd
@@ -70,5 +85,26 @@ class SekaiCmdHandler(CmdHandler):
         params['static_imgs'] = StaticImageRes()
 
         return SekaiHandlerContext(**params)
+    
+    async def get_help_doc_part(self) -> Optional[str]:
+        try:
+            help_doc = Path(HELP_DOC_PATH).read_text(encoding="utf-8")
+            parts = help_doc.split("---")[2:-2]
+            cmd_parts = []
+            for part in parts:
+                start = part.find("### ")
+                part = part[start:]
+                cmd_parts.extend(part.split("### "))
+
+            for cmd_part in cmd_parts:
+                if any(cmd in cmd_part for cmd in self.commands):
+                    cmd_part = "### " + cmd_part
+                    return cmd_part
+            
+            raise Exception(f"没有找到 {self.commands[0]} 的帮助文档")
+
+        except Exception as e:
+            logger.error(f"获取 {self.commands[0]} 的帮助文档失败")
+            return None
 
 
