@@ -1276,6 +1276,7 @@ async def msr_auto_push():
                 
         for qid, gid in msr_sub.get_all_gid_uid(region):
             if not gbl.check_id(gid): continue
+            ctx.user_id = qid
             qid = str(qid)
 
             msr_last_push_time = file_db.get(f"{region}_msr_last_push_time", {})

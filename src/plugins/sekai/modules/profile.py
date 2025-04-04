@@ -636,11 +636,11 @@ pjsk_check_data.check_cdrate(cd).check_wblist(gbl)
 @pjsk_check_data.handle()
 async def _(ctx: SekaiHandlerContext):
     cqs = extract_cq_code(await ctx.aget_msg())
-    uid = int(cqs['at'][0]['qq']) if 'at' in cqs else ctx.user_id
-    nickname = await get_group_member_name(ctx.bot, ctx.group_id, uid)
+    qid = int(cqs['at'][0]['qq']) if 'at' in cqs else ctx.user_id
+    nickname = await get_group_member_name(ctx.bot, ctx.group_id, qid)
     
-    task1 = get_detailed_profile(ctx, uid, raise_exc=False, mode="local")
-    task2 = get_detailed_profile(ctx, uid, raise_exc=False, mode="haruki")
+    task1 = get_detailed_profile(ctx, qid, raise_exc=False, mode="local")
+    task2 = get_detailed_profile(ctx, qid, raise_exc=False, mode="haruki")
     (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
 
     msg = f"@{nickname} 的Suite抓包数据状态\n"
