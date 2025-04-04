@@ -617,10 +617,14 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
                             .set_size((w, item_h)).set_content_align('c')
                         # 数量 (第一行虽然图标是not_clear但是实际上是total)
                         color = PLAY_RESULT_COLORS['not_clear']
-                        draw_shadowed_text(f"{c.total}", DEFAULT_BOLD_FONT, font_sz, color, None,                        w = w, h = item_h).set_bg(roundrect_bg())
-                        draw_shadowed_text(f"{c.clear}", DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['clear'], w = w, h = item_h).set_bg(roundrect_bg())
-                        draw_shadowed_text(f"{c.fc}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['fc'],    w = w, h = item_h).set_bg(roundrect_bg())
-                        draw_shadowed_text(f"{c.ap}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['ap'],    w = w, h = item_h).set_bg(roundrect_bg())
+                        ap      = c.ap
+                        fc      = c.fc - c.ap
+                        clear   = c.clear - c.fc
+                        total   = c.total - c.clear
+                        draw_shadowed_text(f"{total}", DEFAULT_BOLD_FONT, font_sz, color, None,                        w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{clear}", DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['clear'], w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{fc}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['fc'],    w = w, h = item_h).set_bg(roundrect_bg())
+                        draw_shadowed_text(f"{ap}",    DEFAULT_BOLD_FONT, font_sz, color, PLAY_RESULT_COLORS['ap'],    w = w, h = item_h).set_bg(roundrect_bg())
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
