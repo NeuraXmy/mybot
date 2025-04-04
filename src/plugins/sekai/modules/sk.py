@@ -48,12 +48,86 @@ ALL_RANKS = [
     *range(100000, 500001, 100000),
 ]
 
-# latest_rankings[region] = (event_id, rankings)
-latest_rankings_cache: Dict[str, Tuple[int, List[Ranking]]] = {}
+# latest_rankings[region][event_id] = rankings
+latest_rankings_cache: Dict[str, Dict[int, List[Ranking]]] = {}
 
 SKS_BEFORE = timedelta(hours=1)
 
 # ======================= 处理逻辑 ======================= #
+
+# 获取wl_id对应的角色cid，wl_id对应普通活动则返回None
+async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[int]:
+    event_id = wl_id % 1000
+    chapter_id = wl_id // 1000
+    if chapter_id == 0:
+        return None
+    chapters = await ctx.md.world_blooms.find_by('eventId', event_id, mode='all')
+    assert_and_reply(chapters, f"活动{ctx.region}_{event_id}并不是WorldLink活动")
+    chapter = find_by(chapters, "chapterNo", chapter_id)
+    assert_and_reply(chapter, f"活动{ctx.region}_{event_id}并没有章节{chapter_id}")
+    cid = chapter['characterId']
+    return cid
+
+# 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
+async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
+    args = args.lower()
+    if 'wl' not in args:
+        return None, args
+    else:
+        event = await get_current_event(ctx, need_running=False)
+        chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
+        assert_and_reply(chapters, f"当期活动{ctx.region}_{event['id']}并不是WorldLink活动")
+
+        # 通过"wl序号"查询章节
+        def query_by_seq() -> Tuple[Optional[int], Optional[str]]:
+            for i in range(len(chapters)):
+                carg = f"wl{i+1}"
+                if carg in args:
+                    chapter_id = i + 1
+                    return chapter_id, carg
+            return None, None
+        # 通过"wl角色昵称"查询章节
+        def query_by_nickname() -> Tuple[Optional[int], Optional[str]]:
+            for item in CHARACTER_NICKNAME_DATA:
+                nicknames = item['nicknames']
+                cid = item['id']
+                for nickname in nicknames:
+                    carg = f"wl{nickname}"
+                    if carg in args:
+                        chapter = find_by(chapters, "characterId", cid)
+                        assert_and_reply(chapter, f"当期活动{ctx.region}_{event['id']}并没有角色{nickname}的章节")
+                        chapter_id = chapter['chapterNo']
+                        return chapter_id, carg
+            return None, None
+        # 查询当前章节
+        def query_current() -> Tuple[Optional[int], Optional[str]]:
+            now = datetime.now()
+            chapters.sort(key=lambda x: x['chapterNo'], reverse=True)
+            for chapter in chapters:
+                start = datetime.fromtimestamp(chapter['chapterStartAt'] / 1000)
+                if start <= now:
+                    chapter_id = chapter['chapterNo']
+                    return chapter_id, "wl"
+            return None, None
+        
+        chapter_id, carg = query_by_seq()
+        if not chapter_id:
+            chapter_id, carg = query_by_nickname()
+        if not chapter_id:
+            chapter_id, carg = query_current()
+        assert_and_reply(chapter_id, f"""
+查询WL活动榜线需要指定章节，可用参数格式:
+1. wl: 查询当前章节
+2. wl2: 查询第二章
+3. wlmiku: 查询miku章节
+""".strip())
+        
+        event = event.copy()
+        event['wl_id'] = chapter_id * 1000 + event['id']
+        args = args.replace(carg, "")
+
+        logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['wl_id']}")
+        return event, args
 
 # 从榜线列表中找到最近的前一个榜线
 def find_prev_ranking(ranks: List[Ranking], rank: int) -> Optional[Ranking]:
@@ -282,45 +356,48 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
 def parse_rankings(ctx: SekaiHandlerContext, event_id: int, data: dict, ignore_no_update: bool) -> List[Ranking]:
     now = datetime.now()
 
-    top100 = [Ranking(
-        uid=item['userId'],
-        name=item['name'],
-        score=item['score'],
-        rank=item['rank'],
-        time=now,
-    ) for item in data['top100']['rankings']]
+    # 普通活动
+    if event_id < 1000:
+        top100 = [Ranking(
+            uid=item['userId'],
+            name=item['name'],
+            score=item['score'],
+            rank=item['rank'],
+            time=now,
+        ) for item in data['top100']['rankings']]
 
-    border = [Ranking(
-        uid=item['userId'],
-        name=item['name'],
-        score=item['score'],
-        rank=item['rank'],
-        time=now,
-    ) for item in data['border']['borderRankings'] if item['rank'] != 100]
+        border = [Ranking(
+            uid=item['userId'],
+            name=item['name'],
+            score=item['score'],
+            rank=item['rank'],
+            time=now,
+        ) for item in data['border']['borderRankings'] if item['rank'] != 100]
+    
+    # WL活动
+    else:
+        # TODO
+        top100, border = [], []
 
     if ignore_no_update:
         # 过滤掉没有更新的border榜线
         border_has_diff = False
-        latest_eid, latest_ranks = latest_rankings_cache.get(ctx.region, (None, []))
-        # 缓存的不是查询的活动
-        if latest_eid != event_id:
-            border_has_diff = True
-        else:
-            for item in border:
-                latest_item = find_by_func(latest_ranks, lambda x: x.rank == item.rank)
-                if not latest_item or (latest_item.score != item.score or latest_item.uid != item.uid):
-                    border_has_diff = True
-                    break
+        latest_ranks = latest_rankings_cache.get(ctx.region, {}).get(event_id, [])
+        for item in border:
+            latest_item = find_by_func(latest_ranks, lambda x: x.rank == item.rank)
+            if not latest_item or (latest_item.score != item.score or latest_item.uid != item.uid):
+                border_has_diff = True
+                break
         if not border_has_diff:
             return top100
-        
+    
     return top100 + border
-      
+  
 # 获取最新榜线记录
 async def get_latest_ranking(ctx: SekaiHandlerContext, event_id: int, query_ranks: List[int] = ALL_RANKS) -> List[Ranking]:
     # 从缓存中获取
-    latest_eid, rankings = latest_rankings_cache.get(ctx.region, (None, None))
-    if latest_eid == event_id and rankings:
+    rankings = latest_rankings_cache.get(ctx.region, {}).get(event_id, None)
+    if rankings:
         logger.info(f"从缓存中获取 {ctx.region}_{event_id} 最新榜线数据")
         return deepcopy([r for r in rankings if r.rank in query_ranks])
     rankings = await query_latest_ranking(ctx.region, event_id, query_ranks)
@@ -423,11 +500,11 @@ async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
     return await run_in_pool(canvas.get_img)
 
 # 合成整体榜线图片
-async def compose_skl_image(ctx: SekaiHandlerContext, event: int = None, full: bool = False) -> Image.Image:
+async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: bool = False) -> Image.Image:
     if not event:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
-    eid = event['id']
+    eid = event.get('wl_id', event['id'])
     title = event['name']
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
@@ -482,11 +559,12 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: int = None, full: b
     return await run_in_pool(canvas.get_img)
 
 # 合成时速图片
-async def compose_skl_speed_image(ctx: SekaiHandlerContext) -> Image.Image:
-    event = await get_current_event(ctx, need_running=False)
-    assert_and_reply(event, "未找到当前活动")
+async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) -> Image.Image:
+    if not event:
+        event = await get_current_event(ctx, need_running=False)
+        assert_and_reply(event, "未找到当前活动")
 
-    eid = event['id']
+    eid = event.get('wl_id', event['id'])
     title = event['name']
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
@@ -588,11 +666,12 @@ def format_sk_query_params(qtype: str, qval: Union[str, int, List[int]]) -> str:
     return f"玩家{QTYPE_MAP[qtype]}为{qval}"
 
 # 合成榜线查询图片
-async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int, List[int]]) -> Image.Image:
-    event = await get_current_event(ctx, need_running=False)
+async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int, List[int]], event: dict = None) -> Image.Image:
+    if not event:
+        event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
 
-    eid = event['id']
+    eid = event.get('wl_id', event['id'])
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
 
@@ -659,11 +738,12 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     return await run_in_pool(canvas.get_img, 1.5)
 
 # 合成查房图片
-async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int]) -> Image.Image:
-    event = await get_current_event(ctx, need_running=False)
+async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int], event: dict = None) -> Image.Image:
+    if not event:
+        event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
 
-    eid = event['id']
+    eid = event.get('wl_id', event['id'])
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
 
@@ -739,10 +819,11 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     return await run_in_pool(canvas.get_img, 1.5)
 
 # 合成追踪图片
-async def compose_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int]) -> Image.Image:
-    event = await get_current_event(ctx, need_running=False)
+async def compose_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int], event: dict = None) -> Image.Image:
+    if not event:
+        event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
-    eid = event['id']
+    eid = event.get('wl_id', event['id'])
     ranks = []
 
     match qtype:
@@ -891,6 +972,8 @@ pjsk_skl.check_cdrate(cd).check_wblist(gbl)
 @pjsk_skl.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
     full = False
     if any(x in args for x in ["full", "all", "全部"]):
         full = True
@@ -907,7 +990,7 @@ async def _(ctx: SekaiHandlerContext):
     else:
         event = None
     return await ctx.asend_msg(await get_image_cq(
-        await compose_skl_image(ctx, event, full),
+        await compose_skl_image(ctx, wl_event or event, full),
         low_quality=True,
     ))
 
@@ -920,8 +1003,11 @@ pjsk_sks = SekaiCmdHandler([
 pjsk_sks.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sks.handle()
 async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
     return await ctx.asend_msg(await get_image_cq(
-        await compose_skl_speed_image(ctx),
+        await compose_skl_speed_image(ctx, event=wl_event),
         low_quality=True,
     ))
 
@@ -935,9 +1021,11 @@ pjsk_sk.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sk.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
     qtype, qval = get_sk_query_params(ctx, args)
     return await ctx.asend_msg(await get_image_cq(
-        await compose_sk_image(ctx, qtype, qval),
+        await compose_sk_image(ctx, qtype, qval, event=wl_event),
         low_quality=True,
     ))
     
@@ -950,10 +1038,12 @@ pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
     qtype, qval = get_sk_query_params(ctx, args)
     assert_and_reply(qtype != 'ranks', "查房不支持查询多个排名")
     return await ctx.asend_msg(await get_image_cq(
-        await compose_cf_image(ctx, qtype, qval),
+        await compose_cf_image(ctx, qtype, qval, event=wl_event),
         low_quality=True,
     ))
 
@@ -966,10 +1056,12 @@ pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
     qtype, qval = get_sk_query_params(ctx, args)
     assert_and_reply(qtype != 'ranks', "追踪不支持查询多个排名")
     return await ctx.asend_msg(await get_image_cq(
-        await compose_trace_image(ctx, qtype, qval),
+        await compose_trace_image(ctx, qtype, qval, event=wl_event),
         low_quality=True,
     ))
 
@@ -1018,22 +1110,29 @@ async def update_ranking():
         ctx = SekaiHandlerContext.from_region(region)
         ranking_update_times[region] += 1
         if data:
-            # 插入数据
+            # 普通活动
             try:
+                # 插入数据库
                 rankings = parse_rankings(ctx, eid, data, True)
                 await insert_rankings(region, eid, rankings)
 
-                last_eid, last_rankings = latest_rankings_cache.get(region, (None, []))
-                latest_rankings_cache[region] = (eid, rankings)
+                # 更新缓存
+                if region not in latest_rankings_cache:
+                    latest_rankings_cache[region] = {}
+                last_rankings = latest_rankings_cache[region].get(eid, [])
+                latest_rankings_cache[region][eid] = rankings
+
                 # 插回本次没有更新的榜线
-                if last_eid == eid:
-                    for item in last_rankings:
-                        if not find_by_func(rankings, lambda x: x.rank == item.rank):
-                            rankings.append(item)
+                for item in last_rankings:
+                    if not find_by_func(rankings, lambda x: x.rank == item.rank):
+                        rankings.append(item)
                 rankings.sort(key=lambda x: x.rank)
 
             except Exception as e:
                 logger.print_exc(f"插入 {region} 榜线数据失败: {get_exc_desc(e)}")
+
+            # WL
+            # TODO
         
         else:
             ranking_update_failures[region] += 1

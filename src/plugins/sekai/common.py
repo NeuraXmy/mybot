@@ -97,7 +97,7 @@ CARD_SKILL_NAMES = [
 
 UNKNOWN_IMG = Image.open(f"{SEKAI_ASSET_DIR}/static_images/unknown.png")
 
-CHARACTER_NICKNAME_DATA = json.load(open(f"{SEKAI_DATA_DIR}/character_nicknames.json", 'r'))
+CHARACTER_NICKNAME_DATA: List[Dict[str, Any]] = json.load(open(f"{SEKAI_DATA_DIR}/character_nicknames.json", 'r'))
 
 
 # ======================= 通用功能 ======================= #

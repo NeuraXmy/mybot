@@ -90,7 +90,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
         assert url, f"暂不支持 {ctx.region} 的mysekai数据查询"
 
         # 获取模式
-        mode = mode or get_user_data_mode(ctx, uid)
+        mode = mode or get_user_data_mode(ctx, qid)
 
         # 尝试下载
         try:
