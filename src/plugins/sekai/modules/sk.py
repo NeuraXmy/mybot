@@ -68,6 +68,19 @@ async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[i
     cid = chapter['characterId']
     return cid
 
+# 获取event_id对应的所有wl_event，如果不是wl则返回空列表
+async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
+    event = await ctx.md.events.find_by_id(event_id)
+    chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
+    if not chapters:
+        return []
+    wl_events = []
+    for chapter in chapters:
+        wl_event = event.copy()
+        wl_event['wl_id'] = chapter['chapterNo'] * 1000 + event['id']
+        wl_events.append(wl_event)
+    return wl_events
+
 # 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
 async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
     args = args.lower()
@@ -353,31 +366,19 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     return await run_in_pool(canvas.get_img)
 
 # 从榜线数据解析Rankings
-def parse_rankings(ctx: SekaiHandlerContext, event_id: int, data: dict, ignore_no_update: bool) -> List[Ranking]:
-    now = datetime.now()
-
+async def parse_rankings(ctx: SekaiHandlerContext, event_id: int, data: dict, ignore_no_update: bool) -> List[Ranking]:
     # 普通活动
     if event_id < 1000:
-        top100 = [Ranking(
-            uid=item['userId'],
-            name=item['name'],
-            score=item['score'],
-            rank=item['rank'],
-            time=now,
-        ) for item in data['top100']['rankings']]
-
-        border = [Ranking(
-            uid=item['userId'],
-            name=item['name'],
-            score=item['score'],
-            rank=item['rank'],
-            time=now,
-        ) for item in data['border']['borderRankings'] if item['rank'] != 100]
+        top100 = [Ranking.from_sk(item) for item in data['top100']['rankings']]
+        border = [Ranking.from_sk(item) for item in data['border']['borderRankings'] if item['rank'] != 100]
     
     # WL活动
     else:
-        # TODO
-        top100, border = [], []
+        cid = await get_wl_chapter_cid(ctx, event_id)
+        top100_rankings = find_by(data['top100'].get('userWorldBloomChapterRankings', []), 'gameCharacterId', cid, mode='all')
+        top100 = [Ranking.from_sk(item) for item in top100_rankings['rankings']]
+        border_rankings = find_by(data['border'].get('userWorldBloomChapterRankingBorders', []), 'gameCharacterId', cid, mode='all')
+        border = [Ranking.from_sk(item) for item in border_rankings['rankings'] if item['rank'] != 100]
 
     if ignore_no_update:
         # 过滤掉没有更新的border榜线
@@ -406,7 +407,7 @@ async def get_latest_ranking(ctx: SekaiHandlerContext, event_id: int, query_rank
         return rankings
     # 从API获取
     assert_and_reply(get_profile_config(ctx).ranking_api_url, f"暂不支持获取{ctx.region}榜线数据")
-    url = get_profile_config(ctx).ranking_api_url.format(event_id=event_id)
+    url = get_profile_config(ctx).ranking_api_url.format(event_id=event_id % 1000)
     async with aiohttp.ClientSession() as session:
         async with session.get(url, verify_ssl=False) as resp:
             if resp.status != 200:
@@ -414,7 +415,7 @@ async def get_latest_ranking(ctx: SekaiHandlerContext, event_id: int, query_rank
             data = await resp.json()
     assert_and_reply(data, "获取榜线数据失败")
     logger.info(f"从API获取 {ctx.region}_{event_id} 最新榜线数据")
-    return [r for r in parse_rankings(ctx, event_id, data, False) if r.rank in query_ranks]
+    return [r for r in await parse_rankings(ctx, event_id, data, False) if r.rank in query_ranks]
 
 # 获取榜线分数字符串
 def get_board_score_str(score: int, width: int = None) -> str:
@@ -1110,31 +1111,39 @@ async def update_ranking():
         ctx = SekaiHandlerContext.from_region(region)
         ranking_update_times[region] += 1
         if data:
-            # 普通活动
-            try:
-                # 插入数据库
-                rankings = parse_rankings(ctx, eid, data, True)
-                await insert_rankings(region, eid, rankings)
+            # 更新总榜或WL单榜
+            async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict):
+                try:
+                    # 插入数据库
+                    rankings = await parse_rankings(ctx, eid, data, True)
+                    await insert_rankings(region, eid, rankings)
 
-                # 更新缓存
-                if region not in latest_rankings_cache:
-                    latest_rankings_cache[region] = {}
-                last_rankings = latest_rankings_cache[region].get(eid, [])
-                latest_rankings_cache[region][eid] = rankings
+                    # 更新缓存
+                    if region not in latest_rankings_cache:
+                        latest_rankings_cache[region] = {}
+                    last_rankings = latest_rankings_cache[region].get(eid, [])
+                    latest_rankings_cache[region][eid] = rankings
 
-                # 插回本次没有更新的榜线
-                for item in last_rankings:
-                    if not find_by_func(rankings, lambda x: x.rank == item.rank):
-                        rankings.append(item)
-                rankings.sort(key=lambda x: x.rank)
+                    # 插回本次没有更新的榜线
+                    for item in last_rankings:
+                        if not find_by_func(rankings, lambda x: x.rank == item.rank):
+                            rankings.append(item)
+                    rankings.sort(key=lambda x: x.rank)
+                    return True
 
-            except Exception as e:
-                logger.print_exc(f"插入 {region} 榜线数据失败: {get_exc_desc(e)}")
+                except Exception as e:
+                    logger.print_exc(f"插入 {region}_{eid} 榜线数据失败: {get_exc_desc(e)}")
+                    return False
 
-            # WL
-            # TODO
+            ok = True
+            # 总榜
+            ok = ok and await update_board(ctx, eid, data)
+            # WL单榜
+            wl_events = await get_wl_events(ctx, eid)
+            for wl_event in wl_events:
+                ok = ok and await update_board(ctx, wl_event['wl_id'], data)
         
-        else:
+        if not ok:
             ranking_update_failures[region] += 1
 
         # log

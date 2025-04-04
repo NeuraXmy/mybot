@@ -57,6 +57,16 @@ class Ranking:
             rank=row[4],
             time=datetime.fromtimestamp(row[5])
         )
+    
+    @classmethod
+    def from_sk(cls, data: dict, time: datetime = None):
+        return cls(
+            uid=data["userId"],
+            name=data["name"],
+            score=data["score"],
+            rank=data["rank"],
+            time=time or datetime.now(),
+        )
 
 
 async def insert_rankings(region: str, event_id: int, rankings: List[Ranking]):
