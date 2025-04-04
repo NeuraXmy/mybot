@@ -373,9 +373,11 @@ Project Sekai（世界计划）游戏多服务器相关服务
 ### 查询FC/AP进度
 `/pjsk进度` `/pjsk progress`
 > 查询自己的CLEAR/FC/AP进度，需要📡抓包数据  
+默认查询`MASTER`难度的进度  
 支持服务器: `所有`  
 
 - `/pjsk进度`
+- `/pjsk进度 apd` 查询`APPEND`难度的进度
 
 ---
 
