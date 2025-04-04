@@ -142,8 +142,6 @@ def validate_uid(ctx: SekaiHandlerContext, uid: str) -> bool:
     uid = str(uid)
     if not (10 <= len(uid) <= 20) or not uid.isdigit():
         return False
-    if ctx.region == 'cn':
-        return uid.startswith('7')
     return True
 
 # 获取profile相关配置
@@ -161,11 +159,11 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
     if check_bind and not bind_list.get(qid, None):
         assert_and_reply(get_profile_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         region = "" if ctx.region == "jp" else ctx.region
-        raise Exception(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
+        raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
     return bind_list.get(qid, None)
 
 # 根据游戏id获取玩家基本信息
-async def get_basic_profile(ctx: SekaiHandlerContext, uid: int) -> dict:
+async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True) -> dict:
     cache_path = f"{SEKAI_PROFILE_DIR}/profile_cache/{ctx.region}/{uid}.json"
     try:
         url = get_profile_config(ctx).profile_api_url
@@ -177,8 +175,8 @@ async def get_basic_profile(ctx: SekaiHandlerContext, uid: int) -> dict:
             json.dump(profile, f, ensure_ascii=False, indent=4)
         return profile
     except Exception as e:
-        logger.print_exc(f"获取{uid}基本信息失败，使用缓存数据")
-        if os.path.exists(cache_path):
+        if use_cache and os.path.exists(cache_path):
+            logger.print_exc(f"获取{uid}基本信息失败，使用缓存数据")
             with open(cache_path, "r", encoding="utf-8") as f:
                 profile = json.load(f)
             return profile
@@ -446,25 +444,56 @@ async def _(ctx: SekaiHandlerContext):
     args = args.lower().removeprefix("id").strip()
     # 查询
     if not args:
-        uid = get_uid_from_qid(ctx, ctx.user_id, check_bind=False)
-        if not uid:
-            return await ctx.asend_reply_msg("在指令后加上游戏ID进行绑定")
-        return await ctx.asend_reply_msg(f"已绑定游戏ID: {uid}")
+        uids: List[str] = []
+        for region in ALL_SERVER_REGIONS:
+            region_ctx = SekaiHandlerContext.from_region(region)
+            uid = get_uid_from_qid(region_ctx, ctx.user_id, check_bind=False)
+            if uid:
+                uids.append(f"[{region.upper()}] {uid}")
+        if not uids:
+            return await ctx.asend_reply_msg("你还没有绑定过游戏ID，请使用\"/绑定 游戏ID\"进行绑定")
+        return await ctx.asend_reply_msg(f"已经绑定的游戏ID:\n" + "\n".join(uids))
     
-    assert_and_reply(validate_uid(ctx, args), "ID格式错误，请检查是否漏数字或绑错服务器")
+    # 检查格式
+    assert_and_reply(validate_uid(ctx, args), "ID格式错误")
+    
+    # 检查有效的服务器
+    checked_regions = []
+    for region in ALL_SERVER_REGIONS:
+        try:
+            region_ctx = SekaiHandlerContext.from_region(region)
+            if not get_profile_config(region_ctx).profile_api_url:
+                continue
+            checked_regions.append(get_region_name(region))
 
-    # 验证游戏ID
-    profile = await get_basic_profile(ctx, args)
-    user_name = profile['user']['name']
+            profile = await get_basic_profile(region_ctx, args, use_cache=False)
+            user_name = profile['user']['name']
 
-    # 绑定
-    bind_list = profile_db.get("bind_list", {})
-    if ctx.region not in bind_list:
-        bind_list[ctx.region] = {}
-    bind_list[ctx.region][str(ctx.user_id)] = args
-    profile_db.set("bind_list", bind_list)
+            bind_list: Dict[str, Dict[str, setattr]] = profile_db.get("bind_list", {})
 
-    return await ctx.asend_reply_msg(f"绑定成功: {user_name}")
+            msg = f"{get_region_name(region)}ID绑定成功: {user_name}"
+
+            # 如果第一次绑定，设置默认服务器
+            other_bind = None
+            for r in ALL_SERVER_REGIONS:
+                if r == region: continue
+                other_bind = other_bind or bind_list.get(r, {}).get(str(ctx.user_id), None)
+            default_region = get_user_default_region(ctx.user_id, None)
+            if not other_bind and not default_region:
+                msg += f"\n已设置你的默认查询区服为{region}，如需修改可使用\"/pjsk服务器 区服\""
+                set_user_default_region(ctx.user_id, region)
+
+            # 进行绑定
+            if region not in bind_list:
+                bind_list[region] = {}
+            bind_list[region][str(ctx.user_id)] = args
+            profile_db.set("bind_list", bind_list)
+            
+            return await ctx.asend_reply_msg(msg)
+        except:
+            continue
+    
+    raise ReplyException(f"在{'/'.join(checked_regions)}都找不到该玩家，请检查ID是否正确")
 
 
 # 隐藏详细信息

@@ -9,6 +9,24 @@ from .asset import (
 HELP_DOC_PATH = "helps/sekai.md"
 
 
+def get_user_default_region(user_id: int, fallback: str) -> str:
+    """
+    获取用户不填指令区服时的默认区服
+    """
+    user_id = int(user_id)
+    default_regions = file_db.get("default_region", {})
+    return default_regions.get(user_id, fallback)
+
+def set_user_default_region(user_id: int, region: str):
+    """
+    设置用户不填指令区服时的默认区服
+    """
+    user_id = int(user_id)
+    default_regions = file_db.get("default_region", {})
+    default_regions[user_id] = region
+    file_db.set("default_region", default_regions)
+
+
 @dataclass
 class SekaiHandlerContext(HandlerContext):
     region: str = None
@@ -53,13 +71,23 @@ class SekaiCmdHandler(CmdHandler):
 
     async def additional_context_process(self, context: HandlerContext):
         # 处理指令区服前缀
-        cmd_region = self.available_regions[0]
+        cmd_region = None
         original_trigger_cmd = context.trigger_cmd
         for region in ALL_SERVER_REGIONS:
             if context.trigger_cmd.strip().startswith(f"/{region}"):
                 cmd_region = region
                 context.trigger_cmd = context.trigger_cmd.replace(f"/{region}", "/")
                 break
+
+        user_default_region = get_user_default_region(context.user_id, None)
+        cmd_default_region = self.available_regions[0]
+
+        # 如果没有指定区服，并且用户有默认区服，并且用户默认区服在可用区服列表中，则使用用户的默认区服
+        if not cmd_region and user_default_region and user_default_region in self.available_regions:
+            cmd_region = user_default_region
+        # 如果没有指定区服，并且用户没有默认区服，则使用指令的默认区服
+        elif not cmd_region:
+            cmd_region = cmd_default_region
 
         assert_and_reply(
             cmd_region in self.available_regions, 
@@ -106,5 +134,44 @@ class SekaiCmdHandler(CmdHandler):
         except Exception as e:
             logger.error(f"获取 {self.commands[0]} 的帮助文档失败")
             return None
+
+
+
+# 设置默认指令区服
+default_region = CmdHandler([
+    "/pjsk默认服务器", "/pjsk default region", "/pjsk默认区服",
+    "/pjsk服务器", "/pjsk区服",
+], logger)
+default_region.check_cdrate(cd).check_wblist(gbl)
+@default_region.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+
+    SET_HELP = f"""
+---
+使用\"{ctx.trigger_cmd} 区服\"设置默认区服，可用的区服有: {', '.join(ALL_SERVER_REGIONS)}
+""".strip()
+
+    if not args:
+        region = get_user_default_region(ctx.user_id, None)
+        if not region:
+            return await ctx.asend_reply_msg(f"""
+你还没有设置默认区服。
+不加区服前缀发送指令时，会自动选用指令的默认区服(大部分为jp)
+{SET_HELP}
+""".strip())
+        
+        else:
+            return await ctx.asend_reply_msg(f"""
+你的默认区服是: {region}
+{SET_HELP}
+""".strip())
+        
+    assert_and_reply(args in ALL_SERVER_REGIONS, SET_HELP)
+    set_user_default_region(ctx.user_id, args)
+
+    return await ctx.asend_reply_msg(f"""
+已设置你的默认区服为: {args}
+""".strip())
 
 
