@@ -160,6 +160,7 @@ def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: fl
     alpha_threshold = int(alpha_threshold * 255)
     def color_distance(c1, c2):
         return sum((a - b) ** 2 for a, b in zip(c1, c2))
+    img = img.convert("RGBA")
     original_img = img
     retry_num = 0
     while True:    
