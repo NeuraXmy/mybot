@@ -26,6 +26,7 @@ class MusicSearchOptions:
     use_nidx: bool = True
     use_title: bool = True
     use_alias: bool = True
+    use_distance: bool = True
     use_emb: bool = True
     use_event_id: bool = True
     use_ban_event: bool = True
@@ -33,6 +34,7 @@ class MusicSearchOptions:
     search_num: int = None
     diff: str = None
     raise_when_err: bool = True
+    distance_threshold: float = 0.25
 
 @dataclass
 class MusicSearchResult:
@@ -171,15 +173,20 @@ async def query_music_by_emb(ctx: SekaiHandlerContext, text: str, limit: int=5):
     return result_musics, scores
 
 # 根据别名查询曲目
-async def query_music_by_alias(ctx: SekaiHandlerContext, alias: str):
+async def query_music_by_alias(ctx: SekaiHandlerContext, query: str, clean_fn=None) -> Optional[Dict]:
     # 先尝试查询的区服，再尝试其他区服
+    if clean_fn:
+        query = clean_fn(query)
     try_regions = [ctx.region] + [r for r in ALL_SERVER_REGIONS if r != ctx.region]
     for region in try_regions:
         music_alias = music_alias_db.get(f"{region}_alias", {})
         for mid, aliases in music_alias.items():
-            if alias in aliases:
-                music = await ctx.md.musics.find_by_id(int(mid))
-                return music
+            for alias in aliases:
+                if clean_fn: 
+                    alias = clean_fn(alias)
+                if alias == query:
+                    music = await ctx.md.musics.find_by_id(int(mid))
+                    return music
     return None
 
 # 获取活动歌曲 不存在返回None
@@ -205,6 +212,13 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     query = query.strip()
     diff = options.diff
     musics = await ctx.md.musics.get()
+
+    def clean_name(s: str) -> str:
+        s = re.sub(r"[^\w]", "", s).lower()
+        import zhconv
+        s = zhconv.convert(s, 'zh-hans')
+        return s
+    clean_q = clean_name(query)
 
     ret_musics = []
     search_type = None
@@ -279,7 +293,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     # 曲名精确匹配
     if not search_type and options.use_title:
         for music in musics:
-            if query.strip().lower() == music['title'].lower():
+            if clean_q == clean_name(music['title']):
                 search_type = "title"
                 if diff and not await check_music_has_diff(ctx, music['id'], diff):
                     err_msg = f"曲名为{query}的曲目没有{diff}难度"
@@ -287,15 +301,43 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
                     ret_musics.append(music)
                 break
 
-    # 别名匹配
+    # 别名精确匹配
     if not search_type and options.use_alias:
-        if music := await query_music_by_alias(ctx, query):
+        if music := await query_music_by_alias(ctx, query, clean_fn=clean_name):
             search_type = "alias"
             if diff and not await check_music_has_diff(ctx, music['id'], diff):
                 err_msg = f"别名为{query}的曲目没有{diff}难度"
             else:
                 ret_musics.append(music)
 
+    # 子串/编辑距离匹配
+    if not search_type and options.use_distance:
+        # 搜集每个歌曲的所有名称/翻译名/别名
+        music_scores = []
+        for music in musics:
+            names = set()
+            names.add(music['title'])
+            names.add(music['pronunciation'])
+            for region in ALL_SERVER_REGIONS:
+                names.update(music_alias_db.get(f"{region}_alias", {}).get(str(mid), []))
+            min_dist = 1e9
+            for name in names:
+                name = clean_name(name)
+                # 首先判断是否为子串
+                if clean_q in name:
+                    dist = -len(clean_q) / len(name) if len(name) else 0 # 目标串越短越好
+                else:
+                    dist = levenshtein_distance(clean_q, name) / max(len(clean_q), len(name))
+                min_dist = min(min_dist, dist)
+            music_scores.append((music, min_dist))
+        music_scores.sort(key=lambda x: x[1])
+        results = [m[0] for m in music_scores if m[1] <= options.distance_threshold]
+        if diff:
+            results = [m for m in results if await check_music_has_diff(ctx, m['id'], diff)]
+        if results:
+            search_type = "distance"
+            ret_musics.extend(results[:options.max_num])
+        
     # 语义匹配
     if not search_type and options.use_emb:
         search_type = "emb"
