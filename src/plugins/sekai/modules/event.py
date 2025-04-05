@@ -105,7 +105,7 @@ async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]
 
 # 获取活动列表
 async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFilter) -> Image.Image:
-    events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'], reverse=True)    
+    events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'])    
     banner_imgs = await batch_gather(*[get_event_banner_img(ctx, event) for event in events])
 
     event_cards = await ctx.md.event_cards.get()
@@ -123,7 +123,9 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
     style1 = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(50, 50, 50))
     style2 = TextStyle(font=DEFAULT_FONT, size=10, color=(70, 70, 70))
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
-        with Grid(col_count=5).set_sep(4, 4).set_item_align('lt').set_content_align('lt'):
+        TextBox("活动按时间顺序从左到右从上到下排列，黄色为当期活动", TextStyle(font=DEFAULT_FONT, size=10, color=(0, 0, 100))) \
+            .set_offset((0, 4 - BG_PADDING))
+        with Grid(row_count=8, vertical=True).set_sep(8, 4).set_item_align('lt').set_content_align('lt'):
             for event, banner_img in zip(events, banner_imgs):
                 eid = event['id']
                 cards = event_cards.get(eid, [])[:6]

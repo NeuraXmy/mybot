@@ -274,7 +274,8 @@ async def _(ctx: HandlerContext):
                 logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
                 # 不支持的回复类型
                 if any([t in reply_cqs for t in ["json", "video"]]):
-                    return await ctx.asend_reply_msg("不支持的消息类型")
+                    # return await ctx.asend_reply_msg("不支持的消息类型")
+                    return
                 session = ChatSession(system_prompt)
                 # 回复折叠内容
                 if "forward" in reply_cqs:
@@ -290,8 +291,14 @@ async def _(ctx: HandlerContext):
                 # 回复普通内容
                 elif len(reply_imgs) > 0 or reply_text.strip() != "":
                     reply_imgs = [await download_image_to_b64(img) for img in reply_imgs]
+                    # 自身
                     if str(reply_uid) == str(bot.self_id):
-                        session.append_bot_content(reply_text)
+                        if reply_imgs:
+                            # 因为部分模型不支持模型自身消息记录为图片，所以改为用户消息
+                            session.append_user_content(reply_text, reply_imgs)
+                        else:
+                            session.append_bot_content(reply_text)
+                    # 其他人
                     else:
                         session.append_user_content(reply_text, reply_imgs)
         else:
@@ -300,6 +307,10 @@ async def _(ctx: HandlerContext):
         # 推入询问内容
         query_imgs = [await download_image_to_b64(img) for img in query_imgs]
         session.append_user_content(query_text, query_imgs)
+
+        # 检查是否为空
+        if len(session) == 0:
+            return
 
         # 如果未指定模型，根据配置和消息类型获取模型
         if not model_name:

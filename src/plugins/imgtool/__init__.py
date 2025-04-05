@@ -1152,7 +1152,6 @@ class CutoutOperation(ImageOperation):
         img = rembg.remove(img)
         return img
 
-
 # 注册所有图片操作
 def register_all_ops():
     for name, obj in globals().items():

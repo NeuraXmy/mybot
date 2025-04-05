@@ -5,8 +5,8 @@ import json
 import shutil
 import random
 import numpy as np
-from .api_providers import api_provider_mgr
 from .api_provider import ApiProvider, LlmModel
+from .api_provider_manager import api_provider_mgr
 
 config = get_config('llm')
 logger = get_logger("Llm")
@@ -67,6 +67,9 @@ class ChatSession:
 
     # 添加一条消息
     def append_content(self, role, text, imgs=None, verbose=True):
+        if not text and not imgs:
+            logger.warning(f"会话{self.id}跳过添加空消息")
+            return
         if imgs is None: 
             imgs = []
         if len(imgs) > 0:
@@ -85,7 +88,10 @@ class ChatSession:
         })
         if verbose:
             log_text = f"会话{self.id}添加{role}_content: "
-            log_text += text.replace('\n', '\\n') + f" + {len(imgs)}img(s), 目前会话长度:{len(self)}"
+            log_text += "\"" + text.replace('\n', '\\n') + f"\""
+            if imgs: 
+                log_text += f" + {len(imgs)}img(s)"
+            log_text += f", 目前会话长度:{len(self)}"
             logger.info(log_text)
         self.update_time = datetime.now()
 
@@ -223,27 +229,25 @@ class ChatSession:
 
 # -------------------------------- TextEmbedding相关 -------------------------------- #
 
-# 获取文本嵌入
-async def get_text_embedding(text: str):
-    logger.info(f"获取文本嵌入: {text}")
+TEXT_EMBEDDING_MODEL = config['text_embedding_model']
 
-    model_meta = config['text_embedding_model']
-    provider = api_provider_mgr.get_provider(model_meta['provider'])
-    # provider.check_qps_limit()
+# 获取文本嵌入 TODO 修改能够批量获取
+async def get_text_embedding(texts: List[str]) -> List[List[float]]:
+    logger.info(f"获取文本嵌入: {texts}")
 
-    text = text.replace("\n", " ")
+    provider = api_provider_mgr.get_provider(TEXT_EMBEDDING_MODEL['provider'])
 
     response = await provider.get_client().embeddings.create(
-        input = [text], 
-        model=model_meta['id'],
+        input=texts, 
+        model=TEXT_EMBEDDING_MODEL['id'],
         encoding_format='float',
     )
-    embedding = response.data[0].embedding
+    embeddings = [d.embedding for d in response.data]
     tokens = response.usage.prompt_tokens
-    cost = model_meta['input_pricing'] * tokens
+    cost = TEXT_EMBEDDING_MODEL['input_pricing'] * tokens
 
     await provider.aupdate_quota(-cost)
-    return embedding
+    return embeddings
 
 # 文本检索工具
 class TextRetriever:
@@ -251,67 +255,140 @@ class TextRetriever:
         self.name = name
         self.embedding_path = os.path.join(f"data/llm/embeddings/{name}.npz")
         self.keys = []
+        self.key_set = set()
         self.embeddings = None
-        self.load()
+        self.loaded = False
+        self.lock = asyncio.Lock()
 
-    def save(self):
-        os.makedirs(os.path.dirname(self.embedding_path), exist_ok=True)
-        np.savez(self.embedding_path, embeddings=self.embeddings, keys=self.keys)
-        logger.info(f"保存 {self.name} 的 {len(self.keys)} 条文本嵌入")
+    async def save(self):
+        assert self.loaded, f"{self.name} 的文本嵌入未加载"
+        def _save():
+            os.makedirs(os.path.dirname(self.embedding_path), exist_ok=True)
+            np.savez(self.embedding_path, embeddings=self.embeddings, keys=self.keys)
+            logger.info(f"保存 {self.name} 的 {len(self.keys)} 条文本嵌入")
+        return await run_in_pool(_save)
 
-    def load(self):
-        try:
-            data = np.load(self.embedding_path)
-            self.embeddings = data['embeddings']
-            self.keys = data['keys'].tolist()
-            logger.info(f"加载检索库 {self.name} 的 {len(self.keys)} 条文本嵌入")
-        except:
-            logger.warning(f"加载检索库 {self.name} 的文本嵌入失败, 使用空检索库")
+    async def load(self):
+        def _load():
+            try:
+                data = np.load(self.embedding_path)
+                self.embeddings = data['embeddings']
+                self.keys = data['keys'].tolist()
+                self.key_set = set(self.keys)
+                logger.info(f"加载检索库 {self.name} 的 {len(self.keys)} 条文本嵌入")
+            except:
+                logger.warning(f"加载检索库 {self.name} 的文本嵌入失败, 使用空检索库")
+                self.embeddings = None
+                self.keys = []
+                self.key_set = set()
+            self.loaded = True
+        return await run_in_pool(_load)
+
+    async def check_to_load(self):
+        if not self.loaded:
+            return await self.load()
+        
+    async def update_embs(self, keys: List[str], texts: List[str], skip_exist=False):
+        assert len(keys) == len(texts), "keys 和 texts 的长度不一致"
+        async with self.lock:
+            await self.check_to_load()
+            if skip_exist:
+                not_exist_indices = [i for i, k in enumerate(keys) if k not in self.key_set]
+                if len(not_exist_indices) == 0:
+                    return
+                keys = [keys[i] for i in not_exist_indices]
+                texts = [texts[i] for i in not_exist_indices]
+                embs = await get_text_embedding(texts)
+                if self.embeddings is None:
+                    self.embeddings = embs
+                else:
+                    self.embeddings = np.concatenate([self.embeddings, embs])
+                self.keys.extend(keys)
+                self.key_set.update(keys)
+                logger.info(f"添加 {len(keys)} 条文本嵌入到 {self.name}: {keys}")
+            else:
+                embs = await get_text_embedding(texts)
+                not_exist_indices = [i for i, k in enumerate(keys) if k not in self.key_set]
+                exist_indices = [i for i, k in enumerate(keys) if k in self.key_set]
+                exist_target_indices = [self.keys.index(keys[i]) for i in exist_indices]
+
+                not_exist_keys = [keys[i] for i in not_exist_indices]
+                not_exist_embs = embs[not_exist_indices]
+
+                exist_keys = [keys[i] for i in exist_indices]
+                exist_embs = embs[exist_indices]
+
+                self.embeddings[exist_target_indices] = exist_embs
+                logger.info(f"更新 {self.name} 中的 {len(exist_keys)} 条文本嵌入: {exist_keys}")
+
+                if self.embeddings is None:
+                    self.embeddings = not_exist_embs
+                else:
+                    self.embeddings = np.concatenate([self.embeddings, not_exist_embs])
+                self.keys.extend(not_exist_keys)
+                self.key_set.update(not_exist_keys)
+                logger.info(f"添加 {len(not_exist_keys)} 条文本嵌入到 {self.name}: {not_exist_keys}")
+
+            await self.save()
+
+    async def batch_update_embs(self, keys: List[str], texts: List[str], skip_exist=False, batch_size=32):
+        assert len(keys) == len(texts), "keys 和 texts 的长度不一致"
+        async with self.lock:
+            await self.check_to_load()
+        if skip_exist:
+            not_exist_indices = [i for i, k in enumerate(keys) if k not in self.key_set]
+            keys = [keys[i] for i in not_exist_indices]
+            texts = [texts[i] for i in not_exist_indices]
+        if len(keys) == 0:
+            return
+        for i in range(0, len(keys), batch_size):
+            batch_keys = keys[i:i+batch_size]
+            batch_texts = texts[i:i+batch_size]
+            await self.update_embs(batch_keys, batch_texts, skip_exist=skip_exist)
+            logger.info(f"批量更新 {self.name} 中的文本嵌入: 完成 {min(i+batch_size, len(keys))}/{len(keys)}")
+
+    async def del_embs(self, keys: List[str]):
+        async with self.lock:
+            await self.check_to_load()
+            not_exist_keys = [k for k in keys if k not in self.key_set]
+            if len(not_exist_keys):
+                logger.warning(f"尝试删除 {self.name} 中不存在的文本嵌入: {not_exist_keys}")
+                keys = [k for k in keys if k in self.key_set]
+            if len(keys) == 0:
+                logger.warning(f"没有要删除的文本嵌入")
+                return
+            if len(keys) == len(self.keys):
+                self.embeddings = None
+                self.keys = []
+                self.key_set = set()
+            else:
+                target_indices = [self.keys.index(k) for k in keys]
+                self.embeddings = np.delete(self.embeddings, target_indices, axis=0)
+                self.keys = [k for k in self.keys if k not in keys]
+                self.key_set = set(self.keys)
+            logger.info(f"从 {self.name} 中移除文本嵌入: {keys}")
+            await self.save()
+
+    async def clear(self):
+        async with self.lock:
+            await self.check_to_load()
             self.embeddings = None
             self.keys = []
-
-    async def set_emb(self, key, text, skip_exist=False):
-        key = str(key)
-        if skip_exist and self.exists(key):
-            return
-        emb = await get_text_embedding(text)
-        if not self.exists(key):
-            if self.embeddings is None:
-                self.embeddings = np.array([emb])
-            else:
-                self.embeddings = np.concatenate([self.embeddings, np.array([emb])])
-            self.keys.append(key)
-            logger.info(f"添加文本嵌入 \"{key}\" : \"{text}\" 到 {self.name} 中")
-        else:
-            self.embeddings[self.keys.index(key)] = emb
-            logger.info(f"更新文本嵌入 \"{key}\" : \"{text}\" 到 {self.name} 中")
-        self.save()
-
-    def del_emb(self, key):
-        key = str(key)
-        index = self.keys.index(key)
-        if index < 0:
-            logger.warning(f"文本嵌入 \"{key}\" 不存在于 {self.name} 中")
-            return
-        self.embeddings = np.delete(self.embeddings, index)
-        self.keys.remove(key)
-        logger.info(f"从 {self.name} 中移除文本嵌入 \"{key}\"")
-        self.save()
-
-    def clear(self):
-        self.embeddings = None
-        self.keys = []
-        logger.info(f"清空检索库 {self.name}")
-        self.save()
+            logger.info(f"清空检索库 {self.name}")
+            await self.save()
 
     def __len__(self):
+        assert self.loaded, f"{self.name} 的文本嵌入未加载"
         return len(self.keys)
     
-    def exists(self, key):
+    def exists(self, key: str) -> bool:
+        assert self.loaded, f"{self.name} 的文本嵌入未加载"
         key = str(key)
-        return key in self.keys
+        return key in self.key_set
 
-    async def find(self, query, top_k, filter=None):
+    async def find(self, query: str, top_k: int, filter: Any=None) -> List[Tuple[str, float]]:
+        async with self.lock:
+            await self.check_to_load()
         logger.info(f"查找检索库 {self.name} 中与 \"{query}\" 最相似的 {top_k} 条记录")
         if len(self.keys) == 0:
             logger.warning(f"检索库 {self.name} 为空")
@@ -330,6 +407,7 @@ class TextRetriever:
         valid_index, indexes, distances = await run_in_pool(compute)
         logger.info(f"检索库 {self.name} 中找到 {len(indexes)} 条记录")
         return [(self.keys[valid_index[i]], distances[i]) for i in indexes]
+
 
 text_retrievers = {}
 def get_text_retriever(name) -> TextRetriever:

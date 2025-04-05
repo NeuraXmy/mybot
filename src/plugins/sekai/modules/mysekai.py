@@ -237,13 +237,23 @@ async def compose_mysekai_harvest_map_image(ctx: SekaiHandlerContext, harvest_ma
     with open(f"{SEKAI_DATA_DIR}/mysekai_site_map_image_info.json", "r", encoding="utf-8") as f:
         site_image_info = json.load(f)[str(site_id)]
     site_image = ctx.static_imgs.get(site_image_info['image'])
-    scale = 0.8
+    scale = 1.0
     draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)
     mid_x, mid_z = draw_w / 2, draw_h / 2
     grid_size = site_image_info['grid_size'] * scale
     offset_x, offset_z = site_image_info['offset_x'] * scale, site_image_info['offset_z'] * scale
     dir_x, dir_z = site_image_info['dir_x'], site_image_info['dir_z']
     rev_xz = site_image_info['rev_xz']
+
+    crop_bbox = site_image_info.get('crop_bbox', None)
+    if crop_bbox:
+        crop_x, crop_y = crop_bbox[0], crop_bbox[1]
+        crop_x2, crop_y2 = crop_bbox[0] + crop_bbox[2], crop_bbox[1] + crop_bbox[3]
+        site_image = site_image.crop((crop_x, crop_y, crop_x2, crop_y2))
+        draw_w = int(crop_bbox[2] * scale)
+        draw_h = int(crop_bbox[3] * scale)
+        offset_x -= crop_bbox[0] * scale
+        offset_z -= crop_bbox[1] * scale
 
     # 游戏资源位置映射到绘图位置
     def game_pos_to_draw_pos(x, z) -> Tuple[int, int]:
@@ -388,7 +398,7 @@ async def compose_mysekai_harvest_map_image(ctx: SekaiHandlerContext, harvest_ma
 
                 # 小图标和稀有资源添加边框
                 if f"{item['type']}_{item['id']}" in MOST_RARE_MYSEKAI_RES:
-                    outline = ((255, 50, 50, 100), 2)
+                    outline = ((255, 50, 50, 150), 2)
                 elif item['small_icon']:
                     outline = ((50, 50, 255, 100), 1)
 
@@ -575,7 +585,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
 
     # 绘制位置图
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas2:
-        with Grid(col_count=1).set_sep(16, 16).set_padding(0):
+        with Grid(col_count=2, vertical=True).set_sep(16, 16).set_padding(0):
             for img in site_harvest_map_imgs:
                 ImageBox(img)
     
@@ -1077,10 +1087,10 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
             if uid:
                 await get_detailed_profile_card(ctx, profile, pmsg)
 
-            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_bg(roundrect_bg()):
+            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_bg(roundrect_bg()).set_padding(8):
                 for gid, lv_materials in gate_materials.items():
                     gate_icon = ctx.static_imgs.get(f'mysekai/gate_icon/gate_{gid}.png')
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_item_bg(roundrect_bg()):
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_item_bg(roundrect_bg()).set_padding(8):
                         ImageBox(gate_icon, size=(None, 40))
                         lv_color = (50, 50, 50) if not profile else green_color
                         for level, items in enumerate(lv_materials, spec_lv + 1):
@@ -1118,9 +1128,7 @@ async def _(ctx: SekaiHandlerContext):
     show_harvested = 'all' in args
     check_time = not 'force' in args
     imgs = await compose_mysekai_res_image(ctx, ctx.user_id, show_harvested, check_time)
-    imgs[0] = await get_image_cq(imgs[0])
-    for i in range(1, len(imgs)):
-        imgs[i] = await get_image_cq(imgs[i], low_quality=True)
+    imgs = [await get_image_cq(img, low_quality=True) for img in imgs]
     return await ctx.asend_multiple_fold_msg(imgs, show_cmd=True)
 
 

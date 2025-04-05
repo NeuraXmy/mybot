@@ -14,7 +14,7 @@ music_user_sub = SekaiUserSubHelper("music", "新曲@提醒", ALL_SERVER_REGIONS
 apd_group_sub = SekaiGroupSubHelper("apd", "新APD通知", ALL_SERVER_REGIONS)
 apd_user_sub = SekaiUserSubHelper("apd", "新APD@提醒", ALL_SERVER_REGIONS, related_group_sub=apd_group_sub)
 
-music_name_retriever = get_text_retriever(f"music_name_wip") 
+music_name_retriever = get_text_retriever(f"music_name") 
 
 music_cn_titles = WebJsonRes("曲名中文翻译", "https://i18n-json.sekai.best/zh-CN/music_titles.json", update_interval=timedelta(days=1))
 music_en_titles = WebJsonRes("曲名英文翻译", "https://i18n-json.sekai.best/en/music_titles.json", update_interval=timedelta(days=1))
@@ -34,7 +34,7 @@ class MusicSearchOptions:
     search_num: int = None
     diff: str = None
     raise_when_err: bool = True
-    distance_threshold: float = 0.25
+    distance_threshold: float = 0.3
 
 @dataclass
 class MusicSearchResult:
@@ -114,22 +114,26 @@ async def get_music_trans_title(mid: int, lang: str, default: str=None) -> str:
 
 # 更新曲名语义库
 async def update_music_name_embs(ctx: SekaiHandlerContext):
-    await ctx.block_region()
-    region = ctx.region
-    musics = await ctx.md.musics.get()
-    for music in musics:
-        mid = music['id']
-        title = music['title']
-        pron = music['pronunciation']
-        try:
-            await music_name_retriever.set_emb(f"{mid} {region} title", title, skip_exist=True)
-            await music_name_retriever.set_emb(f"{mid} {region} pron",  pron,  skip_exist=True)
+    try:
+        await ctx.block_region()
+        region = ctx.region
+        musics = await ctx.md.musics.get()
+        update_list: List[Tuple[str, str]] = []
+        for music in musics:
+            mid = music['id']
+            title = music['title']
+            pron = music['pronunciation']
+            update_list.append((f"{mid} {region} title", title))
+            update_list.append((f"{mid} {region} pron", pron))
             if cn_title := await get_music_trans_title(mid, 'cn'):
-                await music_name_retriever.set_emb(f"{mid} cn_trans title", cn_title, skip_exist=True)
+                update_list.append((f"{mid} cn_trans title", cn_title))
             if en_title := await get_music_trans_title(mid, 'en'):
-                await music_name_retriever.set_emb(f"{mid} en_trans title", en_title, skip_exist=True)
-        except Exception as e:
-            logger.warning(f"更新歌曲 {mid} 的曲名嵌入失败: {e}")
+                update_list.append((f"{mid} en_trans title", en_title))
+        keys = [item[0] for item in update_list]
+        texts = [item[1] for item in update_list]
+        await music_name_retriever.batch_update_embs(keys, texts, skip_exist=True)
+    except Exception as e:
+        logger.print_exc(f"更新曲名语义库失败")
 
 # 从字符串中获取难度 返回(难度名, 去掉难度后缀的字符串)
 def extract_diff(text: str, default: str="master") -> Tuple[str, str]:
@@ -488,7 +492,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                 if alias_text:
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
                         TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
-                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)), line_count=1).set_w(800)            
+                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)), use_real_line_count=True).set_w(800)            
 
                 with HSplit().set_omit_parent_bg(True).set_item_bg(roundrect_bg()).set_padding(0).set_sep(16):
                     # 歌手

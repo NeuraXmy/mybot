@@ -18,7 +18,7 @@ DEBUG_MODE = False
 ALIGN_MAP = {
     'c': ('c', 'c'), 'l': ('l', 'c'), 'r': ('r', 'c'), 't': ('c', 't'), 'b': ('c', 'b'),
     'tl': ('l', 't'), 'tr': ('r', 't'), 'bl': ('l', 'b'), 'br': ('r', 'b'),
-    'lt': ('l', 't'), 'lb': ('l', 'b'), 'rt': ('r', 't'), 'rb': ('r', 'b')
+    'lt': ('l', 't'), 'lb': ('l', 'b'), 'rt': ('r', 't'), 'rb': ('r', 'b'), 
 }
 
 def crop_by_align(original_size, crop_size, align):
@@ -514,6 +514,12 @@ class Widget:
         if Widget.get_current_widget():
             Widget.get_current_widget().add_item(self)
 
+    def get_content_align(self) -> str:
+        for k, v in ALIGN_MAP.items():
+            if v == (self.content_halign, self.content_valign):
+                return k
+        return None
+
     @classmethod
     def get_current_widget_stack(cls) -> List[Widget]:
         local = cls._thread_local.get()
@@ -952,7 +958,7 @@ class VSplit(Widget):
     
 
 class Grid(Widget):
-    def __init__(self, items: List[Widget]=None, row_count=None, col_count=None, item_size_mode='fixed', item_align='c', hsep=DEFAULT_SEP, vsep=DEFAULT_SEP):
+    def __init__(self, items: List[Widget]=None, row_count=None, col_count=None, item_size_mode='fixed', item_align='c', hsep=DEFAULT_SEP, vsep=DEFAULT_SEP, vertical=False):
         super().__init__()
         self.items = items or []
         for item in self.items:
@@ -968,6 +974,11 @@ class Grid(Widget):
             raise ValueError('Invalid align')
         self.item_halign, self.item_valign = ALIGN_MAP[item_align]
         self.item_bg = None
+        self.vertical = vertical
+
+    def set_vertical(self, vertical: bool):
+        self.vertical = vertical
+        return self
 
     def set_items(self, items: List[Widget]):
         for item in self.items:
@@ -1038,7 +1049,10 @@ class Grid(Widget):
     def _draw_content(self, p: Painter):
         (r, c), (gw, gh) = self._get_grid_rc_and_size()
         for idx, item in enumerate(self.items):
-            i, j = idx // c, idx % c
+            if not self.vertical:
+                i, j = idx // c, idx % c
+            else:
+                i, j = idx % r, idx // r
             x = j * (gw + self.hsep)
             y = i * (gh + self.vsep)
             p.move_region((x, y), (gw, gh))
