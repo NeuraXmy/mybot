@@ -101,6 +101,7 @@ class MasterDataManager:
         self.download_fn = {}
         self._set_index_keys(DEFAULT_INDEX_KEYS)
         self.indices: Dict[str, Dict[str, Dict[str, Any]]] = {}    # indexes[region]['id'][id] = [item1, item2, ...]
+        self.lock = asyncio.Lock()
 
     def _set_index_keys(self, index_keys: Union[str, List[str], Dict[str, List[str]]]):
         if isinstance(index_keys, str):
@@ -195,17 +196,18 @@ class MasterDataManager:
                 logger.print_exc(f"MasterData [{region}.{self.name}] 更新后回调 [{name}] 执行失败")
 
     async def _update_before_get(self, region: str):
-        # 从缓存加载
-        if self.data.get(region) is None:
-            try: 
-                await self._load_from_cache(region)
-            except Exception as e:
-                logger.warning(f"MasterData [{region}.{self.name}] 从本地缓存加载失败: {e}")
-        # 检查是否更新
-        db_mgr = RegionMasterDbManager.get(region)
-        source = await db_mgr.get_latest_source()
-        if get_version_order(self.version.get(region, DEFAULT_MASTER_VERSION)) < get_version_order(source.version):
-            await self._download_from_db(region, source)
+        async with self.lock:
+            # 从缓存加载
+            if self.data.get(region) is None:
+                try: 
+                    await self._load_from_cache(region)
+                except Exception as e:
+                    logger.warning(f"MasterData [{region}.{self.name}] 从本地缓存加载失败: {e}")
+            # 检查是否更新
+            db_mgr = RegionMasterDbManager.get(region)
+            source = await db_mgr.get_latest_source()
+            if get_version_order(self.version.get(region, DEFAULT_MASTER_VERSION)) < get_version_order(source.version):
+                await self._download_from_db(region, source)
 
     async def get_data(self, region: str):
         """

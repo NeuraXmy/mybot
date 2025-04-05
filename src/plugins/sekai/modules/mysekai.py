@@ -237,7 +237,7 @@ async def compose_mysekai_harvest_map_image(ctx: SekaiHandlerContext, harvest_ma
     with open(f"{SEKAI_DATA_DIR}/mysekai_site_map_image_info.json", "r", encoding="utf-8") as f:
         site_image_info = json.load(f)[str(site_id)]
     site_image = ctx.static_imgs.get(site_image_info['image'])
-    scale = 1.0
+    scale = 0.9
     draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)
     mid_x, mid_z = draw_w / 2, draw_h / 2
     grid_size = site_image_info['grid_size'] * scale
@@ -522,10 +522,13 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
         site_res_num[i] = (site_id, sorted(list(res_num.items()), key=get_res_order))
 
     # 绘制资源位置图
+    t = datetime.now()
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(await compose_mysekai_harvest_map_image(ctx, site_harvest_map, show_harvested))
+        site_harvest_map_imgs.append(compose_mysekai_harvest_map_image(ctx, site_harvest_map, show_harvested))
+    site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
+    logger.info(f"合成资源位置图耗时: {datetime.now() - t}")
     
     # 绘制数量图
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
