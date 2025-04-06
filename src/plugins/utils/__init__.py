@@ -515,7 +515,8 @@ def is_group_msg(event):
 
 
 # 转换时间点为可读字符串
-def get_readable_datetime(t: datetime, show_original_time=True):
+def get_readable_datetime(t: datetime, show_original_time=True, use_en_unit=False):
+    day_unit, hour_unit, minute_unit, second_unit = ("天", "小时", "分钟", "秒") if not use_en_unit else ("d", "h", "m", "s")
     now = datetime.now()
     diff = t - now
     text, suffix = "", "后"
@@ -523,13 +524,13 @@ def get_readable_datetime(t: datetime, show_original_time=True):
         suffix = "前"
         diff = -diff
     if diff.total_seconds() < 60:
-        text = f"{int(diff.total_seconds())}秒"
+        text = f"{int(diff.total_seconds())}{second_unit}"
     elif diff.total_seconds() < 60 * 60:
-        text = f"{int(diff.total_seconds() / 60)}分钟"
+        text = f"{int(diff.total_seconds() / 60)}{minute_unit}"
     elif diff.total_seconds() < 60 * 60 * 24:
-        text = f"{int(diff.total_seconds() / 60 / 60)}小时{int(diff.total_seconds() / 60 % 60)}分钟"
+        text = f"{int(diff.total_seconds() / 60 / 60)}{hour_unit}{int(diff.total_seconds() / 60 % 60)}{minute_unit}"
     else:
-        text = f"{diff.days}天"
+        text = f"{diff.days}{day_unit}"
     text += suffix
     if show_original_time:
         text = f"{t.strftime('%Y-%m-%d %H:%M:%S')} ({text})"

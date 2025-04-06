@@ -148,74 +148,98 @@ async def vlive_notify():
         
         ctx = SekaiHandlerContext.from_region(region)
         region_name = get_region_name(region)
-        
+
+        # -------------------- 开始提醒 -------------------- #
+        # 检查开始的提醒
+        start_vlives: List[dict] = []
         for vlive in await ctx.md.vlives.get():
             vid = vlive['id']
-            to_start    = vlive["start"]    - datetime.now()
-            to_end      = vlive["end"]      - datetime.now()
+            if vid in notified_vlives.get('start', {}).get(region, []): 
+                continue    # 跳过已经提醒过的
+            if datetime.now() > vlive["start"]: 
+                continue    # 跳过已经开始的
+            if vlive['start'] - datetime.now() <= VLIVE_START_NOTIFY_BEFORE: 
+                start_vlives.append(vlive) 
+        
+        # 发送开始的提醒
+        if start_vlives:
+            logger.info(f"发送 {region} 的 {len(start_vlives)} 个vlive开始提醒: {[vlive['id'] for vlive in start_vlives]}")
 
-            # 开始的提醒
-            if vid not in notified_vlives.get('start', {}).get(region, []):
-                # 如果直播还没开始，且距离开始时间在提醒时间内
-                if to_start >= timedelta(0) and to_start <= VLIVE_START_NOTIFY_BEFORE:
-                    logger.info(f"vlive开始提醒: {region} {vid} {vlive['name']}")
+            # 生成图片
+            img = await compose_vlive_list_image(
+                ctx, start_vlives, 
+                f"Virtual Live ({region_name}) 开始提醒", 
+                TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20))
+            )
+            msg = await get_image_cq(img)
+            
+            # 发送到订阅的群
+            for group_id in vlive_group_sub.get_all(region):
+                if not gbl.check_id(group_id): continue
+                try:
+                    group_msg = deepcopy(msg)
+                    for uid in vlive_user_sub.get_all(region, group_id):
+                        group_msg += f"[CQ:at,qq={uid}]"
+                    await send_group_msg_by_bot(bot, group_id, group_msg.strip())
+                except:
+                    logger.print_exc(f'发送 {region} 的 {len(start_vlives)} 个vlive开始提醒到群 {group_id} 失败')
+                    continue
+            
+            # 更新notified_vlives['start'][region]
+            if 'start' not in notified_vlives:
+                notified_vlives['start'] = {}
+            if region not in notified_vlives['start']:
+                notified_vlives['start'][region] = []
+            notified_vlives['start'][region].extend([vlive['id'] for vlive in start_vlives])
+            updated = True
 
-                    img = await compose_vlive_list_image(
-                        ctx, [vlive], 
-                        f"Virtual Live ({region_name}) 开始提醒", 
-                        TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20))
-                    )
-                    msg = await get_image_cq(img)
-                    
-                    for group_id in vlive_group_sub.get_all(region):
-                        if not gbl.check_id(group_id): continue
-                        try:
-                            group_msg = deepcopy(msg)
-                            for uid in vlive_user_sub.get_all(region, group_id):
-                                group_msg += f"[CQ:at,qq={uid}]"
-                            await send_group_msg_by_bot(bot, group_id, group_msg.strip())
-                        except:
-                            logger.print_exc(f'发送vlive开始提醒: {region} {vid} 到群 {group_id} 失败')
-                            continue
+        # -------------------- 结束提醒 -------------------- #
+        # 检查结束的提醒
+        end_vlives: List[dict] = []
+        for vlive in await ctx.md.vlives.get():
+            vid = vlive['id']
+            if vid in notified_vlives.get('end', {}).get(region, []): 
+                continue    # 跳过已经通知过的
+            if datetime.now() > vlive["end"]:
+                continue    # 跳过已经结束的
+            if vlive['start'] > datetime.now():
+                continue    # 跳过还没开始的
+            if vlive['end'] - datetime.now() <= VLIVE_END_NOTIFY_BEFORE:
+                end_vlives.append(vlive)
+        
+        # 发送结束的提醒
+        if end_vlives:
+            logger.info(f"发送 {region} 的 {len(end_vlives)} 个vlive结束提醒: {[vlive['id'] for vlive in end_vlives]}")
 
-                    if 'start' not in notified_vlives:
-                        notified_vlives['start'] = {}
-                    if region not in notified_vlives['start']:
-                        notified_vlives['start'][region] = []
-                    notified_vlives['start'][region].append(vid)
-                    updated = True
+            # 生成图片
+            img = await compose_vlive_list_image(
+                ctx, end_vlives, 
+                f"Virtual Live ({region_name}) 结束提醒", 
+                TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20))
+            )
+            msg = await get_image_cq(img)
 
-            # 结束的提醒
-            if vid not in notified_vlives.get('end', {}).get(region, []):
-                # 如果直播还没结束且直播已经开始，且距离结束时间在提醒时间内，
-                if to_end >= timedelta(0) and to_start < timedelta(0) and to_end <= VLIVE_END_NOTIFY_BEFORE:
-                    logger.info(f"vlive结束提醒: {region} {vid} {vlive['name']}")
+            # 发送到订阅的群
+            for group_id in vlive_group_sub.get_all(region):
+                if not gbl.check_id(group_id): continue
+                try:
+                    group_msg = deepcopy(msg)
+                    for uid in vlive_user_sub.get_all(region, group_id):
+                        group_msg += f"[CQ:at,qq={uid}]"
+                    await send_group_msg_by_bot(bot, group_id, group_msg.strip())
+                except:
+                    logger.print_exc(f'发送 {region} 的 {len(end_vlives)} 个vlive结束提醒到群 {group_id} 失败')
+                    continue
 
-                    img = await compose_vlive_list_image(
-                        ctx, [vlive], 
-                        f"Virtual Live ({region_name}) 结束提醒", 
-                        TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(60, 20, 20))
-                    )
-                    msg = await get_image_cq(img)
+            # 更新notified_vlives['end'][region]
+            if 'end' not in notified_vlives:
+                notified_vlives['end'] = {}
+            if region not in notified_vlives['end']:
+                notified_vlives['end'][region] = []
+            notified_vlives['end'][region].extend([vlive['id'] for vlive in end_vlives])
+            updated = True
 
-                    for group_id in vlive_group_sub.get_all(region):
-                        if not gbl.check_id(group_id): continue
-                        try:
-                            group_msg = deepcopy(msg)
-                            for uid in vlive_user_sub.get_all(region, group_id):
-                                group_msg += f"[CQ:at,qq={uid}]"
-                            await send_group_msg_by_bot(bot, group_id, group_msg.strip())
-                        except:
-                            logger.print_exc(f'发送vlive结束提醒: {region} {vid} 到群 {group_id} 失败')
-                            continue
-
-                    if 'end' not in notified_vlives:
-                        notified_vlives['end'] = {}
-                    if region not in notified_vlives['end']:
-                        notified_vlives['end'][region] = []
-                    notified_vlives['end'][region].append(vid)
-                    updated = True
-
+    # 更新file_db
     if updated:
         file_db.set(f"notified_vlives", notified_vlives)
 

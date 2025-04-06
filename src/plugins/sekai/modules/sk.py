@@ -51,8 +51,6 @@ ALL_RANKS = [
 # latest_rankings[region][event_id] = rankings
 latest_rankings_cache: Dict[str, Dict[int, List[Ranking]]] = {}
 
-SKS_BEFORE = timedelta(hours=1)
-
 @dataclass
 class PredictRankings:
     event_id: int
@@ -564,17 +562,17 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
                         TextBox("排名", title_style).set_bg(bg1).set_size((120, gh)).set_content_align('c')
                         TextBox("名称", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                         TextBox("分数", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                        TextBox("RT",  title_style).set_bg(bg1).set_size((140, gh)).set_content_align('c')
+                        TextBox("RT",  title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                     for i, rank in enumerate(ranks):
                         with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
                             bg = bg2 if i % 2 == 0 else bg1
                             r = get_board_rank_str(rank.rank)
                             score = get_board_score_str(rank.score)
-                            rt = get_readable_datetime(rank.time, show_original_time=False)
+                            rt = get_readable_datetime(rank.time, show_original_time=False, use_en_unit=False)
                             TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((120, gh)).set_content_align('r').set_padding((16, 0))
                             TextBox(rank.name,  item_style,                ).set_bg(bg).set_size((160, gh)).set_content_align('l').set_padding((8,  0))
                             TextBox(score,      item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
-                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((140, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
             else:
                 TextBox("暂无榜线数据", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)).set_padding(32)
     
@@ -594,7 +592,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
     banner_img = await get_event_banner_img(ctx, event)
 
     query_ranks = SKL_QUERY_RANKS
-    s_ranks = await query_latest_ranking_before(ctx.region, eid, datetime.now() - SKS_BEFORE, query_ranks)
+    s_ranks = await query_latest_ranking_before(ctx.region, eid, min(datetime.now(), event_end) - timedelta(hours=1), query_ranks)
     t_ranks = await get_latest_ranking(ctx, eid, query_ranks)
 
     speeds: List[Tuple[int, int, timedelta, datetime]] = []
@@ -634,16 +632,17 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
                     with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
                         TextBox("排名", title_style).set_bg(bg1).set_size((120, gh)).set_content_align('c')
                         TextBox("时速", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                        TextBox("RT",  title_style).set_bg(bg1).set_size((140, gh)).set_content_align('c')
+                        TextBox("RT",  title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                     for i, (rank, dscore, dtime, rt) in enumerate(speeds):
                         with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
                             bg = bg2 if i % 2 == 0 else bg1
                             r = get_board_rank_str(rank)
-                            speed = get_board_score_str(int(dscore / dtime.total_seconds() * 3600))
-                            rt = get_readable_datetime(rt, show_original_time=False)
+                            dtime = dtime.total_seconds()
+                            speed = get_board_score_str(int(dscore / dtime * 3600)) if dtime > 0 else "-"
+                            rt = get_readable_datetime(rt, show_original_time=False, use_en_unit=False)
                             TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((120, gh)).set_content_align('r').set_padding((16, 0))
                             TextBox(speed,      item_style,                ).set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((8,  0))
-                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((140, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
             else:
                 TextBox("暂无时速数据", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)).set_padding(32)
     
@@ -654,7 +653,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
 def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union[str, int, List[int]]]:
     if not args:
         if uid := get_uid_from_qid(ctx, ctx.user_id, check_bind=False):
-            return 'uid', uid
+            return 'self', uid
     else:
         segs = args.split()
         if len(segs) > 1 and all(s.isdigit() for s in segs):
@@ -680,9 +679,11 @@ def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union
 
 # 格式化sk查询参数
 def format_sk_query_params(qtype: str, qval: Union[str, int, List[int]]) -> str:
+    if qtype == 'self':
+        return "你绑定的游戏ID"
     QTYPE_MAP = {
-        'uid': 'ID',
-        'name': '昵称',
+        'uid': '游戏ID',
+        'name': '游戏昵称',
         'rank': '排名',
         'ranks': '排名',
     }
@@ -709,6 +710,8 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
 
     match qtype:
         case 'uid':
+            ret_ranks = [r for r in latest_ranks if r.uid == qval]
+        case 'self':
             ret_ranks = [r for r in latest_ranks if r.uid == qval]
         case 'name':
             ret_ranks = [r for r in latest_ranks if r.name == qval]
@@ -776,18 +779,20 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     texts: List[str, TextStyle] = []
 
     ranks = []
-    CF_BEFORE = datetime.now() - timedelta(hours=1)
+    cf_start_time = min(datetime.now(), event_end) - timedelta(hours=1)
 
     match qtype:
+        case 'self':
+            ranks = await query_ranking(ctx.region, eid, uid=qval, start_time=cf_start_time)
         case 'uid':
-            ranks = await query_ranking(ctx.region, eid, uid=qval, start_time=CF_BEFORE)
+            ranks = await query_ranking(ctx.region, eid, uid=qval, start_time=cf_start_time)
         case 'name':
-            ranks = await query_ranking(ctx.region, eid, name=qval, start_time=CF_BEFORE)
+            ranks = await query_ranking(ctx.region, eid, name=qval, start_time=cf_start_time)
         case 'rank':
             latest_ranks = await get_latest_ranking(ctx, eid, ALL_RANKS)
             r = find_by_func(latest_ranks, lambda x: x.rank == qval)
             assert_and_reply(r, f"找不到排名 {qval} 的榜线数据")
-            ranks = await query_ranking(ctx.region, eid, uid=r.uid, start_time=CF_BEFORE)
+            ranks = await query_ranking(ctx.region, eid, uid=r.uid, start_time=cf_start_time)
         case _:
             raise ReplyException(f"不支持的查询类型: {qtype}")
     
@@ -797,7 +802,7 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         if ranks[i].score != ranks[i + 1].score:
             pts.append(ranks[i + 1].score - ranks[i].score)
 
-    assert_and_reply(len(pts) > 1, f"指定{format_sk_query_params(qtype, qval)}最近游玩次数小于2，无法查询")
+    assert_and_reply(len(pts) > 1, f"{format_sk_query_params(qtype, qval)}的最近游玩次数少于2，无法查询")
 
     name = truncate(ranks[-1].name, 40)
     uid = ranks[-1].uid
@@ -814,10 +819,10 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     texts.append((f"当前排名 {get_board_rank_str(cur_rank)} - 当前分数 {get_board_score_str(cur_score)}", style2))
     texts.append((f"近{avg_pt_n}次平均Pt: {avg_pt:.1f}", style2))
     texts.append((f"最近一次Pt: {last_pt}", style2))
-    texts.append((f"时速: {hour_speed}", style2))
+    texts.append((f"时速: {get_board_score_str(hour_speed)}", style2))
     if last_20min_rank := find_by_func(ranks, lambda x: x.time <= end_time - timedelta(minutes=20), mode='last'):
         last_20min_speed = int((ranks[-1].score - last_20min_rank.score) / (end_time - last_20min_rank.time).total_seconds() * 3600)
-        texts.append((f"20min×3时速: {last_20min_speed}", style2))
+        texts.append((f"20min×3时速: {get_board_score_str(last_20min_speed)}", style2))
     texts.append((f"本小时周回数: {len(pts)}", style2))
     texts.append((f"数据开始于: {get_readable_datetime(start_time, show_original_time=False)}", style2))
     texts.append((f"数据更新于: {get_readable_datetime(end_time, show_original_time=False)}", style2))
@@ -850,6 +855,8 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
     ranks = []
 
     match qtype:
+        case 'self':
+            ranks = await query_ranking(ctx.region, eid, uid=qval)
         case 'uid':
             ranks = await query_ranking(ctx.region, eid, uid=qval)
         case 'name':
@@ -863,7 +870,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
             raise ReplyException(f"不支持的查询类型: {qtype}")
         
     if len(ranks) < 1:
-        raise ReplyException(f"指定{format_sk_query_params(qtype, qval)}榜线记录过少，无法查询")
+        raise ReplyException(f"{format_sk_query_params(qtype, qval)}的榜线记录过少，无法查询")
 
     ranks.sort(key=lambda x: x.time)
     name = truncate(ranks[-1].name, 40)
