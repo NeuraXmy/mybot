@@ -490,9 +490,9 @@ async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
                 TextBox("预测最终", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                 for i, rank in enumerate(ranks):
                     bg = bg2 if i % 2 == 0 else bg1
-                    rank = get_board_rank_str(int(rank))
                     current_score = get_board_score_str(predict_current.get(rank))
                     final_score = get_board_score_str(predict_final.get(rank))
+                    rank = get_board_rank_str(int(rank))
                     TextBox(rank,          item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r')
                     TextBox(current_score, item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
                     TextBox(final_score,   item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))

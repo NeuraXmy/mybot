@@ -220,7 +220,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     def clean_name(s: str) -> str:
         s = re.sub(r"[^\w]", "", s).lower()
         import zhconv
-        s = zhconv.convert(s, 'zh-hans')
+        s = zhconv.convert(s, 'zh-cn')
         return s
     clean_q = clean_name(query)
 
@@ -322,6 +322,10 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             names = set()
             names.add(music['title'])
             names.add(music['pronunciation'])
+            if cn_title := await get_music_trans_title(music['id'], 'cn'):
+                names.add(cn_title)
+            if en_title := await get_music_trans_title(music['id'], 'en'):
+                names.add(en_title)
             for region in ALL_SERVER_REGIONS:
                 names.update(music_alias_db.get(f"{region}_alias", {}).get(str(mid), []))
             min_dist = 1e9
