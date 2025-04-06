@@ -86,6 +86,7 @@ async def query_ranking(
     event_id: int, 
     uid: str = None,
     name: str = None,
+    rank: int = None,
     start_time: datetime = None,
     end_time: datetime = None,
     limit: int = None,
@@ -104,6 +105,10 @@ async def query_ranking(
         name = name[:RANKING_NAME_LEN_LIMIT]
         sql += " AND name = ?"
         args.append(name)
+
+    if rank:
+        sql += " AND rank = ?"
+        args.append(rank)
 
     if start_time:
         sql += " AND ts >= ?"

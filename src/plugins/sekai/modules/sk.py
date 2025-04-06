@@ -53,6 +53,18 @@ latest_rankings_cache: Dict[str, Dict[int, List[Ranking]]] = {}
 
 SKS_BEFORE = timedelta(hours=1)
 
+@dataclass
+class PredictRankings:
+    event_id: int
+    event_name: str
+    event_start: datetime
+    event_end: datetime
+    predict_time: datetime
+    ranks: List[int]
+    current: Dict[int, int]
+    final: Dict[int, int]
+
+
 # ======================= 处理逻辑 ======================= #
 
 # 获取wl_id对应的角色cid，wl_id对应普通活动则返回None
@@ -434,52 +446,62 @@ def get_board_rank_str(rank: int) -> str:
     # 每3位加一个逗号
     return "{:,}".format(rank)
 
-# 合成榜线预测图片
-async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
+# 获取榜线预测数据
+async def get_predict_ranks(ctx: SekaiHandlerContext) -> PredictRankings:
     assert ctx.region == 'jp', "榜线预测仅支持日服"
-
     predict_data = await download_json("https://sekai-data.3-3.dev/predict.json")
     if predict_data['status'] != "success":
-        raise Exception(f"获取榜线数据失败: {predict_data['message']}")
-
+        raise Exception(f"下载榜线数据失败: {predict_data['message']}")
     try:
         event_id    = predict_data['event']['id']
         event_name  = predict_data['event']['name']
         event_start = datetime.fromtimestamp(predict_data['event']['startAt'] / 1000)
         event_end   = datetime.fromtimestamp(predict_data['event']['aggregateAt'] / 1000 + 1)
-
         predict_time = datetime.fromtimestamp(predict_data['data']['ts'] / 1000)
-        predict_current = predict_data['rank']
-        predict_final = predict_data['data']
-
-        event = await ctx.md.events.find_by_id(event_id)
-        banner_img = await get_event_banner_img(ctx, event)
-
+        predict_current = { int(r): s for r, s in predict_data['rank'].items() if r != 'ts' }
+        predict_final = { int(r): s for r, s in predict_data['data'].items() if r != 'ts' }
+        ranks = set(predict_current.keys()) | set(predict_final.keys())
+        ranks = sorted(ranks)
+        return PredictRankings(
+            event_id=event_id,
+            event_name=event_name,
+            event_start=event_start,
+            event_end=event_end,
+            predict_time=predict_time,
+            current=predict_current,
+            final=predict_final,
+            ranks=ranks,
+        )
     except Exception as e:
-        raise Exception(f"获取榜线数据失败: {e}")
+        raise Exception(f"解析榜线数据失败: {get_exc_desc(e)}")
+
+# 合成榜线预测图片
+async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
+    predict = await get_predict_ranks(ctx)
+
+    event = await ctx.md.events.find_by_id(predict.event_id)
+    banner_img = await get_event_banner_img(ctx, event)
 
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(16).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{event_id}】{event_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
-                    TextBox(f"{event_start.strftime('%Y-%m-%d %H:%M')} ~ {event_end.strftime('%Y-%m-%d %H:%M')}", 
+                    TextBox(f"【{ctx.region.upper()}-{predict.event_id}】{predict.event_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(f"{predict.event_start.strftime('%Y-%m-%d %H:%M')} ~ {predict.event_end.strftime('%Y-%m-%d %H:%M')}", 
                             TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
-                    time_to_end = event_end - datetime.now()
+                    time_to_end = predict.event_end - datetime.now()
                     if time_to_end.total_seconds() <= 0:
                         time_to_end = "活动已结束"
                     else:
                         time_to_end = f"距离活动结束还有{get_readable_timedelta(time_to_end)}"
                     TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
-                    TextBox(f"预测更新时间: {predict_time.strftime('%m-%d %H:%M:%S')} ({get_readable_datetime(predict_time, show_original_time=False)})",
+                    TextBox(f"预测更新时间: {predict.predict_time.strftime('%m-%d %H:%M:%S')} ({get_readable_datetime(predict.predict_time, show_original_time=False)})",
                             TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     TextBox("数据来源: 3-3.dev", TextStyle(font=DEFAULT_FONT, size=12, color=(50, 50, 50, 255)))
                 if banner_img:
                     ImageBox(banner_img, size=(140, None))
 
             gh = 30
-            ranks = [r for r in predict_final if r != 'ts']
-            ranks.sort(key=lambda x: int(x))
             with Grid(col_count=3).set_content_align('c').set_sep(hsep=8, vsep=5).set_padding(16):
                 bg1 = FillBg((255, 255, 255, 200))
                 bg2 = FillBg((255, 255, 255, 100))
@@ -488,10 +510,10 @@ async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
                 TextBox("排名",    title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                 TextBox("预测当前", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
                 TextBox("预测最终", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                for i, rank in enumerate(ranks):
+                for i, rank in enumerate(predict.ranks):
                     bg = bg2 if i % 2 == 0 else bg1
-                    current_score = get_board_score_str(predict_current.get(rank))
-                    final_score = get_board_score_str(predict_final.get(rank))
+                    current_score = get_board_score_str(predict.current.get(rank))
+                    final_score = get_board_score_str(predict.final.get(rank))
                     rank = get_board_rank_str(int(rank))
                     TextBox(rank,          item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r')
                     TextBox(current_score, item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
@@ -819,8 +841,8 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img, 1.5)
 
-# 合成追踪图片
-async def compose_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int], event: dict = None) -> Image.Image:
+# 合成玩家追踪图片
+async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str, int], event: dict = None) -> Image.Image:
     if not event:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
@@ -853,12 +875,11 @@ async def compose_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[
         fig, ax = plt.subplots()
         fig.set_size_inches(8, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
-        ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=4, linewidth=0.5)
-        ax.set_ylabel('分数', color='blue')
+        ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min(scores) * 0.95, max(scores) * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
         ax2 = ax.twinx()
-        ax2.plot(times, rs, 'o-', label='排名', color='red', markersize=4, linewidth=0.5)
+        ax2.plot(times, rs, 'o-', label='排名', color='red', markersize=2, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(int(x))))
         ax2.set_ylim(max(rs) + 1, min(rs) - 1)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
@@ -866,7 +887,86 @@ async def compose_trace_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[
         fig.autofmt_xdate()
         ax.legend(loc='lower right')
         ax2.legend(loc='lower right')
+        plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
+                     color='blue', fontsize=12, ha='right')
+        plt.annotate(f"{int(rs[-1])}", xy=(times[-1], rs[-1]), xytext=(times[-1], rs[-1]),
+                     color='red', fontsize=12, ha='right')
         plt.title(f"活动: {ctx.region.upper()}-{eid} 玩家: {name}")
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close(fig)
+        img = Image.open(buf)
+        img.load()
+        return img
+    
+    img = await run_in_pool(draw_graph)
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        ImageBox(img)
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
+# 合成排名追踪图片
+async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: dict = None) -> Image.Image:
+    if not event:
+        event = await get_current_event(ctx, need_running=False)
+    assert_and_reply(event, "未找到当前活动")
+    eid = event.get('wl_id', event['id'])
+    ranks = []
+
+    ranks = await query_ranking(ctx.region, eid, rank=rank)
+    if len(ranks) < 1:
+        raise ReplyException(f"指定排名为{rank}榜线记录过少，无法查询")
+
+    ranks.sort(key=lambda x: x.time)
+    times = [rank.time for rank in ranks]
+    scores = [rank.score for rank in ranks]
+    pred_scores = []
+    pred_times = []
+    
+    # 附加排名预测
+    try:
+        predict = await get_predict_ranks(ctx)
+        if predict.event_id == eid:
+            final_score = predict.final.get(rank)
+            if final_score:
+                # 当前
+                pred_times.append(times[-1])
+                pred_scores.append(scores[-1])
+                # 预测
+                pred_times.append(predict.event_end)
+                pred_scores.append(final_score)
+    except Exception as e:
+        logger.warning(f"获取榜线预测失败: {get_exc_desc(e)}")
+
+    def draw_graph() -> Image.Image:
+        max_score = max(scores + pred_scores)
+        min_score = min(scores + pred_scores)
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(8, 8)
+        fig.subplots_adjust(wspace=0, hspace=0)
+        ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=2, linewidth=0.5)
+        ax.set_ylim(min_score * 0.95, max_score * 1.05)
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
+        ax.legend(loc='lower right')
+        plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
+                     color='blue', fontsize=12, ha='right')
+
+        if pred_scores:
+            ax2 = ax.twinx()
+            ax2.plot(pred_times, pred_scores, 'o--', label='预测', color='red', markersize=2, linewidth=1)
+            ax2.set_ylim(min_score * 0.95, max_score * 1.05)
+            ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: ""))
+            ax2.legend(loc='lower right')
+            plt.annotate(f"{get_board_score_str(pred_scores[-1])}", xy=(pred_times[-1], pred_scores[-1]), xytext=(pred_times[-1], pred_scores[-1]), 
+                         color='red', fontsize=12, ha='right')
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        fig.autofmt_xdate()
+        plt.title(f"活动: {ctx.region.upper()}-{eid} T{rank} 分数线")
 
         buf = io.BytesIO()
         plt.savefig(buf, format='png')
@@ -979,6 +1079,7 @@ async def _(ctx: SekaiHandlerContext):
     if any(x in args for x in ["full", "all", "全部"]):
         full = True
         args = args.replace("full", "").replace("all", "").replace("全部", "").strip()
+
     if args:
         try: event = await get_event_by_index(ctx, args)
         except:
@@ -990,6 +1091,7 @@ async def _(ctx: SekaiHandlerContext):
 """.strip())
     else:
         event = None
+
     return await ctx.asend_msg(await get_image_cq(
         await compose_skl_image(ctx, wl_event or event, full),
         low_quality=True,
@@ -1049,7 +1151,7 @@ async def _(ctx: SekaiHandlerContext):
     ))
 
 
-# 追踪
+# 玩家追踪
 pjsk_cf = SekaiCmdHandler([
     "/skt", "/追踪", "/pjsk追踪",
 ], regions=['jp', 'cn'])
@@ -1062,7 +1164,28 @@ async def _(ctx: SekaiHandlerContext):
     qtype, qval = get_sk_query_params(ctx, args)
     assert_and_reply(qtype != 'ranks', "追踪不支持查询多个排名")
     return await ctx.asend_msg(await get_image_cq(
-        await compose_trace_image(ctx, qtype, qval, event=wl_event),
+        await compose_player_trace_image(ctx, qtype, qval, event=wl_event),
+        low_quality=True,
+    ))
+
+
+# 分数线追踪
+pjsk_cf = SekaiCmdHandler([
+    "/sklt", "/sktl", "/分数线追踪", "/pjsk分数线追踪",
+], regions=['jp', 'cn'])
+pjsk_cf.check_cdrate(cd).check_wblist(gbl)
+@pjsk_cf.handle()
+async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+
+    try:
+        rank = int(args)
+    except:
+        return await ctx.asend_reply_msg(f"请输入正确的排名")
+
+    return await ctx.asend_msg(await get_image_cq(
+        await compose_rank_trace_image(ctx, rank, event=wl_event),
         low_quality=True,
     ))
 
