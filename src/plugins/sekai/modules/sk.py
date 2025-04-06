@@ -878,17 +878,17 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min(scores) * 0.95, max(scores) * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
+                     color='blue', fontsize=12, ha='right')
+        ax.legend(loc='lower right')
         ax2 = ax.twinx()
         ax2.plot(times, rs, 'o-', label='排名', color='red', markersize=2, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(int(x))))
         ax2.set_ylim(max(rs) + 1, min(rs) - 1)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
-        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
-        fig.autofmt_xdate()
-        ax.legend(loc='lower right')
         ax2.legend(loc='lower right')
-        plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
-                     color='blue', fontsize=12, ha='right')
+        fig.autofmt_xdate()
         plt.annotate(f"{int(rs[-1])}", xy=(times[-1], rs[-1]), xytext=(times[-1], rs[-1]),
                      color='red', fontsize=12, ha='right')
         plt.title(f"活动: {ctx.region.upper()}-{eid} 玩家: {name}")
