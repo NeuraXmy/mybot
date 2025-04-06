@@ -459,41 +459,46 @@ async def _(ctx: SekaiHandlerContext):
     
     # 检查有效的服务器
     checked_regions = []
-    for region in ALL_SERVER_REGIONS:
+    async def check_bind(region: str) -> Optional[Tuple[str, str]]:
         try:
             region_ctx = SekaiHandlerContext.from_region(region)
             if not get_profile_config(region_ctx).profile_api_url:
-                continue
+                return None
             checked_regions.append(get_region_name(region))
-
             profile = await get_basic_profile(region_ctx, args, use_cache=False)
             user_name = profile['user']['name']
-
-            bind_list: Dict[str, Dict[str, setattr]] = profile_db.get("bind_list", {})
-
-            msg = f"{get_region_name(region)}ID绑定成功: {user_name}"
-
-            # 如果第一次绑定，设置默认服务器
-            other_bind = None
-            for r in ALL_SERVER_REGIONS:
-                if r == region: continue
-                other_bind = other_bind or bind_list.get(r, {}).get(str(ctx.user_id), None)
-            default_region = get_user_default_region(ctx.user_id, None)
-            if not other_bind and not default_region:
-                msg += f"\n已设置你的默认查询区服为{region}，如需修改可使用\"/pjsk服务器 区服\""
-                set_user_default_region(ctx.user_id, region)
-
-            # 进行绑定
-            if region not in bind_list:
-                bind_list[region] = {}
-            bind_list[region][str(ctx.user_id)] = args
-            profile_db.set("bind_list", bind_list)
-            
-            return await ctx.asend_reply_msg(msg)
-        except:
-            continue
+            return region, user_name
+        except Exception as e:
+            return None
+        
+    check_results = await asyncio.gather(*[check_bind(region) for region in ALL_SERVER_REGIONS])
+    check_results = [res for res in check_results if res]
+    assert_and_reply(check_results, f"在{'/'.join(checked_regions)}都找不到该玩家，请检查ID是否正确")
     
-    raise ReplyException(f"在{'/'.join(checked_regions)}都找不到该玩家，请检查ID是否正确")
+    if len(check_results) > 1:
+        await ctx.asend_reply_msg(f"该ID在多个服务器都存在！默认绑定找到的第一个服务器")
+    region, user_name = check_results[0]
+
+    msg = f"{get_region_name(region)}ID绑定成功: {user_name}"
+
+    # 如果第一次绑定，设置默认服务器
+    bind_list: Dict[str, Dict[str, setattr]] = profile_db.get("bind_list", {})
+    other_bind = None
+    for r in ALL_SERVER_REGIONS:
+        if r == region: continue
+        other_bind = other_bind or bind_list.get(r, {}).get(str(ctx.user_id), None)
+    default_region = get_user_default_region(ctx.user_id, None)
+    if not other_bind and not default_region:
+        msg += f"\n已设置你的默认查询区服为{region}，如需修改可使用\"/pjsk服务器 区服\""
+        set_user_default_region(ctx.user_id, region)
+
+    # 进行绑定
+    if region not in bind_list:
+        bind_list[region] = {}
+    bind_list[region][str(ctx.user_id)] = args
+    profile_db.set("bind_list", bind_list)
+    
+    return await ctx.asend_reply_msg(msg)
 
 
 # 隐藏详细信息
@@ -532,7 +537,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # 查询个人名片
 pjsk_info = SekaiCmdHandler([
-    "/pjsk info", "/pjsk_info", 
+    "/pjsk profile", "/pjsk_profile", "/pjskprofile", 
     "/个人信息", "/名片", "/pjsk个人信息", "/pjsk名片", "/pjsk 个人信息", "/pjsk 名片",
 ])
 pjsk_info.check_cdrate(cd).check_wblist(gbl)
