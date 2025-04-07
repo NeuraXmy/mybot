@@ -140,7 +140,7 @@ VLIVE_END_NOTIFY_BEFORE   = timedelta(minutes=140)
 # live自动提醒
 @repeat_with_interval(60, 'vlive自动提醒', logger)
 async def vlive_notify():
-    notified_vlives = file_db.get(f"notified_vlives", {})
+    notified_vlives: Dict[str, Dict[str, List[int]]] = file_db.get(f"notified_vlives", {})
     updated = False
 
     for region in ALL_SERVER_REGIONS:

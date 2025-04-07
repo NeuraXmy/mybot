@@ -1625,6 +1625,16 @@ def unique_by(lst, key):
             ret.append(item)
     return ret
 
+# 获取按某个key去重后的dict列表，返回索引
+def unique_idx_by(lst, key) -> List[int]:
+    val_set = set()
+    ret = []
+    for idx, item in enumerate(lst):
+        if item[key] not in val_set:
+            val_set.add(item[key])
+            ret.append(idx)
+    return ret
+
 # 获取删除某个key为某个值的dict列表
 def remove_by(lst, key, value):
     return [item for item in lst if key not in item or item[key] != value]

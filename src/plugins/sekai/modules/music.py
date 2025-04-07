@@ -35,6 +35,7 @@ class MusicSearchOptions:
     diff: str = None
     raise_when_err: bool = True
     distance_threshold: float = 0.3
+    emb_add_alias_score_threshold: float = 0.7
 
 @dataclass
 class MusicSearchResult:
@@ -174,6 +175,7 @@ async def query_music_by_emb(ctx: SekaiHandlerContext, text: str, limit: int=5):
     ids = [int(item[0].split()[0]) for item in query_result]
     result_musics = await ctx.md.musics.collect_by_ids(ids)
     scores = [item[1] for item in query_result]
+    logger.info(f"曲名语义嵌入查询结果: {[(r['id'], r['title'], s) for r, s in zip(result_musics, scores)]}")
     return result_musics, scores
 
 # 根据别名查询曲目
@@ -224,9 +226,12 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
         return s
     clean_q = clean_name(query)
 
-    ret_musics = []
-    search_type = None
-    err_msg = None
+    ret_musics: List[dict] = []
+    sims: List[float] = None
+    search_type: str = None
+    err_msg: str = None
+    candidate_msg: str = ""
+    additional_msg: str = ""
 
     # id匹配
     if not search_type and options.use_id:
@@ -339,7 +344,15 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
                 min_dist = min(min_dist, dist)
             music_scores.append((music, min_dist))
         music_scores.sort(key=lambda x: x[1])
-        results = [m[0] for m in music_scores if m[1] <= options.distance_threshold]
+        results = [m for m in music_scores if m[1] <= options.distance_threshold]
+        # 计算相似度
+        sims = []
+        for m, dist in results:
+            if dist < 0:
+                sims.append(1.0 + 1.0 * abs(dist))  # 子串匹配长度相同时(dist=1)相似度为2.0
+            else:
+                sims.append(1 - dist)
+        results = [m[0] for m in results]
         if diff:
             results = [m for m in results if await check_music_has_diff(ctx, m['id'], diff)]
         if results:
@@ -355,17 +368,48 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             if not options.search_num:
                 search_num = options.max_num * 5
             logger.info(f"搜索曲名: {query}")
-            res_musics, scores = await query_music_by_emb(ctx, query, search_num)
-            res_musics = unique_by(res_musics, "id")
-            res_musics = [m for m in res_musics if diff is None or (await check_music_has_diff(ctx, int(m['id']), diff))]
-            res_musics = res_musics[:options.max_num]
-            if len(res_musics) == 0:
+            res, scores = await query_music_by_emb(ctx, query, search_num)
+            res = deepcopy(res)
+            for m, s in zip(res, scores):
+                # 把 0 到 无穷的距离映射到 0 到 1 的相似度 
+                m['sim'] = max(m.get('sim', 0), math.exp(-s))
+            res = unique_by(res, "id")
+            res = [m for m in res if diff is None or (await check_music_has_diff(ctx, int(m['id']), diff))]
+            res = res[:options.max_num]
+            if len(res) == 0:
                 err_msg = "没有找到相关曲目"
-            ret_musics.extend(res_musics)
-    
+            sims = [m['sim'] for m in res]
+            ret_musics.extend(res)
+            # 如果第一位距离小于阈值，添加别名
+            if sims[0] >= math.exp(-options.emb_add_alias_score_threshold):
+                music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
+                mid = res[0]['id']
+                if query not in music_alias.get(str(mid), []):
+                    if str(mid) not in music_alias:
+                        music_alias[str(mid)] = []
+                    music_alias[str(mid)].append(query)
+                    music_alias_db.set(f"{ctx.region}_alias", music_alias)
+                    additional_msg = f"已自动添加别名: {query}"
+
     music = ret_musics[0] if len(ret_musics) > 0 else None
     candidates = ret_musics[1:] if len(ret_musics) > 1 else []
-    candidate_msg = "" if not candidates else "候选曲目: " + " ".join([f'【{m["id"]}】{m["title"]}' for m in candidates])
+    if music and sims:
+        sim_type = ""
+        if search_type == "emb":
+            sim_type = "语义"
+        elif search_type == "distance":
+            sim_type = "文本"
+        candidate_msg += f"{sim_type}相似度{sims[0]:.2f}" 
+    if candidates:
+        if candidate_msg:
+            candidate_msg += "，"
+        candidate_msg += "候选曲目: " 
+        for m, s in zip(candidates, sims[1:]):
+            candidate_msg += f"\n【{m['id']}】{m['title']} ({s:.2f})"
+        candidate_msg = candidate_msg.strip()
+    
+    if additional_msg:
+        candidate_msg += "\n" + additional_msg
     
     if music:
         logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} id={music['id']} len(candidates)={len(candidates)}")
