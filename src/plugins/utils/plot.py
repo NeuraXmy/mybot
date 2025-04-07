@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Union, Tuple, List, Optional
-from PIL import Image, ImageFont, ImageDraw, ImageFilter
+from PIL import Image, ImageFont, ImageDraw, ImageFilter, ImageEnhance
 from PIL.ImageFont import ImageFont as Font
 import threading
 import contextvars
@@ -432,7 +432,7 @@ class RoundRectBg(WidgetBg):
         p.roundrect((0, 0), p.size, self.fill, self.radius, self.stroke, self.stroke_width, self.corners)
 
 class ImageBg(WidgetBg):
-    def __init__(self, img: Union[str, Image.Image], align: str='c', mode='fit', blur=True):
+    def __init__(self, img: Union[str, Image.Image], align: str='c', mode='fit', blur=True, fade=0.1):
         if isinstance(img, str):
             self.img = Image.open(img)
         else:
@@ -443,6 +443,8 @@ class ImageBg(WidgetBg):
         self.mode = mode
         if blur:
             self.img = self.img.filter(ImageFilter.GaussianBlur(radius=3))
+        if fade > 0:
+            self.img = ImageEnhance.Brightness(self.img).enhance(1 - fade)
 
     def draw(self, p: Painter):
         if self.mode == 'fit':

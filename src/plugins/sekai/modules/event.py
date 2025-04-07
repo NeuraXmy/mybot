@@ -86,6 +86,13 @@ async def is_ban_event(ctx: SekaiHandlerContext, event: dict) -> bool:
     banner_event_story_id_set = (await ctx.md.event_story_units.get())['banner_event_story_id_set']
     return event_story['id'] in banner_event_story_id_set
 
+# 获取箱活ban主角色id 不是箱活返回None
+async def get_event_banner_chara_id(ctx: SekaiHandlerContext, event: dict) -> int:
+    if not await is_ban_event(ctx, event):
+        return None
+    event_story = await ctx.md.event_stories.find_by('eventId', event['id'])
+    return event_story['bannerGameCharacterUnitId']
+
 # 获取某个角色所有箱活
 async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]:
     nickname = get_nicknames_by_chara_id(cid)[0]
@@ -128,8 +135,18 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
         with Grid(row_count=8, vertical=True).set_sep(8, 4).set_item_align('lt').set_content_align('lt'):
             for event, banner_img in zip(events, banner_imgs):
                 eid = event['id']
-                cards = event_cards.get(eid, [])[:6]
-                banner_card = cards[0][0]
+                card_and_thumbs = event_cards.get(eid, [])
+
+                # 查找ban主
+                banner_card = None
+                for card, thumb in card_and_thumbs:
+                    if card['characterId'] == await get_event_banner_chara_id(ctx, event):
+                        banner_card = card
+                        break
+                if not banner_card:
+                    banner_card = card_and_thumbs[0][0]
+
+                card_and_thumbs = card_and_thumbs[:6]
 
                 now = datetime.now()
                 start_time = datetime.fromtimestamp(event['startAt'] / 1000)
@@ -177,7 +194,7 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
                         ImageBox(banner_img, size=(None, 40))
                         with Grid(col_count=3).set_padding(0).set_sep(1, 1):
-                            for _, img in cards:
+                            for _, img in card_and_thumbs:
                                 ImageBox(img, size=(30, 30))
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
                         TextBox(f"{event['name']}", style1, line_count=2, use_real_line_count=False).set_w(100)

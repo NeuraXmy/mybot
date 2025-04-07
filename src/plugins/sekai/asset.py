@@ -397,6 +397,7 @@ class RegionMasterDataCollection:
         self.ng_words                                     = RegionMasterDataWrapper(region, "ngWords")
         self.mysekai_gate_material_groups                 = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
         self.world_blooms                                 = RegionMasterDataWrapper(region, "worldBlooms")
+        self.gachas                                       = RegionMasterDataWrapper(region, "gachas")
 
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
@@ -450,9 +451,9 @@ async def download_resource_boxes(base_url):
     return await run_in_pool(convert, resbox, resbox_detail)
 
 @MasterDataManager.download_function("costume3ds", regions=COMPACT_DATA_REGIONS)
-def costume3ds_map_fn(base_url):
-    costume3ds = download_json(f"{base_url}/compactCostume3ds.json")
-    return convert_compact_data(costume3ds)
+async def costume3ds_map_fn(base_url):
+    costume3ds = await download_json(f"{base_url}/compactCostume3ds.json")
+    return await run_in_pool(convert_compact_data, costume3ds)
 
 
 # ================================ MasterData自定义转换 ================================ #

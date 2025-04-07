@@ -13,7 +13,12 @@ from .profile import (
     get_card_full_thumbnail,
     get_unit_by_card_id,
 )
-from .event import extract_ban_event
+from .event import (
+    extract_ban_event, 
+    is_ban_event, 
+    get_event_banner_img,
+    get_event_banner_chara_id,
+)
 
 CARD_STORY_SUMMARY_MODEL = "gemini-2-flash"
 
@@ -33,7 +38,34 @@ event10 绿 四星 限定 分卡 今年
 加上 box 参数可只查看保有的卡（需要抓包）
 """.strip()
 
+
+@dataclass
+class SkillEffectInfo:
+    id: int
+    type: str
+    judge_type: str
+    unit_count: int
+    cond_type: str
+    durations: List[int]
+    value_type: str
+    values: List[int]
+    values2: List[int]
+    activate_rank: int
+    enhance_value: int
+    
+@dataclass
+class SkillInfo:
+    type: str
+    detail: str
+
+
 # ======================= 处理逻辑 ======================= #
+
+async def get_character_name_by_id(ctx: SekaiHandlerContext, cid: int, space_first_last = False) -> str:
+    character = await ctx.md.game_characters.find_by_id(cid)
+    if space_first_last:
+        return f"{character.get('firstName', '')} {character.get('givenName', '')}"
+    return f"{character.get('firstName', '')}{character.get('givenName', '')}"
 
 # 判断某个卡牌id的限定类型
 async def get_card_supply_type(cid: int) -> str:
@@ -372,6 +404,362 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 获取指定ID的技能信息
+async def get_skill_info(ctx: SekaiHandlerContext, sid: int, card: dict):
+    skill = await ctx.md.skills.find_by_id(sid)
+    assert_and_reply(skill, f"技能ID={sid}不存在")
+    skill_type = skill['descriptionSpriteName']
+    skill_detail = skill['description']
+    # 格式化技能描述
+    try:
+        effects: Dict[int, SkillEffectInfo] = {}
+        for effect in skill['skillEffects']:
+            durations, value_type, values, values2 = [], None, [], []
+            for detail in effect['skillEffectDetails']:
+                durations.append(detail['activateEffectDuration'])
+                value_type = detail['activateEffectValueType']
+                values.append(detail['activateEffectValue'])
+                values2.append(detail.get('activateEffectValue2'))
+            effects[effect['id']] = SkillEffectInfo(
+                id=effect['id'],
+                type=effect['skillEffectType'],
+                durations=durations,
+                value_type=value_type,
+                values=values,
+                values2=values2,
+                enhance_value=effect.get('skillEnhance', {}).get('activateEffectValue'),
+                activate_rank=effect.get('activateCharacterRank'),
+                judge_type=effect.get('activateNotesJudgmentType'),
+                unit_count=effect.get('activateUnitCount'),
+                cond_type=effect.get('conditionType'),
+            )
+        
+        chara_name = await get_character_name_by_id(ctx, card['characterId']) 
+
+        def keep_one_if_all_same(lst: List) -> List:
+            if len(lst) == 0: return lst
+            if len(set(lst)) == 1:
+                return [lst[0]]
+            return lst
+
+        def do_format(s: str) -> str:
+            # 按顺序匹配所有的 {{...}}
+            while True:
+                m = re.search(r"{{(.*?)}}", s)
+                if not m: break
+                key = m.group(1)
+                replace = None
+                try:
+                    ids, op = key.split(';')
+                    ids = [int(i) for i in ids.split(',')]
+                    # d, v, e, m, c 单个 effect_id 情况
+                    if len(ids) == 1:
+                        id = ids[0]
+                        match op:
+                            # d: 作用时间
+                            case "d": 
+                                durations = keep_one_if_all_same(effects[id].durations)
+                                replace = "/".join([str(d) for d in durations])
+                            # v: 加成值
+                            case "v": 
+                                values = keep_one_if_all_same(effects[id].values)
+                                replace = "/".join([str(v) for v in values])
+                            # e: 增强？
+                            case "e": 
+                                replace = str(effects[id].enhance_value)
+                            # m: 满编的时候的编成增强？
+                            case "m": 
+                                values = keep_one_if_all_same(effects[id].values)
+                                replace = "/".join([str(v + effects[id].enhance_value * 5) for v in values])
+                            # c: 角色名
+                            case "c": 
+                                replace = chara_name
+                            # abort
+                            case _: 
+                                raise Exception()
+                    
+                    # r, s, v, u, o 多个 effect_id 情况
+                    else:
+                        assert len(ids) == 2
+                        x, y = ids
+                        match op:
+                            # v: 加成相加
+                            case 'v':
+                                values = [xv + yv for xv, yv in zip(effects[x].values, effects[y].values)]
+                                values = keep_one_if_all_same(values)
+                                replace = "/".join([str(v) for v in values])
+                            # r: 当前的角色等级加成
+                            case 'r': 
+                                replace = "..."
+                            # s: 当前的角色等级加成 + 正常加成值
+                            case 's': 
+                                replace = "..."
+                            # o: 满编的时候的最大编成增强 + 正常加成值
+                            case 'o': 
+                                values = [xv + yv for xv, yv in zip(effects[x].values, effects[y].values)]
+                                values = keep_one_if_all_same(values)
+                                replace = "/".join([str(v) for v in values])
+                            # u: 满编的时候的最大编成增强
+                            case 'u':
+                                values = [xv + yv for xv, yv in zip(effects[x].values, effects[y].values)]
+                                values = keep_one_if_all_same(values)
+                                replace = "/".join([str(v) for v in values])
+                            # abort
+                            case _: 
+                                raise Exception()
+
+                except Exception as e:
+                    logger.print_exc(f"格式化技能描述 {key} 失败")
+                    replace = " ? "
+                s = s.replace("{{" + key + "}}", replace)
+            return s
+        
+        skill_detail = do_format(skill_detail)
+        
+    except Exception as e:
+        logger.print_exc(f"技能描述格式化失败")
+
+    return SkillInfo(skill_type, skill_detail)
+
+# 合成卡牌详情
+async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
+    card = await ctx.md.cards.find_by_id(card_id)
+    assert_and_reply(card, f"卡牌ID={card_id}不存在")
+    need_trans = (ctx.region != 'cn')
+
+    # ----------------------- 数据收集 ----------------------- #
+    # 基础信息
+    title = card['prefix']
+    chara_name = await get_character_name_by_id(ctx, card['characterId'])
+    release_time = datetime.fromtimestamp(card['releaseAt'] / 1000)
+    supply_type = CARD_SUPPLIES_SHOW_NAMES.get(await get_card_supply_type(card_id), "非限定")
+
+    # 缩略图
+    thumbs = [await get_card_full_thumbnail(ctx, card_id, False)]
+    if has_after_training(card):
+        thumbs.append(await get_card_full_thumbnail(ctx, card_id, True))
+    
+    # 团头、角色头像
+    chara_id = card['characterId']
+    unit = await get_unit_by_card_id(ctx, card_id)
+    chara_icon = get_chara_icon_by_chara_id(chara_id)
+    unit_logo = get_unit_logo(unit)
+
+    # 卡面
+    card_images = [await get_card_image(ctx, card_id, False)]
+    if has_after_training(card):
+        card_images.append(await get_card_image(ctx, card_id, True))
+
+    # 综合力
+    power1, power2, power3 = 0, 0, 0
+    card_params = card['cardParameters']
+    if isinstance(card_params, list):   # 日服综合力数据格式
+        for item in card_params:
+            ptype = item['cardParameterType']
+            match ptype:
+                case 'param1': power1 = max(power1, item['power'])
+                case 'param2': power2 = max(power2, item['power'])
+                case 'param3': power3 = max(power3, item['power'])
+    else:   # 国服综合力数据格式
+        power1 = max(card_params['param1'])
+        power2 = max(card_params['param2'])
+        power3 = max(card_params['param3'])
+    # 特训综合力
+    if 'specialTrainingPower1BonusFixed' in card: power1 += card['specialTrainingPower1BonusFixed']
+    if 'specialTrainingPower2BonusFixed' in card: power2 += card['specialTrainingPower2BonusFixed']
+    if 'specialTrainingPower3BonusFixed' in card: power3 += card['specialTrainingPower3BonusFixed']
+    power_total = power1 + power2 + power3
+        
+    # 技能
+    SKILL_TRANS_PROMPT = "该文本是偶像抽卡游戏中卡牌的技能描述，如果角色名存在请保留不变"
+    skill_name = card['cardSkillName']
+    skill_info: SkillInfo = await get_skill_info(ctx, card['skillId'], card)
+    skill_type_icon = ctx.static_imgs.get(f"skill_{skill_info.type}.png")
+    skill_detail = skill_info.detail
+    skill_detail_cn: str = await translate_text(skill_detail, additional_info=SKILL_TRANS_PROMPT, default=None) if need_trans else None
+    if 'specialTrainingSkillId' in card:
+        sp_skill_name = card['specialTrainingSkillName']
+        sp_skill_info = await get_skill_info(ctx, card['specialTrainingSkillId'], card)
+        sp_skill_type_icon = ctx.static_imgs.get(f"skill_{sp_skill_info.type}.png")
+        sp_skill_detail = sp_skill_info.detail
+        sp_skill_detail_cn: str = await translate_text(sp_skill_detail, additional_info=SKILL_TRANS_PROMPT, default=None) if need_trans else None
+
+    # 关联活动
+    event_card = await ctx.md.event_cards.find_by("cardId", card_id)
+    if event_card:
+        event_id = event_card['eventId']
+        event_card_ids = await ctx.md.event_cards.find_by("eventId", event_id, mode='all')
+        event_cards = await ctx.md.cards.collect_by_ids([ec['cardId'] for ec in event_card_ids])
+        event = await ctx.md.events.find_by_id(event_id)
+        banner_card = find_by(event_cards, "characterId", await get_event_banner_chara_id(ctx, event))
+        if banner_card is None:
+            banner_card = event_cards[0]
+        event_name = event['name']
+        event_start_time = datetime.fromtimestamp(event['startAt'] / 1000)
+        event_end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+        event_attr, event_attr_icon = None, None
+        if event['eventType'] in ['marathon', 'cheerful_carnival']:
+            event_attr = banner_card['attr']
+            event_attr_icon = get_attr_icon(event_attr)
+        event_unit, event_unit_logo = None, None
+        event_ban_cid, event_ban_chara_icon = None, None
+        if await is_ban_event(ctx, event):
+            event_ban_cid = banner_card['characterId']
+            event_unit = get_unit_by_chara_id(event_ban_cid)
+            event_unit_logo = get_unit_icon(event_unit)
+            event_ban_chara_icon = get_chara_icon_by_chara_id(event_ban_cid)
+        elif event['eventType'] == 'world_bloom':
+            event_unit = get_unit_by_chara_id(banner_card['characterId'])
+            event_unit_logo = get_unit_icon(event_unit)
+        event_banner_img = await get_event_banner_img(ctx, event)
+
+    # 关联卡池
+    gacha = None
+    for g in await ctx.md.gachas.get():
+        start_at = datetime.fromtimestamp(g['startAt'] / 1000)
+        end_at = datetime.fromtimestamp(g['endAt'] / 1000 + 1)
+        if start_at <= release_time <= end_at:
+            if find_by(g['gachaPickups'], "cardId", card_id):
+                gacha = g
+                break
+    if gacha:
+        gacha_id = g['id']
+        gacha_name = g['name']
+        gacha_start = start_at
+        gacha_end = end_at
+        gacha_banner_img = await ctx.rip.img(f"home/banner/banner_gacha{gacha_id}/banner_gacha{gacha_id}.png")
+
+    # 衣装
+    cos3d_ids = await ctx.md.card_costume3ds.find_by("cardId", card_id, mode='all')
+    cos3ds = await ctx.md.costume3ds.collect_by_ids([cos3d['costume3dId'] for cos3d in cos3d_ids])
+    cos3d_imgs = []
+    for cos3d in cos3ds:
+        asset_name = cos3d['assetbundleName']
+        cos3d_imgs.append(ctx.rip.img(f"thumbnail/costume_rip/{asset_name}.png"))
+    cos3d_imgs = await batch_gather(*cos3d_imgs)
+
+    # ----------------------- 绘图 ----------------------- #
+    title_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)
+    label_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(50, 50, 50))
+    text_style = TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70))
+    small_style = TextStyle(font=DEFAULT_FONT, size=18, color=(70, 70, 70))
+    tip_style = TextStyle(font=DEFAULT_FONT, size=18, color=(0, 0, 0))
+
+    with Canvas(bg=random_unit_bg(unit)).set_padding(BG_PADDING) as canvas:
+        with HSplit().set_sep(16).set_content_align('lt').set_item_align('lt'):
+            # 左侧: 卡面+关联活动+关联卡池+提示
+            with VSplit().set_padding(0).set_sep(16).set_content_align('lt').set_item_align('lt').set_item_bg(roundrect_bg()):
+                # 卡面
+                with VSplit().set_padding(16).set_sep(8).set_content_align('lt').set_item_align('lt'):
+                    for img in card_images:
+                        ImageBox(img, size=(500, None))
+
+                # 关联活动
+                if event_card:
+                    with VSplit().set_padding(16).set_sep(12).set_content_align('lt').set_item_align('lt'):
+                        with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
+                            TextBox("当期活动", label_style)
+                            TextBox(f"【{event_id}】{event_name}", small_style).set_w(360)
+                        with HSplit().set_padding(0).set_sep(8).set_content_align('lt').set_item_align('lt'):
+                            ImageBox(event_banner_img, size=(250, None))
+                            with VSplit().set_content_align('c').set_item_align('c').set_sep(6):
+                                TextBox(f"开始时间: {event_start_time.strftime('%Y-%m-%d %H:%M')}", small_style)
+                                TextBox(f"结束时间: {event_end_time.strftime('%Y-%m-%d %H:%M')}",   small_style)
+                                Spacer(h=4)
+                                with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
+                                    if event_attr:
+                                        ImageBox(event_attr_icon, size=(32, None))
+                                    if event_unit:
+                                        ImageBox(event_unit_logo, size=(32, None))
+                                    if event_ban_cid:
+                                        ImageBox(event_ban_chara_icon, size=(32, None))
+
+                # 关联卡池
+                if gacha:
+                    with VSplit().set_padding(16).set_sep(12).set_content_align('lt').set_item_align('lt'):
+                        with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
+                            TextBox("当期卡池", label_style)
+                            TextBox(f"【{gacha_id}】{gacha_name}", small_style).set_w(360)
+                        with HSplit().set_padding(0).set_sep(8).set_content_align('lt').set_item_align('lt'):
+                            ImageBox(gacha_banner_img, size=(250, None))
+                            with VSplit().set_content_align('c').set_item_align('c').set_sep(6):
+                                TextBox(f"开始时间: {gacha_start.strftime('%Y-%m-%d %H:%M')}", small_style)
+                                TextBox(f"结束时间: {gacha_end.strftime('%Y-%m-%d %H:%M')}",   small_style)
+
+            
+            # 右侧: 标题+限定类型+综合力+技能+发布时间+缩略图+衣装
+            w = 600
+            with VSplit().set_padding(0).set_sep(16).set_content_align('lt').set_item_align('lt').set_item_bg(roundrect_bg()):
+                # 标题
+                with HSplit().set_padding(16).set_sep(32).set_content_align('c').set_item_align('c').set_w(w):
+                    ImageBox(unit_logo, size=(None, 64))
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(12):
+                        TextBox(title, title_style)
+                        with HSplit().set_content_align('c').set_item_align('c').set_sep(8):
+                            ImageBox(chara_icon, size=(None, 32))
+                            TextBox(chara_name, title_style)
+
+                with VSplit().set_padding(16).set_sep(8).set_item_bg(roundrect_bg()).set_content_align('l').set_item_align('l'):
+                    # 卡牌ID 限定类型
+                    with HSplit().set_padding(16).set_sep(8).set_content_align('l').set_item_align('l'):
+                        TextBox("ID", label_style)
+                        TextBox(f"{card_id} ({ctx.region.upper()})", text_style)
+                        Spacer(w=32)
+                        TextBox("限定类型", label_style)
+                        TextBox(supply_type, text_style)
+
+                    # 综合力
+                    with HSplit().set_padding(16).set_sep(8).set_content_align('lb').set_item_align('lb'):
+                        TextBox("综合力", label_style)
+                        TextBox(f"{power_total} ({power1}/{power2}/{power3}) (满级0破无剧情)", text_style)
+
+                    # 技能
+                    with VSplit().set_padding(16).set_sep(8).set_content_align('l').set_item_align('l'):
+                        with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
+                            TextBox("技能", label_style)
+                            ImageBox(skill_type_icon, size=(32, 32))
+                            TextBox(skill_name, text_style)
+                        TextBox(skill_info.detail, text_style, use_real_line_count=True).set_w(w)
+                        if skill_detail_cn:
+                            TextBox(skill_detail_cn.removesuffix("。"), text_style, use_real_line_count=True).set_w(w)
+
+                    # 特训技能
+                    if 'specialTrainingSkillId' in card:
+                        with VSplit().set_padding(16).set_sep(8).set_content_align('l').set_item_align('l'):
+                            with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
+                                TextBox("特训后技能", label_style)
+                                ImageBox(sp_skill_type_icon, size=(32, 32))
+                                TextBox(sp_skill_name, text_style)
+                            TextBox(sp_skill_info.detail, text_style, use_real_line_count=True).set_w(w)
+                            if sp_skill_detail_cn:
+                                TextBox(sp_skill_detail_cn.removesuffix("。"), text_style, use_real_line_count=True).set_w(w)
+
+                    # 发布时间
+                    with HSplit().set_padding(16).set_sep(8).set_content_align('lb').set_item_align('lb'):
+                        TextBox("发布时间", label_style)
+                        TextBox(release_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
+
+                    # 缩略图
+                    with HSplit().set_padding(16).set_sep(16).set_content_align('l').set_item_align('l'):
+                        TextBox("缩略图", label_style)
+                        for img in thumbs:
+                            ImageBox(img, size=(100, None))
+
+                    # 衣装
+                    if len(cos3d_imgs) > 0:
+                        with HSplit().set_padding(16).set_sep(16).set_content_align('l').set_item_align('l'):
+                            TextBox("衣装", label_style)
+                            with Grid(col_count=5).set_sep(8, 8):
+                                for img in cos3d_imgs:
+                                    ImageBox(img, size=(80, None))
+
+                    # 提示
+                    with VSplit().set_padding(12).set_sep(6).set_content_align('l').set_item_align('l'):
+                        TextBox(f"发送\"/查卡面 {card_id}\"获取卡面原图, 发送\"/卡面剧情 {card_id}\"获取AI剧情总结", tip_style)
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -392,7 +780,10 @@ async def _(ctx: SekaiHandlerContext):
     except: card = None
     if card:
         logger.info(f"查询卡牌: id={card['id']}")
-        return await ctx.asend_reply_msg(f"https://sekai.best/card/{card['id']}")
+        return await ctx.asend_reply_msg(await get_image_cq(
+            await compose_card_detail_image(ctx, card['id']),
+            low_quality=True,
+        ))
         
     ## 尝试解析：查多张卡
 

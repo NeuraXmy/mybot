@@ -132,7 +132,7 @@ async def get_unit_by_card_id(ctx: SekaiHandlerContext, card_id: int) -> str:
     chara_unit = get_unit_by_chara_id(card['characterId'])
     if chara_unit != 'piapro':
         return chara_unit
-    return card['supportUnit']
+    return card['supportUnit'] if card['supportUnit'] != "none" else "piapro"
 
 
 # ======================= 处理逻辑 ======================= #
