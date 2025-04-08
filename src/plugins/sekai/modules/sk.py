@@ -27,6 +27,7 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 sk_card_recommend_pool = ProcessPoolExecutor(max_workers=2)
 sk_card_recommend_queue_len = 0
+SK_CARD_RECOMMEND_TIMEOUT = 180
 
 DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
 DEFAULT_EVENT_DECK_RECOMMEND_DIFF = "expert"
@@ -43,7 +44,7 @@ SKL_QUERY_RANKS = [
     *range(100000, 500001, 100000),
 ]
 ALL_RANKS = [
-    *range(1, 101),
+    *range(1, 100),
     *range(100, 501, 100),
     *range(1000, 5001, 1000),
     *range(10000, 50001, 10000),
@@ -289,7 +290,7 @@ async def sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_
     try:
         return await asyncio.wait_for(
             run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
-            timeout=120,
+            timeout=SK_CARD_RECOMMEND_TIMEOUT,
         )
     finally:
         sk_card_recommend_queue_len -= 1
