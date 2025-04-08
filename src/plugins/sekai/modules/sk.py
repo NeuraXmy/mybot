@@ -26,6 +26,7 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 
 sk_card_recommend_pool = ProcessPoolExecutor(max_workers=1)
+sk_card_recommend_queue_len = 0
 
 DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
 DEFAULT_EVENT_DECK_RECOMMEND_DIFF = "expert"
@@ -283,10 +284,15 @@ def _do_sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_di
 
 # sk自动组卡
 async def sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_diff: str, chara_name: str=None, topk=5):
-    return await asyncio.wait_for(
-        run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
-        timeout=60,
-    )
+    global sk_card_recommend_queue_len
+    sk_card_recommend_queue_len += 1
+    try:
+        return await asyncio.wait_for(
+            run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
+            timeout=60,
+        )
+    finally:
+        sk_card_recommend_queue_len -= 1
 
 # 获取自动组卡图片
 async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_type: str, mid: int, diff: str, chara_id: int=None, topk: int=5) -> Image.Image:
@@ -1041,7 +1047,7 @@ async def _(ctx: SekaiHandlerContext):
     music_id = music_id or DEFAULT_EVENT_DECK_RECOMMEND_MID
     music_diff = music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
     
-    await ctx.asend_reply_msg("开始计算组卡...")
+    await ctx.asend_reply_msg(f"开始计算组卡...当前队列长度{sk_card_recommend_queue_len}")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_deck_recommend_image(ctx, ctx.user_id, live_type, music_id, music_diff, None)))
 
 
@@ -1073,7 +1079,7 @@ async def _(ctx: SekaiHandlerContext):
     music_id = music_id or DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID
     music_diff = music_diff or DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF
 
-    await ctx.asend_reply_msg("开始计算组卡...")
+    await ctx.asend_reply_msg(f"开始计算组卡...当前队列长度{sk_card_recommend_queue_len}")
     return await ctx.asend_reply_msg(await get_image_cq(await compose_deck_recommend_image(ctx, ctx.user_id, "challenge", music_id, music_diff, chara_id)))
 
 
