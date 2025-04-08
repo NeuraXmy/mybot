@@ -236,12 +236,12 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     # id匹配
     if not search_type and options.use_id:
         try: 
-            assert "id" in query
-            mid = int(query.replace("id", ""))
+            mid = int(query.replace("id", "").strip())
+            assert mid > 0
+            music = await ctx.md.musics.find_by_id(mid)
         except: 
             mid = None
         if mid:
-            music = await ctx.md.musics.find_by_id(mid)
             search_type = "id"
             if music:
                 if diff and not await check_music_has_diff(ctx, mid, diff):
