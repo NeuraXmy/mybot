@@ -253,15 +253,14 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
     banner_img_cq = await get_image_cq(await get_event_banner_img(ctx, event))
     summary_db = get_file_db(f"{SEKAI_DATA_DIR}/story_summary/event/{ctx.region}/{eid}.json", logger)
     summary = summary_db.get("summary", {})
-    if not summary or refresh:
-        await ctx.asend_reply_msg(f"{banner_img_cq}正在生成活动剧情总结...")
 
     ## 读取数据
     story = await ctx.md.event_stories.find_by('eventId', eid)
     outline = story['outline']
     asset_name = story['assetbundleName']
     eps = []
-    chara_talk_count = {}
+    no_snippet_eps = []
+    chara_talk_count: Dict[str, int] = {}
     for i, ep in enumerate(story['eventStoryEpisodes'], 1):
         ep_id = ep['scenarioId']
         ep_title = ep['title']
@@ -287,16 +286,29 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
                 if effect['EffectType'] == 8:
                     snippets.append((None, effect['StringVal']))
 
-        eps.append({
-            'title': ep_title,
-            'image': ep_image,
-            'cids': cids,
-            'snippets': snippets,
-        })
+        if snippets:
+            eps.append({
+                'title': ep_title,
+                'image': ep_image,
+                'cids': cids,
+                'snippets': snippets,
+            })
+        else:
+            no_snippet_eps.append({
+                'title': ep_title,
+                'image': ep_image,
+                'cids': cids,
+            })
+
     chara_talk_count = sorted(chara_talk_count.items(), key=lambda x: x[1], reverse=True)
 
+    last_chapter_num = summary.get("chapter_num", 0)
+    story_has_update = len(eps) > last_chapter_num
+
     ## 获取总结
-    if not summary or refresh:
+    if not summary or refresh or story_has_update:
+        await ctx.asend_reply_msg(f"{banner_img_cq}正在生成活动剧情总结...")
+
         # 获取剧情文本
         raw_story = ""
         for i, ep in enumerate(eps, 1):
@@ -308,6 +320,9 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
                     raw_story += f"---\n({text})\n"
             raw_story += "\n"
 
+        # with open(f"sandbox/event_story_raw.txt", "w", encoding="utf-8") as f:
+        #     f.write(raw_story)
+
         summary_prompt_template = Path(f"{SEKAI_DATA_DIR}/story_summary/event_story_summary_prompt.txt").read_text()
         summary_prompt = summary_prompt_template.format(
             title=title,
@@ -315,7 +330,7 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
             raw_story=raw_story,
         )
         
-        @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
+        @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
         async def do_summary():
             try:
                 session = ChatSession()
@@ -325,6 +340,10 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
                 resp_text = resp.result
                 if len(resp_text) > 4096:
                     raise Exception(f"生成文本超过长度限制({len(resp_text)}>4096)")
+                
+                # with open(f"sandbox/event_story_resp.txt", "w", encoding="utf-8") as f:
+                #     f.write(resp_text)
+            
                 start_idx = resp_text.find("{")
                 end_idx = resp_text.rfind("}") + 1
                 data = json.loads(resp_text[start_idx:end_idx])
@@ -347,6 +366,8 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
                     else:
                         additional_info += f" | <0.0001/{resp.quota:.2f}{price_unit}"
                 summary['additional_info'] = additional_info
+
+                summary['chapter_num'] = len(eps)
 
                 summary_db.set("summary", summary)
                 return summary
@@ -386,7 +407,24 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
 {await get_image_cq(await run_in_pool(canvas.get_img))}
 {summary.get(f'ep_{i}_summary', '')}
 """.strip())
+        
+    for i, ep in enumerate(no_snippet_eps, 1):
+        with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(8) as canvas:
+            with VSplit().set_sep(8):
+                ImageBox(ep['image'], size=(None, 80))
+                with Grid(col_count=5).set_sep(2, 2):
+                    for cid in ep['cids']:
+                        if not cid: continue
+                        icon = get_chara_icon_by_chara_id(cid, raise_exc=False)
+                        if not icon: continue
+                        ImageBox(icon, size=(32, 32), use_alphablend=True)
 
+        msg_lists.append(f"""
+【第{i + len(eps)}章】{ep['title']}
+{await get_image_cq(await run_in_pool(canvas.get_img))}
+(章节剧情未实装)
+""".strip())
+        
     msg_lists.append(f"【剧情总结】\n{summary.get('summary', '').strip()}")
 
     chara_talk_count_text = "【角色对话次数】\n"

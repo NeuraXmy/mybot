@@ -25,7 +25,7 @@ matplotlib.rcParams['font.family'] = [FONT_NAME]
 matplotlib.rcParams['axes.unicode_minus'] = False  
 
 
-sk_card_recommend_pool = ProcessPoolExecutor(max_workers=1)
+sk_card_recommend_pool = ProcessPoolExecutor(max_workers=2)
 sk_card_recommend_queue_len = 0
 
 DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
@@ -289,7 +289,7 @@ async def sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_
     try:
         return await asyncio.wait_for(
             run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
-            timeout=180,
+            timeout=120,
         )
     finally:
         sk_card_recommend_queue_len -= 1
