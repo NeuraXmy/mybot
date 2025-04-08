@@ -70,6 +70,7 @@ async def get_card_full_thumbnail(ctx: SekaiHandlerContext, card_or_card_id: Dic
 
     img = await get_card_thumbnail(ctx, cid, after_training)
     ok_to_cache = (img != UNKNOWN_IMG)
+    img = img.copy()
 
     def draw(img: Image.Image, card):
         attr = card['attr']
