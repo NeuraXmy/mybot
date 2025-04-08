@@ -187,6 +187,15 @@ def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration
     _save_transparent_gif(frames, duration, save_path, alpha_threshold)
 
 
+# matplotlib图像转换为Image
+def plt_fig_to_image(fig, transparent=True) -> Image.Image:
+    buf = io.BytesIO()
+    fig.savefig(buf, transparent=transparent, format='png')
+    buf.seek(0)
+    img = Image.open(buf)
+    img.load()
+    return img
+
 
 # 下载图片 返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)

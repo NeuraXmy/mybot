@@ -62,14 +62,6 @@ def get_cmap(gid, date, n=10, hue_range=0.2):
         ret.append(c)
     return ret
 
-
-def pil_fig_to_image(fig) -> Image.Image:
-    buf = io.BytesIO()
-    fig.savefig(buf, transparent=True)
-    buf.seek(0)
-    return Image.open(buf)
-
-
 # 绘制饼图
 def draw_pie(gid, date_str, recs, topk_user, topk_name):
     logger.info(f"开始绘制饼图")
@@ -357,7 +349,7 @@ def draw_all(gid, recs, interval, topk1, topk2, user, name, path, date_str):
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
     draw_plot(gid, date_str, ax, recs, interval, user[:topk2], name[:topk2])
-    plot_image = pil_fig_to_image(fig)
+    plot_image = plt_fig_to_image(fig)
 
     wordcloud_image, word_rank_text = draw_wordcloud(gid, date_str, recs, user, name)
 
@@ -486,12 +478,12 @@ def draw_all_long(gid, recs, interval, topk1, topk2, user, name, path, date_str)
     fig, ax = plt.subplots(figsize=(8, 4), nrows=1, ncols=1)
     fig.tight_layout()
     draw_plot(gid, date_str, ax, recs, interval, user[:topk2], name[:topk2])
-    plot_image = pil_fig_to_image(fig)
+    plot_image = plt_fig_to_image(fig)
 
     fig, ax = plt.subplots(figsize=(8, 5), nrows=1, ncols=1)
     fig.tight_layout()
     draw_long_sta_date_count_plot(gid, date_str, ax, user[:topk2], name[:topk2], recs)
-    date_count_image = pil_fig_to_image(fig)
+    date_count_image = plt_fig_to_image(fig)
 
     wordcloud_image, word_rank_text = draw_wordcloud(gid, date_str, recs, user, name)
 

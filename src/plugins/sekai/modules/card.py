@@ -145,26 +145,31 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
                     bg = RoundRectBg(fill=(255, 255, 255, 150), radius=WIDGET_BG_RADIUS)
                     if card["supply_show_name"]: 
                         bg.fill = (255, 250, 220, 200)
-                    with Frame().set_content_align('rb').set_bg(bg):
-                        skill_type_img = ctx.static_imgs.get(f"skill_{card['skill_type']}.png")
-                        ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8)
+                    
+                    with Frame().set_content_align('lb').set_bg(bg):
+                        if datetime.fromtimestamp(card['releaseAt'] / 1000) > datetime.now():
+                            TextBox("LEAK", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(200, 0, 0))).set_offset((4, -4))
 
-                        with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8):
-                            GW = 300
-                            with HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16):
-                                if after is not None:
-                                    ImageBox(normal, size=(100, 100), image_size_mode='fill')
-                                    ImageBox(after,  size=(100, 100), image_size_mode='fill')
-                                else:
-                                    ImageBox(normal, size=(100, 100), image_size_mode='fill')
+                        with Frame().set_content_align('rb'):
+                            skill_type_img = ctx.static_imgs.get(f"skill_{card['skill_type']}.png")
+                            ImageBox(skill_type_img, image_size_mode='fit').set_w(32).set_margin(8)
 
-                            name_text = card['prefix']
-                            TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
+                            with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8):
+                                GW = 300
+                                with HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16):
+                                    if after is not None:
+                                        ImageBox(normal, size=(100, 100), image_size_mode='fill')
+                                        ImageBox(after,  size=(100, 100), image_size_mode='fill')
+                                    else:
+                                        ImageBox(normal, size=(100, 100), image_size_mode='fill')
 
-                            id_text = f"ID:{card['id']}"
-                            if card["supply_show_name"]:
-                                id_text += f"【{card['supply_show_name']}】"
-                            TextBox(id_text, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
+                                name_text = card['prefix']
+                                TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
+
+                                id_text = f"ID:{card['id']}"
+                                if card["supply_show_name"]:
+                                    id_text += f"【{card['supply_show_name']}】"
+                                TextBox(id_text, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)

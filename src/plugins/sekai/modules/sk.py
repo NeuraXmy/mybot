@@ -173,7 +173,7 @@ def find_next_ranking(ranks: List[Ranking], rank: int) -> Optional[Ranking]:
     return most_next
 
 # sk自动组卡实现
-def _sk_deck_recommend_work(user_id: int, live_type: str, music_key: str, music_diff: str, chara_name: str, topk: int):
+def _do_sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_diff: str, chara_name: str, topk: int):
     logger.info(f"开始自动组卡: ({user_id}, {live_type}, {music_key}, {music_diff}, {chara_name}, {topk})")
     assert live_type in ["multi", "single", "auto", "challenge"]
     assert music_diff in ["easy", "normal", "hard", "expert", "master", "append"]
@@ -202,10 +202,12 @@ def _sk_deck_recommend_work(user_id: int, live_type: str, music_key: str, music_
         if live_type == 'challenge':
             driver.find_element(By.XPATH, f"//*[text()='挑战']").click()
             # 选择角色
-            assert chara_name
-            driver.find_element(By.XPATH, f"//*[text()='角色']/..//input").click()
-            try: driver.find_element(By.XPATH, f"//*[text()='{chara_name}']").click()
-            except: raise ReplyException(f"无法选中角色: {chara_name}")
+            try: 
+                driver.find_element(By.XPATH, f"//*[text()='角色']/..//input").click()
+                assert chara_name
+                driver.find_element(By.XPATH, f"//*[text()='{chara_name}']").click()
+            except: 
+                raise ReplyException(f"无法选中角色: {chara_name}")
         else: 
             if live_type == 'single':
                 driver.find_element(By.XPATH, f"//*[text()='单人Live']").click()
@@ -214,15 +216,19 @@ def _sk_deck_recommend_work(user_id: int, live_type: str, music_key: str, music_
 
         # 选择歌曲
         if music_key:
-            driver.find_element(By.XPATH, f"//*[text()='歌曲']/..//input").click()
-            try: driver.find_element(By.XPATH, f"//*[text()='{music_key}']").click()
-            except: raise ReplyException(f"无法选中歌曲: {music_key}")
+            try: 
+                driver.find_element(By.XPATH, f"//*[text()='歌曲']/..//input").click()
+                driver.find_element(By.XPATH, f"//*[text()='{music_key}']").click()
+            except: 
+                raise ReplyException(f"无法选中歌曲: {music_key}")
         
         # 选择难度
         if music_diff:
-            driver.find_element(By.XPATH, f"//*[text()='难度']/..//input").click()
-            try: driver.find_element(By.XPATH, f"//*[text()='{music_diff}']").click()
-            except: raise ReplyException(f"无法选中该歌曲的难度: {music_diff}")
+            try: 
+                driver.find_element(By.XPATH, f"//*[text()='难度']/..//input").click()
+                driver.find_element(By.XPATH, f"//*[text()='{music_diff}']").click()
+            except: 
+                raise ReplyException(f"无法选中该歌曲的难度: {music_diff}")
 
         # 开始组卡
         driver.find_element(By.XPATH, "//*[text()='自动组卡！']").click()
@@ -230,38 +236,40 @@ def _sk_deck_recommend_work(user_id: int, live_type: str, music_key: str, music_
         # 等待页面加载完成
         WebDriverWait(driver, 60).until(EC.presence_of_element_located((By.XPATH, "//*[text()='排名']")))
 
-        driver.execute_script("document.documentElement.style.overflow = 'hidden';")
-        body = driver.find_element(By.TAG_NAME, "body")
-        width = driver.execute_script("return arguments[0].getBoundingClientRect().width;", body)
-        height = driver.execute_script("return arguments[0].getBoundingClientRect().height;", body)
-        driver.set_window_size(width, height)
-
-        results = []
-        tbody = driver.find_element(By.XPATH, "//*[text()='排名']/../../../tbody")
-        # 遍历前topk的卡组
-        for i, tr in enumerate(tbody.find_elements(By.TAG_NAME, "tr")):
-            if i >= topk: break
-            item = {}
-            tds = tr.find_elements(By.TAG_NAME, "td")
-            item['score'] = int(tds[1].text)
-            if live_type == 'challenge':
-                item['power'] = int(tds[3].text)
-            else:
-                item['bonus'] = float(tds[3].text)
-                item['power'] = int(tds[4].text)
-            item['cards'] = []
-            for div in tds[2].find_element(By.TAG_NAME, "div").find_elements(By.TAG_NAME, "div"):
-                title = div.find_element(By.TAG_NAME, "svg").find_element(By.TAG_NAME, "title").get_attribute("innerHTML")
-                card_id = int(title[2:].split('<', 1)[0])
-                item['cards'].append(card_id)
-            results.append(item)
+        try:
+            results = []
+            tbody = driver.find_element(By.XPATH, "//*[text()='排名']/../../../tbody")
+            # 遍历前topk的卡组
+            for i, tr in enumerate(tbody.find_elements(By.TAG_NAME, "tr")):
+                if i >= topk: break
+                item = {}
+                tds = tr.find_elements(By.TAG_NAME, "td")
+                item['score'] = int(tds[1].text)
+                if live_type == 'challenge':
+                    item['power'] = int(tds[3].text)
+                else:
+                    if '+' in tds[3].text:
+                        item['bonus'] = tds[3].text
+                    else:
+                        item['bonus'] = float(tds[3].text)
+                    item['power'] = int(tds[4].text)
+                item['cards'] = []
+                for div in tds[2].find_element(By.TAG_NAME, "div").find_elements(By.TAG_NAME, "div"):
+                    title = div.find_element(By.TAG_NAME, "svg").find_element(By.TAG_NAME, "title").get_attribute("innerHTML")
+                    card_id = int(title[2:].split('<', 1)[0])
+                    item['cards'].append(card_id)
+                results.append(item)
+        except:
+            logger.print_exc("获取组卡结果失败")
+            raise ReplyException("获取组卡结果失败")
 
         logger.info(f"自动组卡完成")
         return results
     
     except ReplyException as e:
-        logger.print_exc("自动组卡失败")
-        raise e
+        logger.warning(f"自动组卡失败: {get_exc_desc(e)}")
+        msg = str(e)
+        raise ReplyException(f"{msg}")
 
     except Exception as e:
         logger.print_exc("自动组卡失败")
@@ -273,7 +281,7 @@ def _sk_deck_recommend_work(user_id: int, live_type: str, music_key: str, music_
 # sk自动组卡
 async def sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_diff: str, chara_name: str=None, topk=5):
     return await asyncio.wait_for(
-        run_in_pool(_sk_deck_recommend_work, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
+        run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
         timeout=60,
     )
 
@@ -362,7 +370,10 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                             TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
                             for result in results:
-                                TextBox(f"{result['bonus']:.1f}%", tb_style).set_h(gh).set_content_align('c')
+                                if isinstance(result['bonus'], str):
+                                    TextBox(f"{result['bonus']}%", tb_style).set_h(gh).set_content_align('c')
+                                else:
+                                    TextBox(f"{result['bonus']:.1f}%", tb_style).set_h(gh).set_content_align('c')
                     # 综合力
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                         TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
@@ -530,6 +541,7 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
     banner_img = await get_event_banner_img(ctx, event)
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     query_ranks = ALL_RANKS if full else SKL_QUERY_RANKS
     ranks = await get_latest_ranking(ctx, eid, query_ranks)
@@ -550,6 +562,8 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
                     TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                 if banner_img:
                     ImageBox(banner_img, size=(140, None))
+                if wl_cid:
+                    ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
 
             if ranks:
                 gh = 30
@@ -590,6 +604,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
     banner_img = await get_event_banner_img(ctx, event)
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     query_ranks = SKL_QUERY_RANKS
     s_ranks = await query_latest_ranking_before(ctx.region, eid, min(datetime.now(), event_end) - timedelta(hours=1), query_ranks)
@@ -618,6 +633,8 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
                     TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                 if banner_img:
                     ImageBox(banner_img, size=(140, None))
+                if wl_cid:
+                    ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
 
             if speeds:
                 gh = 30
@@ -698,6 +715,7 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     eid = event.get('wl_id', event['id'])
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)
     style2 = TextStyle(font=DEFAULT_FONT, size=24, color=BLACK)
@@ -755,6 +773,8 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
                     else:
                         time_to_end = f"距离活动结束还有{get_readable_timedelta(time_to_end)}"
                     TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                if wl_cid:
+                    ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
         
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(6).set_padding(16):
                 for text, style in texts:
@@ -772,6 +792,7 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     eid = event.get('wl_id', event['id'])
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)
     style2 = TextStyle(font=DEFAULT_FONT, size=24, color=BLACK)
@@ -838,6 +859,8 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
                     else:
                         time_to_end = f"距离活动结束还有{get_readable_timedelta(time_to_end)}"
                     TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                if wl_cid:
+                    ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
         
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(6).set_padding(16):
                 for text, style in texts:
@@ -900,17 +923,11 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
                      color='red', fontsize=12, ha='right')
         plt.title(f"活动: {ctx.region.upper()}-{eid} 玩家: {name}")
 
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close(fig)
-        img = Image.open(buf)
-        img.load()
-        return img
+        return plt_fig_to_image(fig)
     
     img = await run_in_pool(draw_graph)
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
-        ImageBox(img)
+        ImageBox(img).set_bg(roundrect_bg())
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -975,17 +992,11 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         fig.autofmt_xdate()
         plt.title(f"活动: {ctx.region.upper()}-{eid} T{rank} 分数线")
 
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close(fig)
-        img = Image.open(buf)
-        img.load()
-        return img
+        return plt_fig_to_image(fig)
     
     img = await run_in_pool(draw_graph)
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
-        ImageBox(img)
+        ImageBox(img).set_bg(roundrect_bg())
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
