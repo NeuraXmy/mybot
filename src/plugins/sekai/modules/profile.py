@@ -199,8 +199,13 @@ def get_user_data_mode(ctx: SekaiHandlerContext, qid: int) -> str:
     data_modes = profile_db.get("data_modes", {})
     return data_modes.get(ctx.region, {}).get(str(qid), DEFAULT_DATA_MODE)
 
+# 用户是否隐藏抓包信息
+def is_user_hide_detail(ctx: SekaiHandlerContext, qid: int) -> bool:
+    hide_list = profile_db.get("hide_list", {}).get(ctx.region, [])
+    return qid in hide_list
+
 # 根据获取玩家详细信息，返回(profile, err_msg)
-async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None) -> Tuple[dict, str]:
+async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None, ignore_hide=True) -> Tuple[dict, str]:
     cache_path = None
     try:
         # 获取绑定的游戏id
@@ -211,8 +216,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             raise e
         
         # 检测是否隐藏抓包信息
-        hide_list = profile_db.get("hide_list", {}).get(ctx.region, [])
-        if qid in hide_list:
+        if not ignore_hide and is_user_hide_detail(ctx, qid):
             logger.info(f"获取 {qid} 抓包数据失败: 用户已隐藏抓包信息")
             raise Exception("已隐藏抓包信息")
         
@@ -273,20 +277,23 @@ async def get_player_avatar_info_by_detailed_profile(ctx: SekaiHandlerContext, d
     return PlayerAvatarInfo(card_id, cid, unit, avatar_img)
 
 # 获取玩家详细信息的简单卡片控件，返回Frame
-async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err_msg: str) -> Frame:
+async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err_msg: str, mode=None, hide=False) -> Frame:
     with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
         with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
             if profile:
                 avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
-                ImageBox(avatar_info.img, size=(80, 80), image_size_mode='fill')
+                avatar_img = avatar_info.img if not hide else UNKNOWN_IMG
+                ImageBox(avatar_img, size=(80, 80), image_size_mode='fill')
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
                     source = profile.get('source', '?')
-                    mode = get_user_data_mode(ctx, ctx.user_id)
+                    mode = mode or get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000)
                     update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
-                    colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
-                    TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    name = game_data['name'] if not hide else "***"
+                    user_id = game_data['userId'] if not hide else "****************"
+                    colored_text_box(truncate(name, 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {user_id}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:

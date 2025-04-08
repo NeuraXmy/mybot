@@ -10,6 +10,7 @@ from .profile import (
     get_card_full_thumbnail,
     get_profile_config,
     get_uid_from_qid,
+    is_user_hide_detail,
 )
 from .music import DIFF_NAMES, search_music, MusicSearchOptions, extract_diff
 from .event import get_current_event, get_event_banner_img, get_event_by_index
@@ -249,7 +250,9 @@ def _do_sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_di
                     item['power'] = int(tds[3].text)
                 else:
                     if '+' in tds[3].text:
-                        item['bonus'] = tds[3].text
+                        b1, b2 = tds[3].text.split('+')
+                        b1, b2 = float(b1), float(b2)
+                        item['bonus'] = f"{b1:.1f}+{b2:.1f}"
                     else:
                         item['bonus'] = float(tds[3].text)
                     item['power'] = int(tds[4].text)
@@ -290,7 +293,7 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     assert ctx.region == 'jp', "自动组卡仅支持日服"
     
     # 用户信息
-    profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, mode='haruki')
+    profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, mode='haruki', ignore_hide=True)
     uid = profile['userGamedata']['userId']
 
     # 组卡
@@ -325,7 +328,7 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
-            await get_detailed_profile_card(ctx, profile, pmsg)
+            await get_detailed_profile_card(ctx, profile, pmsg, mode='force-haruki', hide=is_user_hide_detail(ctx, qid))
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                 # 标题
                 with VSplit().set_content_align('lb').set_item_align('lb').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
