@@ -27,7 +27,7 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 sk_card_recommend_pool = ProcessPoolExecutor(max_workers=2)
 sk_card_recommend_queue_len = 0
-SK_CARD_RECOMMEND_TIMEOUT = 180
+SK_CARD_RECOMMEND_TIMEOUT = 300
 
 DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
 DEFAULT_EVENT_DECK_RECOMMEND_DIFF = "expert"
@@ -90,7 +90,9 @@ async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
     wl_events = []
     for chapter in chapters:
         wl_event = event.copy()
-        wl_event['wl_id'] = chapter['chapterNo'] * 1000 + event['id']
+        wl_event['id'] = chapter['chapterNo'] * 1000 + event['id']
+        wl_event['startAt'] = chapter['chapterStartAt']
+        wl_event['aggregateAt'] = chapter['chapterEndAt']
         wl_events.append(wl_event)
     return wl_events
 
@@ -156,12 +158,15 @@ async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, s
 2. wl2: 查询第二章
 3. wlmiku: 查询miku章节
 """.strip())
-        
+
+        chapter = find_by(chapters, "chapterNo", chapter_id)
         event = event.copy()
-        event['wl_id'] = chapter_id * 1000 + event['id']
+        event['id'] = chapter_id * 1000 + event['id']
+        event['startAt'] = chapter['chapterStartAt']
+        event['aggregateAt'] = chapter['chapterEndAt']
         args = args.replace(carg, "")
 
-        logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['wl_id']}")
+        logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['id']}")
         return event, args
 
 # 从榜线列表中找到最近的前一个榜线
@@ -311,6 +316,8 @@ async def compose_deck_recommend_image(ctx: SekaiHandlerContext, qid: int, live_
     # 用户信息
     profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, mode='haruki', ignore_hide=True)
     uid = profile['userGamedata']['userId']
+    pcards = profile['userCards']
+    logger.info(f"自动组卡用户卡牌数量: {len(pcards)}")
 
     # 组卡
     music = await ctx.md.musics.find_by_id(mid)
@@ -555,10 +562,10 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
     if not event:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
-    eid = event.get('wl_id', event['id'])
-    title = event['name']
+    eid = event['id']
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+    title = event['name']
     banner_img = await get_event_banner_img(ctx, event)
     wl_cid = await get_wl_chapter_cid(ctx, eid)
 
@@ -618,7 +625,7 @@ async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Ima
         event = await get_current_event(ctx, need_running=False)
         assert_and_reply(event, "未找到当前活动")
 
-    eid = event.get('wl_id', event['id'])
+    eid = event['id']
     title = event['name']
     event_start = datetime.fromtimestamp(event['startAt'] / 1000)
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
@@ -732,7 +739,7 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
 
-    eid = event.get('wl_id', event['id'])
+    eid = event['id']
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
     wl_cid = await get_wl_chapter_cid(ctx, eid)
@@ -809,7 +816,7 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
 
-    eid = event.get('wl_id', event['id'])
+    eid = event['id']
     title = event['name']
     event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
     wl_cid = await get_wl_chapter_cid(ctx, eid)
@@ -896,7 +903,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
     if not event:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
-    eid = event.get('wl_id', event['id'])
+    eid = event['id']
     wl_cid = await get_wl_chapter_cid(ctx, eid)
     ranks = []
 
@@ -952,7 +959,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
         if wl_cid:
-            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_bg(roundrect_bg()).set_offset((32, 32)):
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_bg(roundrect_bg()).set_padding(8):
                 ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
                 TextBox("单榜", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
     add_watermark(canvas)
@@ -963,7 +970,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     if not event:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
-    eid = event.get('wl_id', event['id'])
+    eid = event['id']
     wl_cid = await get_wl_chapter_cid(ctx, eid)
     ranks = []
 
@@ -1026,7 +1033,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
         if wl_cid:
-            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_bg(roundrect_bg()).set_offset((32, 32)):
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_bg(roundrect_bg()).set_padding(8):
                 ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
                 TextBox("单榜", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
     add_watermark(canvas)
@@ -1290,8 +1297,8 @@ async def update_ranking():
         ctx = SekaiHandlerContext.from_region(region)
         ranking_update_times[region] += 1
         if data:
-            with open(f"sandbox/board_{region}_{eid}.json", "w") as f:
-                json.dump(data, f, indent=4)
+            # with open(f"sandbox/board_{region}_{eid}.json", "w") as f:
+            #     json.dump(data, f, indent=4)
 
             # 更新总榜或WL单榜
             async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict):
@@ -1323,7 +1330,7 @@ async def update_ranking():
             # WL单榜
             wl_events = await get_wl_events(ctx, eid)
             for wl_event in wl_events:
-                ok = ok and await update_board(ctx, wl_event['wl_id'], data)
+                ok = ok and await update_board(ctx, wl_event['id'], data)
         
         if not ok:
             ranking_update_failures[region] += 1
