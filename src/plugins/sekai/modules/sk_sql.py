@@ -97,31 +97,31 @@ async def query_ranking(
     sql = "SELECT * FROM ranking WHERE 1=1"
     args = []
 
-    if uid:
+    if uid is not None:
         sql += " AND uid = ?"
         args.append(uid)
 
-    if name:
+    if name is not None:
         name = name[:RANKING_NAME_LEN_LIMIT]
         sql += " AND name = ?"
         args.append(name)
 
-    if rank:
+    if rank is not None:
         sql += " AND rank = ?"
         args.append(rank)
 
-    if start_time:
+    if start_time is not None:
         sql += " AND ts >= ?"
         args.append(start_time.timestamp())
 
-    if end_time:
+    if end_time is not None:
         sql += " AND ts <= ?"
         args.append(end_time.timestamp())
 
-    if order_by:
+    if order_by is not None:
         sql += f" ORDER BY {order_by}"
 
-    if limit:
+    if limit is not None:
         sql += f" LIMIT {limit}"
 
     cursor = await conn.execute(sql, args)
@@ -155,31 +155,31 @@ async def query_latest_ranking(region: str, event_id: int, ranks: List[int] = No
         return [Ranking.from_row(row) for row in rows]
 
 
-async def query_latest_ranking_before(
+async def query_first_ranking_after(
     region: str, 
     event_id: int, 
-    before_time: datetime,
+    after_time: datetime,
     ranks: List[int] = None,
 ) -> List[Ranking]:
     if ranks:
-        # 对于ranks中的每一个rank，找到最新的一条记录
+        # 对于ranks中的每一个rank，找到第一条记录
         conn = await get_conn(region, event_id)
         ret = []
         for rank in ranks:
             cursor = await conn.execute("""
-                SELECT * FROM ranking WHERE rank = ? AND ts < ? ORDER BY ts DESC LIMIT 1
-            """, (rank, before_time.timestamp()))
+                SELECT * FROM ranking WHERE rank = ? AND ts > ? ORDER BY ts LIMIT 1
+            """, (rank, after_time.timestamp()))
             row = await cursor.fetchone()
             if row:
                 ret.append(Ranking.from_row(row))
         return ret
     else:
-        # 对于表中的每一个rank，找到最新的一条记录
+        # 对于表中的每一个rank，找到第一条记录
         conn = await get_conn(region, event_id)
         cursor = await conn.execute("""
             SELECT * FROM ranking WHERE id IN (
-                SELECT MAX(id) FROM ranking WHERE ts < ? GROUP BY rank
+                SELECT MIN(id) FROM ranking WHERE ts > ? GROUP BY rank
             ) ORDER BY rank
-        """, (before_time.timestamp(),))
+        """, (after_time.timestamp(),))
         rows = await cursor.fetchall()
         return [Ranking.from_row(row) for row in rows]

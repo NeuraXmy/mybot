@@ -14,7 +14,7 @@ from .profile import (
 )
 from .music import DIFF_NAMES, search_music, MusicSearchOptions, extract_diff
 from .event import get_current_event, get_event_banner_img, get_event_by_index
-from .sk_sql import Ranking, insert_rankings, query_ranking, query_latest_ranking, query_latest_ranking_before
+from .sk_sql import Ranking, insert_rankings, query_ranking, query_latest_ranking, query_first_ranking_after
 
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
@@ -78,7 +78,7 @@ async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[i
     assert_and_reply(chapters, f"活动{ctx.region}_{event_id}并不是WorldLink活动")
     chapter = find_by(chapters, "chapterNo", chapter_id)
     assert_and_reply(chapter, f"活动{ctx.region}_{event_id}并没有章节{chapter_id}")
-    cid = chapter['characterId']
+    cid = chapter['gameCharacterId']
     return cid
 
 # 获取event_id对应的所有wl_event，如果不是wl则返回空列表
@@ -93,6 +93,15 @@ async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
         wl_event['wl_id'] = chapter['chapterNo'] * 1000 + event['id']
         wl_events.append(wl_event)
     return wl_events
+
+# 获取用于显示的活动ID-活动名称文本
+def get_event_id_and_name_text(region: str, event_id: int, event_name: str) -> str:
+    if event_id < 1000:
+        return f"【{region.upper()}-{event_id}】{event_name}"
+    else:
+        chapter_id = event_id // 1000
+        event_id = event_id % 1000
+        return f"【{region.upper()}-{event_id}-第{chapter_id}章单榜】{event_name}"
 
 # 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
 async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
@@ -120,7 +129,7 @@ async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, s
                 for nickname in nicknames:
                     carg = f"wl{nickname}"
                     if carg in args:
-                        chapter = find_by(chapters, "characterId", cid)
+                        chapter = find_by(chapters, "gameCharacterId", cid)
                         assert_and_reply(chapter, f"当期活动{ctx.region}_{event['id']}并没有角色{nickname}的章节")
                         chapter_id = chapter['chapterNo']
                         return chapter_id, carg
@@ -406,10 +415,10 @@ async def parse_rankings(ctx: SekaiHandlerContext, event_id: int, data: dict, ig
     # WL活动
     else:
         cid = await get_wl_chapter_cid(ctx, event_id)
-        top100_rankings = find_by(data['top100'].get('userWorldBloomChapterRankings', []), 'gameCharacterId', cid, mode='all')
+        top100_rankings = find_by(data['top100'].get('userWorldBloomChapterRankings', []), 'gameCharacterId', cid)
         top100 = [Ranking.from_sk(item) for item in top100_rankings['rankings']]
-        border_rankings = find_by(data['border'].get('userWorldBloomChapterRankingBorders', []), 'gameCharacterId', cid, mode='all')
-        border = [Ranking.from_sk(item) for item in border_rankings['rankings'] if item['rank'] != 100]
+        border_rankings = find_by(data['border'].get('userWorldBloomChapterRankingBorders', []), 'gameCharacterId', cid)
+        border = [Ranking.from_sk(item) for item in border_rankings['borderRankings'] if item['rank'] != 100]
 
     if ignore_no_update:
         # 过滤掉没有更新的border榜线
@@ -505,7 +514,7 @@ async def compose_skp_image(ctx: SekaiHandlerContext) -> Image.Image:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(16).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{predict.event_id}】{predict.event_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(f"【{ctx.region.upper()}-{predict.event_id}】{truncate(predict.event_name, 20)}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     TextBox(f"{predict.event_start.strftime('%Y-%m-%d %H:%M')} ~ {predict.event_end.strftime('%Y-%m-%d %H:%M')}", 
                             TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     time_to_end = predict.event_end - datetime.now()
@@ -561,7 +570,7 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(8).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{eid}】{title}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(get_event_id_and_name_text(ctx.region, eid, truncate(title, 20)), TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     TextBox(f"{event_start.strftime('%Y-%m-%d %H:%M')} ~ {event_end.strftime('%Y-%m-%d %H:%M')}", 
                             TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     time_to_end = event_end - datetime.now()
@@ -604,7 +613,7 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
     return await run_in_pool(canvas.get_img)
 
 # 合成时速图片
-async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) -> Image.Image:
+async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Image.Image:
     if not event:
         event = await get_current_event(ctx, need_running=False)
         assert_and_reply(event, "未找到当前活动")
@@ -617,7 +626,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
     wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     query_ranks = SKL_QUERY_RANKS
-    s_ranks = await query_latest_ranking_before(ctx.region, eid, min(datetime.now(), event_end) - timedelta(hours=1), query_ranks)
+    s_ranks = await query_first_ranking_after(ctx.region, eid, min(datetime.now(), event_end) - timedelta(hours=1), query_ranks)
     t_ranks = await get_latest_ranking(ctx, eid, query_ranks)
 
     speeds: List[Tuple[int, int, timedelta, datetime]] = []
@@ -632,7 +641,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(8).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{eid}】{title}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(get_event_id_and_name_text(ctx.region, eid, truncate(title, 20)), TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     TextBox(f"{event_start.strftime('%Y-%m-%d %H:%M')} ~ {event_end.strftime('%Y-%m-%d %H:%M')}", 
                             TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     time_to_end = event_end - datetime.now()
@@ -678,6 +687,7 @@ async def compose_skl_speed_image(ctx: SekaiHandlerContext, event: dict = None) 
     
 # 从文本获取sk查询参数 (类型，值) 类型: 'name' 'uid' 'rank' 'ranks'
 def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union[str, int, List[int]]]:
+    args = args.strip()
     if not args:
         if uid := get_uid_from_qid(ctx, ctx.user_id, check_bind=False):
             return 'self', uid
@@ -776,7 +786,7 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(8).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{eid}】{truncate(title, 20)}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(get_event_id_and_name_text(ctx.region, eid, truncate(title, 20)), TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     time_to_end = event_end - datetime.now()
                     if time_to_end.total_seconds() <= 0:
                         time_to_end = "活动已结束"
@@ -828,6 +838,8 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
             raise ReplyException(f"不支持的查询类型: {qtype}")
     
     ranks.sort(key=lambda x: x.time)
+    assert_and_reply(ranks, f"找不到{format_sk_query_params(qtype, qval)}的榜线数据")
+
     pts = []
     for i in range(len(ranks) - 1):
         if ranks[i].score != ranks[i + 1].score:
@@ -862,7 +874,7 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(8).set_sep(7):
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
-                    TextBox(f"【{ctx.region.upper()}-{eid}】{truncate(title, 20)}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(get_event_id_and_name_text(ctx.region, eid, truncate(title, 20)), TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
                     time_to_end = event_end - datetime.now()
                     if time_to_end.total_seconds() <= 0:
                         time_to_end = "活动已结束"
@@ -932,7 +944,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         fig.autofmt_xdate()
         plt.annotate(f"{int(rs[-1])}", xy=(times[-1], rs[-1]), xytext=(times[-1], rs[-1]),
                      color='red', fontsize=12, ha='right')
-        plt.title(f"活动: {ctx.region.upper()}-{eid} 玩家: {name}")
+        plt.title(f"{get_event_id_and_name_text(ctx.region, eid, '')} 玩家: {name}")
 
         return plt_fig_to_image(fig)
     
@@ -940,7 +952,9 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
         if wl_cid:
-            ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50)).set_offset(64, 64)
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_bg(roundrect_bg()).set_offset((32, 32)):
+                ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
+                TextBox("单榜", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -1004,7 +1018,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         fig.autofmt_xdate()
-        plt.title(f"活动: {ctx.region.upper()}-{eid} T{rank} 分数线")
+        plt.title(f"{get_event_id_and_name_text(ctx.region, eid, '')} T{rank} 分数线")
 
         return plt_fig_to_image(fig)
     
@@ -1012,7 +1026,9 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
         if wl_cid:
-            ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50)).set_offset(64, 64)
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_bg(roundrect_bg()).set_offset((32, 32)):
+                ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50))
+                TextBox("单榜", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -1092,6 +1108,10 @@ pjsk_skp = SekaiCmdHandler([
 pjsk_skp.check_cdrate(cd).check_wblist(gbl)
 @pjsk_skp.handle()
 async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    wl_event, args = await extract_wl_event(ctx, args)
+    assert_and_reply(not wl_event, "榜线预测不支持WL单榜")
+
     return await ctx.asend_msg(await get_image_cq(
         await compose_skp_image(ctx),
         low_quality=True,
@@ -1144,7 +1164,7 @@ async def _(ctx: SekaiHandlerContext):
     wl_event, args = await extract_wl_event(ctx, args)
 
     return await ctx.asend_msg(await get_image_cq(
-        await compose_skl_speed_image(ctx, event=wl_event),
+        await compose_sks_image(ctx, event=wl_event),
         low_quality=True,
     ))
 
@@ -1217,6 +1237,8 @@ async def _(ctx: SekaiHandlerContext):
         rank = int(args)
     except:
         return await ctx.asend_reply_msg(f"请输入正确的排名")
+    
+    assert_and_reply(rank in ALL_RANKS, f"不支持的排名: {rank}")
 
     return await ctx.asend_msg(await get_image_cq(
         await compose_rank_trace_image(ctx, rank, event=wl_event),
@@ -1268,6 +1290,9 @@ async def update_ranking():
         ctx = SekaiHandlerContext.from_region(region)
         ranking_update_times[region] += 1
         if data:
+            with open(f"sandbox/board_{region}_{eid}.json", "w") as f:
+                json.dump(data, f, indent=4)
+
             # 更新总榜或WL单榜
             async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict):
                 try:
