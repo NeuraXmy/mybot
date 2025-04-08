@@ -175,11 +175,11 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
     return await run_in_pool(canvas.get_img)
 
 # 获取卡面图片
-async def get_card_image(ctx: SekaiHandlerContext, cid: int, after_training: bool):
+async def get_card_image(ctx: SekaiHandlerContext, cid: int, after_training: bool, allow_error: bool = True) -> str:
     image_type = "after_training" if after_training else "normal"
     card = await ctx.md.cards.find_by_id(cid)
     if not card: raise Exception(f"找不到ID为{cid}的卡牌") 
-    return await ctx.rip.img(f"character/member/{card['assetbundleName']}_rip/card_{image_type}.png", timeout=30)
+    return await ctx.rip.img(f"character/member/{card['assetbundleName']}_rip/card_{image_type}.png", timeout=30, allow_error=allow_error)
 
 # 获取卡牌剧情总结
 async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: bool, summary_model: str) -> List[str]:
@@ -874,9 +874,9 @@ pjsk_card_img.check_cdrate(cd).check_wblist(gbl)
 @pjsk_card_img.handle()
 async def _(ctx: SekaiHandlerContext):
     card = await get_card_by_index(ctx, ctx.get_args().strip())
-    msg = await get_image_cq(await get_card_image(ctx, card['id'], False))
+    msg = await get_image_cq(await get_card_image(ctx, card['id'], False, False))
     if has_after_training(card):
-        msg += await get_image_cq(await get_card_image(ctx, card['id'], True))
+        msg += await get_image_cq(await get_card_image(ctx, card['id'], True, False))
     return await ctx.asend_reply_msg(msg)
 
 

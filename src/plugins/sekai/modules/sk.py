@@ -289,7 +289,7 @@ async def sk_deck_recommend(user_id: int, live_type: str, music_key: str, music_
     try:
         return await asyncio.wait_for(
             run_in_pool(_do_sk_deck_recommend, user_id, live_type, music_key, music_diff, chara_name, topk, pool=sk_card_recommend_pool),
-            timeout=60,
+            timeout=180,
         )
     finally:
         sk_card_recommend_queue_len -= 1
