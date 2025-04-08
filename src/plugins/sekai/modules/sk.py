@@ -92,7 +92,7 @@ async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
         wl_event = event.copy()
         wl_event['id'] = chapter['chapterNo'] * 1000 + event['id']
         wl_event['startAt'] = chapter['chapterStartAt']
-        wl_event['aggregateAt'] = chapter['chapterEndAt']
+        wl_event['aggregateAt'] = chapter['aggregateAt']
         wl_events.append(wl_event)
     return wl_events
 
@@ -163,7 +163,7 @@ async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, s
         event = event.copy()
         event['id'] = chapter_id * 1000 + event['id']
         event['startAt'] = chapter['chapterStartAt']
-        event['aggregateAt'] = chapter['chapterEndAt']
+        event['aggregateAt'] = chapter['aggregateAt']
         args = args.replace(carg, "")
 
         logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['id']}")
