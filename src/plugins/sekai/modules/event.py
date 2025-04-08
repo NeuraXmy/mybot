@@ -499,7 +499,10 @@ async def _(ctx: SekaiHandlerContext):
     if 'refresh' in args:
         refresh = True
         args = args.replace('refresh', '').strip()
-    event = await get_event_by_index(ctx, args)
+    try:
+        event = await get_event_by_index(ctx, args)
+    except:
+        event = await get_current_event(ctx, need_running=False)
     await ctx.block_region(str(event['id']))
     return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh, DEFAULT_EVENT_STORY_SUMMARY_MODEL))
 
