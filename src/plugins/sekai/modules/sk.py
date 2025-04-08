@@ -878,6 +878,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
     eid = event.get('wl_id', event['id'])
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
     ranks = []
 
     match qtype:
@@ -931,6 +932,8 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
     img = await run_in_pool(draw_graph)
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
+        if wl_cid:
+            ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50)).set_offset(64, 64)
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -940,6 +943,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         event = await get_current_event(ctx, need_running=False)
     assert_and_reply(event, "未找到当前活动")
     eid = event.get('wl_id', event['id'])
+    wl_cid = await get_wl_chapter_cid(ctx, eid)
     ranks = []
 
     ranks = await query_ranking(ctx.region, eid, rank=rank)
@@ -1000,6 +1004,8 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     img = await run_in_pool(draw_graph)
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         ImageBox(img).set_bg(roundrect_bg())
+        if wl_cid:
+            ImageBox(get_chara_icon_by_chara_id(wl_cid), size=(None, 50)).set_offset(64, 64)
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
