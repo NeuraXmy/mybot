@@ -617,11 +617,12 @@ async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_music
                                                 all_diff_result = all_diff_result.get('userMusicDifficultyStatuses', [])
                                                 diff_result = find_by(all_diff_result, "musicDifficulty", diff)
                                                 if diff_result and diff_result['musicDifficultyStatus'] == "available":
-                                                    full_combo, all_prefect = False, False
+                                                    has_clear, full_combo, all_prefect = False, False, False
                                                     for item in diff_result["userMusicResults"]:
+                                                        has_clear = has_clear or item["playResult"] != 'not_clear'
                                                         full_combo = full_combo or item["fullComboFlg"]
                                                         all_prefect = all_prefect or item["fullPerfectFlg"]
-                                                    result_type = "clear" if len(diff_result["userMusicResults"]) > 0 else "not_clear"
+                                                    result_type = "clear" if has_clear else "not_clear"
                                                     if full_combo: result_type = "fc"
                                                     if all_prefect: result_type = "ap"
                                                     result_img = ctx.static_imgs.get(f"icon_{result_type}.png")
@@ -654,11 +655,12 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
             all_diff_result = all_diff_result.get('userMusicDifficultyStatuses', [])
             diff_result = find_by(all_diff_result, "musicDifficulty", diff)
             if diff_result and diff_result['musicDifficultyStatus'] == "available":
-                full_combo, all_prefect = False, False
+                has_clear, full_combo, all_prefect = False, False, False
                 for item in diff_result["userMusicResults"]:
+                    has_clear = has_clear or item["playResult"] != 'not_clear'
                     full_combo = full_combo or item["fullComboFlg"]
                     all_prefect = all_prefect or item["fullPerfectFlg"]
-                result_type = 1 if len(diff_result["userMusicResults"]) > 0 else 0
+                if has_clear: result_type = 1
                 if full_combo: result_type = 2
                 if all_prefect: result_type = 3
 
