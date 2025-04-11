@@ -71,14 +71,13 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
     def get_bond_bg(c1, c2, is_main, swap):
         if swap: c1, c2 = c2, c1
         suffix = '_sub' if not is_main else ''
-        img1 = ctx.static_imgs.get(f'honor/bonds/{c1}{suffix}.png')
-        img2 = ctx.static_imgs.get(f'honor/bonds/{c2}{suffix}.png')
+        img1 = ctx.static_imgs.get(f'honor/bonds/{c1}{suffix}.png').copy()
+        img2 = ctx.static_imgs.get(f'honor/bonds/{c2}{suffix}.png').copy()
         x = 190 if is_main else 90
         img2 = img2.crop((x, 0, 380, 80))
         img1.paste(img2, (x, 0))
         return img1
   
-    honor_groups = await ctx.md.honor_groups.get()
     if htype == 'normal':
         # 普通牌子
         honor = await ctx.md.honors.find_by_id(hid)
@@ -97,11 +96,11 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
         gname = group['name']
         
         if gtype == 'rank_match':
-            img = await ctx.rip.img(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await ctx.rip.img(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None, timeout=2)
+            img = (await ctx.rip.img(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")).copy()
+            rank_img = await ctx.rip.img(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None, timeout=3)
         else:
-            img = await ctx.rip.img(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")
-            rank_img = await ctx.rip.img(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None, timeout=2)
+            img = (await ctx.rip.img(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")).copy()
+            rank_img = await ctx.rip.img(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None, timeout=3)
 
         add_frame(img, rarity)
         if rank_img:

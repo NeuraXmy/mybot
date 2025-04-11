@@ -47,7 +47,12 @@ async def get_card_thumbnail(ctx: SekaiHandlerContext, cid: int, after_training:
     )
 
 # 获取角色卡牌完整缩略图（包括边框、星级等）
-async def get_card_full_thumbnail(ctx: SekaiHandlerContext, card_or_card_id: Dict, after_training: bool=None, pcard: Dict=None, use_max_level: bool=False):
+async def get_card_full_thumbnail(
+    ctx: SekaiHandlerContext, 
+    card_or_card_id: Dict, 
+    after_training: bool=None, 
+    pcard: Dict=None, 
+):
     if isinstance(card_or_card_id, int):
         card = await ctx.md.cards.find_by_id(card_or_card_id)
         assert_and_reply(card, f"找不到ID为{card_or_card_id}的卡牌")
@@ -88,8 +93,6 @@ async def get_card_full_thumbnail(ctx: SekaiHandlerContext, card_or_card_id: Dic
         # 如果是profile卡片则绘制等级
         if pcard:
             level = pcard['level']
-            if use_max_level:
-                level = 60 if rare in ["rarity_birthday", "rarity_4"] else 50
             draw = ImageDraw.Draw(img)
             draw.rectangle((0, img_h - 24, img_w, img_h), fill=(70, 70, 100, 255))
             draw.text((6, img_h - 31), f"Lv.{level}", font=get_font(DEFAULT_BOLD_FONT, 20), fill=WHITE)

@@ -216,6 +216,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     logger.info(f"查询曲目: \"{query}\" options={options}")
 
     query = query.strip()
+
     diff = options.diff
     musics = await ctx.md.musics.get()
 
@@ -232,6 +233,11 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     err_msg: str = None
     candidate_msg: str = ""
     additional_msg: str = ""
+
+    # 检测空
+    if not query:
+        search_type = "failed"
+        err_msg = "搜索文本为空"
 
     # id匹配
     if not search_type and options.use_id:

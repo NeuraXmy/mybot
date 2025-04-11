@@ -351,57 +351,79 @@ class RegionMasterDataCollection:
     def __init__(self, region: str):
         self._region = region
 
-        self.musics                                       = RegionMasterDataWrapper(region, "musics")
-        self.music_diffs                                  = RegionMasterDataWrapper(region, "musicDifficulties")
-        self.vlives                                       = RegionMasterDataWrapper(region, "virtualLives")
-        self.events                                       = RegionMasterDataWrapper(region, "events")
-        self.event_stories                                = RegionMasterDataWrapper(region, "eventStories")
-        self.event_story_units                            = RegionMasterDataWrapper(region, "eventStoryUnits")
-        self.game_characters                              = RegionMasterDataWrapper(region, "gameCharacters")
-        self.characters_2ds                               = RegionMasterDataWrapper(region, "character2ds")
-        self.stamps                                       = RegionMasterDataWrapper(region, "stamps")
-        self.cards                                        = RegionMasterDataWrapper(region, "cards")
-        self.card_supplies                                = RegionMasterDataWrapper(region, "cardSupplies")
-        self.skills                                       = RegionMasterDataWrapper(region, "skills")
-        self.honors                                       = RegionMasterDataWrapper(region, "honors")
-        self.honor_groups                                 = RegionMasterDataWrapper(region, "honorGroups")
-        self.bonds_honnors                                = RegionMasterDataWrapper(region, "bondsHonors")
-        self.mysekai_materials                            = RegionMasterDataWrapper(region, "mysekaiMaterials")
-        self.mysekai_items                                = RegionMasterDataWrapper(region, "mysekaiItems")
-        self.mysekai_fixtures                             = RegionMasterDataWrapper(region, "mysekaiFixtures")
-        self.mysekai_musicrecords                         = RegionMasterDataWrapper(region, "mysekaiMusicRecords")
-        self.mysekai_phenomenas                           = RegionMasterDataWrapper(region, "mysekaiPhenomenas")
-        self.mysekai_blueprints                           = RegionMasterDataWrapper(region, "mysekaiBlueprints")
-        self.mysekai_site_harvest_fixtures                = RegionMasterDataWrapper(region, "mysekaiSiteHarvestFixtures")
-        self.mysekai_fixture_maingenres                   = RegionMasterDataWrapper(region, "mysekaiFixtureMainGenres")
-        self.mysekai_fixture_subgenres                    = RegionMasterDataWrapper(region, "mysekaiFixtureSubGenres")
-        self.mysekai_character_talks                      = RegionMasterDataWrapper(region, "mysekaiCharacterTalks")
-        self.mysekai_game_character_unit_groups           = RegionMasterDataWrapper(region, "mysekaiGameCharacterUnitGroups")
-        self.game_character_units                         = RegionMasterDataWrapper(region, "gameCharacterUnits")
-        self.mysekai_material_chara_relations             = RegionMasterDataWrapper(region, "mysekaiMaterialGameCharacterRelations")
-        self.resource_boxes                               = RegionMasterDataWrapper(region, "resourceBoxes")
-        self.boost_items                                  = RegionMasterDataWrapper(region, "boostItems")
-        self.mysekai_fixture_tags                         = RegionMasterDataWrapper(region, "mysekaiFixtureTags")
-        self.mysekai_blueprint_material_cost              = RegionMasterDataWrapper(region, "mysekaiBlueprintMysekaiMaterialCosts")
-        self.mysekai_fixture_only_disassemble_materials   = RegionMasterDataWrapper(region, "mysekaiFixtureOnlyDisassembleMaterials")
-        self.music_vocals                                 = RegionMasterDataWrapper(region, "musicVocals")
-        self.outside_characters                           = RegionMasterDataWrapper(region, "outsideCharacters")
-        self.mysekai_gate_levels                          = RegionMasterDataWrapper(region, "mysekaiGateLevels")
-        self.myskeia_gate_material_groups                 = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
-        self.event_story_units                            = RegionMasterDataWrapper(region, "eventStoryUnits")
-        self.card_episodes                                = RegionMasterDataWrapper(region, "cardEpisodes")
-        self.event_cards                                  = RegionMasterDataWrapper(region, "eventCards")
-        self.event_musics                                 = RegionMasterDataWrapper(region, "eventMusics")
-        self.costume3ds                                   = RegionMasterDataWrapper(region, "costume3ds")
-        self.card_costume3ds                              = RegionMasterDataWrapper(region, "cardCostume3ds")
-        self.ng_words                                     = RegionMasterDataWrapper(region, "ngWords")
-        self.mysekai_gate_material_groups                 = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
-        self.world_blooms                                 = RegionMasterDataWrapper(region, "worldBlooms")
-        self.gachas                                       = RegionMasterDataWrapper(region, "gachas")
+        self.musics                                                         = RegionMasterDataWrapper(region, "musics")
+        self.music_diffs                                                    = RegionMasterDataWrapper(region, "musicDifficulties")
+        self.vlives                                                         = RegionMasterDataWrapper(region, "virtualLives")
+        self.events                                                         = RegionMasterDataWrapper(region, "events")
+        self.event_stories                                                  = RegionMasterDataWrapper(region, "eventStories")
+        self.event_story_units                                              = RegionMasterDataWrapper(region, "eventStoryUnits")
+        self.game_characters                                                = RegionMasterDataWrapper(region, "gameCharacters")
+        self.characters_2ds                                                 = RegionMasterDataWrapper(region, "character2ds")
+        self.stamps                                                         = RegionMasterDataWrapper(region, "stamps")
+        self.cards                                                          = RegionMasterDataWrapper(region, "cards")
+        self.card_supplies                                                  = RegionMasterDataWrapper(region, "cardSupplies")
+        self.skills                                                         = RegionMasterDataWrapper(region, "skills")
+        self.honors                                                         = RegionMasterDataWrapper(region, "honors")
+        self.honor_groups                                                   = RegionMasterDataWrapper(region, "honorGroups")
+        self.bonds_honnors                                                  = RegionMasterDataWrapper(region, "bondsHonors")
+        self.mysekai_materials                                              = RegionMasterDataWrapper(region, "mysekaiMaterials")
+        self.mysekai_items                                                  = RegionMasterDataWrapper(region, "mysekaiItems")
+        self.mysekai_fixtures                                               = RegionMasterDataWrapper(region, "mysekaiFixtures")
+        self.mysekai_musicrecords                                           = RegionMasterDataWrapper(region, "mysekaiMusicRecords")
+        self.mysekai_phenomenas                                             = RegionMasterDataWrapper(region, "mysekaiPhenomenas")
+        self.mysekai_blueprints                                             = RegionMasterDataWrapper(region, "mysekaiBlueprints")
+        self.mysekai_site_harvest_fixtures                                  = RegionMasterDataWrapper(region, "mysekaiSiteHarvestFixtures")
+        self.mysekai_fixture_maingenres                                     = RegionMasterDataWrapper(region, "mysekaiFixtureMainGenres")
+        self.mysekai_fixture_subgenres                                      = RegionMasterDataWrapper(region, "mysekaiFixtureSubGenres")
+        self.mysekai_character_talks                                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalks")
+        self.mysekai_game_character_unit_groups                             = RegionMasterDataWrapper(region, "mysekaiGameCharacterUnitGroups")
+        self.game_character_units                                           = RegionMasterDataWrapper(region, "gameCharacterUnits")
+        self.mysekai_material_chara_relations                               = RegionMasterDataWrapper(region, "mysekaiMaterialGameCharacterRelations")
+        self.resource_boxes                                                 = RegionMasterDataWrapper(region, "resourceBoxes")
+        self.boost_items                                                    = RegionMasterDataWrapper(region, "boostItems")
+        self.mysekai_fixture_tags                                           = RegionMasterDataWrapper(region, "mysekaiFixtureTags")
+        self.mysekai_blueprint_material_cost                                = RegionMasterDataWrapper(region, "mysekaiBlueprintMysekaiMaterialCosts")
+        self.mysekai_fixture_only_disassemble_materials                     = RegionMasterDataWrapper(region, "mysekaiFixtureOnlyDisassembleMaterials")
+        self.music_vocals                                                   = RegionMasterDataWrapper(region, "musicVocals")
+        self.outside_characters                                             = RegionMasterDataWrapper(region, "outsideCharacters")
+        self.mysekai_gate_levels                                            = RegionMasterDataWrapper(region, "mysekaiGateLevels")
+        self.myskeia_gate_material_groups                                   = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
+        self.event_story_units                                              = RegionMasterDataWrapper(region, "eventStoryUnits")
+        self.card_episodes                                                  = RegionMasterDataWrapper(region, "cardEpisodes")
+        self.event_cards                                                    = RegionMasterDataWrapper(region, "eventCards")
+        self.event_musics                                                   = RegionMasterDataWrapper(region, "eventMusics")
+        self.costume3ds                                                     = RegionMasterDataWrapper(region, "costume3ds")
+        self.card_costume3ds                                                = RegionMasterDataWrapper(region, "cardCostume3ds")
+        self.ng_words                                                       = RegionMasterDataWrapper(region, "ngWords")
+        self.mysekai_gate_material_groups                                   = RegionMasterDataWrapper(region, "mysekaiGateMaterialGroups")
+        self.world_blooms                                                   = RegionMasterDataWrapper(region, "worldBlooms")
+        self.gachas                                                         = RegionMasterDataWrapper(region, "gachas")
+        self.area_item_levels                                               = RegionMasterDataWrapper(region, "areaItemLevels")
+        self.area_items                                                     = RegionMasterDataWrapper(region, "areaItems")
+        self.areas                                                          = RegionMasterDataWrapper(region, "areas")
+        self.card_rarities                                                  = RegionMasterDataWrapper(region, "cardRarities")
+        self.character_ranks                                                = RegionMasterDataWrapper(region, "characterRanks")
+        self.event_deck_bonuses                                             = RegionMasterDataWrapper(region, "eventDeckBonuses")
+        self.event_exchange_summaries                                       = RegionMasterDataWrapper(region, "eventExchangeSummaries")
+        self.event_items                                                    = RegionMasterDataWrapper(region, "eventItems")
+        self.event_rarity_bonus_rates                                       = RegionMasterDataWrapper(region, "eventRarityBonusRates")
+        self.master_lessons                                                 = RegionMasterDataWrapper(region, "masterLessons")
+        self.shop_items                                                     = RegionMasterDataWrapper(region, "shopItems")
+        self.world_bloom_different_attribute_bonuses                        = RegionMasterDataWrapper(region, "worldBloomDifferentAttributeBonuses")
+        self.world_bloom_support_deck_bonuses                               = RegionMasterDataWrapper(region, "worldBloomSupportDeckBonuses")
+        self.world_bloom_support_deck_unit_event_limited_bonuses            = RegionMasterDataWrapper(region, "worldBloomSupportDeckUnitEventLimitedBonuses")
+        self.card_mysekai_canvas_bonuses                                    = RegionMasterDataWrapper(region, "cardMysekaiCanvasBonuses")
+        self.mysekai_fixture_game_character_groups                          = RegionMasterDataWrapper(region, "mysekaiFixtureGameCharacterGroups")
+        self.mysekai_fixture_game_character_group_performance_bonuses       = RegionMasterDataWrapper(region, "mysekaiFixtureGameCharacterGroupPerformanceBonuses")
+        self.mysekai_gates                                                  = RegionMasterDataWrapper(region, "mysekaiGates")
 
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
         return await wrapper.get()
+    
+    async def get_version(self) -> str:
+        mgr = RegionMasterDbManager.get(self._region)
+        return (await mgr.get_latest_source()).version
 
 
 # ================================ MasterData自定义索引 ================================ #
@@ -535,7 +557,8 @@ DEFAULT_RIP_ASSET_DIR = f"{SEKAI_ASSET_DIR}/rip"
 DEFAULT_GET_RIP_ASSET_TIMEOUT = 5
 
 def sekai_best_url_map(url: str) -> str:
-    # 程序中的url以sekai.best为准
+    # 移除_rip
+    url = url.replace("_rip", "")
     return url
 
 def haruki_url_map(url: str) -> str:
@@ -805,7 +828,7 @@ class StaticImageRes:
 # ================================ 网页Json资源 ================================ #
 
 class WebJsonRes:
-    def __init__(self, name: str, url: str, update_interval: timedelta):
+    def __init__(self, name: str, url: str, update_interval: timedelta = None):
         self.name = name
         self.url = url
         self.data = None
@@ -818,7 +841,7 @@ class WebJsonRes:
         logger.info(f"网页Json资源 [{self.name}] 更新成功")
 
     async def get(self):
-        if not self.data or datetime.now() - self.update_time > self.update_interval:
+        if not self.data or not self.update_interval or datetime.now() - self.update_time > self.update_interval:
             try:
                 await self.download()
             except Exception as e:
