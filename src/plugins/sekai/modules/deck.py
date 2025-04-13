@@ -152,11 +152,12 @@ def log_options(ctx: SekaiHandlerContext, user_id: int, options: DeckRecommendOp
     log += f"rarity_bd={options.rarity_birthday_config}, "
     logger.info(log)
 
-# 本地自动组卡实现
+# 本地自动组卡实现 返回(结果，耗时)
 async def deck_recommend_local_impl(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
-) -> DeckRecommendResult:
+) -> Tuple[DeckRecommendResult, timedelta]:
+    start_time = datetime.now()
     global last_deck_recommend_masterdata_version
     global last_deck_recommend_musicmeta_update_time
     
@@ -223,17 +224,18 @@ async def deck_recommend_local_impl(
         last_deck_recommend_musicmeta_update_time[ctx.region] = datetime.now()
 
     # 组卡!
-    return await run_in_pool(
+    result = await run_in_pool(
         deck_recommend.recommend,
         options,
         pool=deck_recommend_pool,
     )
+    return result, datetime.now() - start_time
         
 # 自动组卡
 async def do_deck_recommend(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
-) -> DeckRecommendResult:
+) -> Tuple[DeckRecommendResult, timedelta]:
     try:
         return await deck_recommend_local_impl(ctx, options)
     except Exception as e:
@@ -262,23 +264,24 @@ async def compose_deck_recommend_image(
         log_options(ctx, uid, options)
 
         # 组卡！
-        start_time = datetime.now()
+        total_secs = 0
         result_decks = []
         if options.live_type == "challenge" and not options.challenge_live_character_id:
             # 挑战组卡没有指定角色情况下，每角色组1个最强
-            
             for item in CHARACTER_NICKNAME_DATA:
                 options.challenge_live_character_id = item['id']
                 options.limit = 1
-                res = await do_deck_recommend(ctx, options)
+                res, cost_time = await do_deck_recommend(ctx, options)
                 result_decks.extend(res.decks)
+                total_secs += cost_time.total_seconds()
             options.challenge_live_character_id = None
         else:
             # 正常组卡
-            result = await do_deck_recommend(ctx, options)
-            result_decks = result.decks
-        elapsed_time = datetime.now() - start_time
-        logger.info(f"组卡完成，耗时 {elapsed_time.total_seconds()}s")
+            res, cost_time = await do_deck_recommend(ctx, options)
+            result_decks = res.decks
+            total_secs += cost_time.total_seconds()
+        
+    logger.info(f"组卡完成，耗时 {total_secs}s")
 
     # 获取音乐标题和封面
     music = await ctx.md.musics.find_by_id(options.music_id)
@@ -399,9 +402,10 @@ async def compose_deck_recommend_image(
                 # 说明
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
                     tip_style = TextStyle(font=DEFAULT_FONT, size=16, color=(20, 20, 20))
-                    TextBox(f"12星卡组固定使用最大等级、最大突破、最大技能且前后篇剧情已读", tip_style)
-                    TextBox(f"34星及生日卡固定使用最大等级，其他属性使用玩家当前数据", tip_style)
-                    TextBox(f"卡组计算使用 https://github.com/NeuraXmy/sekai-deck-recommend-cpp    本次耗时: {elapsed_time.total_seconds():.2f}s", tip_style)
+                    TextBox(f"12星卡固定最大等级+最大突破+最大技能+剧情已读，34星及生日卡固定最大等级", tip_style)
+                    TextBox(f"组卡计算使用 https://github.com/NeuraXmy/sekai-deck-recommend-cpp    本次组卡耗时 {total_secs:.2f}s", tip_style)
+                    if options.algorithm != "dfs":
+                        TextBox(f"组卡使用随机近似算法，结果有较小概率不是理论最优", tip_style)
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
@@ -410,6 +414,11 @@ async def compose_deck_recommend_image(
 async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
     args = ctx.get_args().strip().lower()
     options = DeckRecommendOptions()
+
+    # 算法
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
 
     # live类型
     if "多人" in args or '协力' in args: 
@@ -446,6 +455,10 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
     options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
 
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 10000
+
     return options
 
 # 从args中提取挑战组卡参数
@@ -454,6 +467,11 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
     options = DeckRecommendOptions()
 
     options.live_type = "challenge"
+
+    # 算法
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
     
     # 指定角色
     options.challenge_live_character_id = None
