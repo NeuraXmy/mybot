@@ -17,6 +17,7 @@ from sekai_deck_recommend import (
     DeckRecommendOptions, 
     DeckRecommendCardConfig, 
     DeckRecommendResult,
+    DeckRecommendSaOptions,
 )
 
 
@@ -249,6 +250,10 @@ async def compose_deck_recommend_image(
     profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, ignore_hide=True)
     uid = profile['userGamedata']['userId']
 
+    # 如果 userChallengeLiveSoloDecks 不存在，塞个空数组
+    if 'userChallengeLiveSoloDecks' not in profile:
+        profile['userChallengeLiveSoloDecks'] = []
+
     # 准备用户数据
     with TempFilePath("json") as userdata_path:
         await asave_json(userdata_path, profile)
@@ -257,6 +262,7 @@ async def compose_deck_recommend_image(
         log_options(ctx, uid, options)
 
         # 组卡！
+        start_time = datetime.now()
         result_decks = []
         if options.live_type == "challenge" and not options.challenge_live_character_id:
             # 挑战组卡没有指定角色情况下，每角色组1个最强
@@ -271,6 +277,8 @@ async def compose_deck_recommend_image(
             # 正常组卡
             result = await do_deck_recommend(ctx, options)
             result_decks = result.decks
+        elapsed_time = datetime.now() - start_time
+        logger.info(f"组卡完成，耗时 {elapsed_time.total_seconds()}s")
 
     # 获取音乐标题和封面
     music = await ctx.md.musics.find_by_id(options.music_id)
@@ -353,7 +361,7 @@ async def compose_deck_recommend_image(
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         ImageBox(music_cover, size=(None, 50), use_alphablend=True)
-                        TextBox(f"{options.music_id} - {music_title} - {options.music_diff.upper()}", 
+                        TextBox(f"{music_title} ({options.music_diff.upper()})", 
                                 TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                 # 表格
                 gh = 80
@@ -393,7 +401,7 @@ async def compose_deck_recommend_image(
                     tip_style = TextStyle(font=DEFAULT_FONT, size=16, color=(20, 20, 20))
                     TextBox(f"12星卡组固定使用最大等级、最大突破、最大技能且前后篇剧情已读", tip_style)
                     TextBox(f"34星及生日卡固定使用最大等级，其他属性使用玩家当前数据", tip_style)
-                    TextBox(f"卡组计算修改自 https://github.com/xfl03/sekai-calculator", tip_style)
+                    TextBox(f"卡组计算使用 https://github.com/NeuraXmy/sekai-deck-recommend-cpp    本次耗时: {elapsed_time.total_seconds():.2f}s", tip_style)
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
@@ -473,6 +481,10 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
     options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
     options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
     options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.run_num = 5  # 挑战组卡卡少，适当减少模拟退火次数
 
     return options
 
