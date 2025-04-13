@@ -363,7 +363,9 @@ async def compose_deck_recommend_image(
                             TextBox(f"{wl_chara_name} 章节", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
-                        ImageBox(music_cover, size=(None, 50), use_alphablend=True)
+                        with Frame().set_size((50, 50)):
+                            Spacer(w=50, h=50).set_bg(FillBg(fill=DIFF_COLORS[options.music_diff])).set_offset((6, 6))
+                            ImageBox(music_cover, size=(50, 50), use_alphablend=True)
                         TextBox(f"{music_title} ({options.music_diff.upper()})", 
                                 TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                 # 表格
