@@ -10,7 +10,7 @@ from collections import defaultdict
 from random import randrange
 from itertools import chain
 
-from PIL.Image import Image
+from PIL.Image import Image, Quantize
 
 
 class TransparentAnimatedGifConverter(object):
@@ -182,8 +182,8 @@ def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: fl
         trans_data = list(map(replace_alpha, img.getdata()))
         img.putdata(trans_data)
         img: Image = img.convert("RGB")
-        pal_img = img.convert("P", palette=Palette.ADAPTIVE, colors=255) 
-        img = img.quantize(palette=pal_img)
+        pal_img = img.convert("P", palette=Palette.ADAPTIVE, colors=256) 
+        img = img.quantize(palette=pal_img, method=Quantize.MAXCOVERAGE)
         palette = img.getpalette()[:768]
         transparent_color_index, min_dist = None, float("inf")
         for i in range(256):

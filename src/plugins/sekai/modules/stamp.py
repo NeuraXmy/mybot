@@ -135,6 +135,6 @@ async def _(ctx: SekaiHandlerContext):
         result_image.paste((255, 255, 255, 255), (0, 0, 1, 1), mask=None)
 
         with TempFilePath("gif") as path:
-            save_transparent_gif(result_image, 0, path)
+            save_high_quality_static_gif(result_image, path)
             return await ctx.asend_reply_msg(await get_image_cq(path, force_read=True))
 

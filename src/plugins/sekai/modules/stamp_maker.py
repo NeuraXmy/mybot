@@ -5,6 +5,7 @@ import os
 import math
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
+from pilmoji import Pilmoji
 
 MAKER_BASE_DIR = f"{SEKAI_ASSET_DIR}/stamp_maker"
 
@@ -232,7 +233,7 @@ def _get_text_img(
         for chart in t:
             c_font = get_font(chart)
 
-            _, _, c_width, c_height = c_font.getbbox(chart)
+            c_width, c_height = get_text_size(c_font, chart)
             t_width += c_width
 
             if c_height > t_height:
@@ -246,7 +247,6 @@ def _get_text_img(
     text_height += stroke_width * 2
 
     text_image = Image.new("RGBA", (text_width, text_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(text_image)
 
     x, y = stroke_width, stroke_width
 
@@ -257,7 +257,8 @@ def _get_text_img(
         for chart in sentence:
             c_font = get_font(chart)
 
-            _, _, width, height = c_font.getbbox(chart)
+            width, height = get_text_size(c_font, chart)
+
             sentence_width[i] += width
 
             if height > sentence_height[i]:
@@ -267,7 +268,10 @@ def _get_text_img(
         x = (text_width - sentence_width[i]) // 2
         for chart in sentence:
             c_font = get_font(chart)
-            draw.text((x, y + get_y_offset(chart, c_font)), chart, color, c_font)
+            
+            p = Painter(text_image)
+            p.text(chart, (int(x), int(y + get_y_offset(chart, c_font))), c_font, color)
+
             x += c_font.getlength(chart)
         y += sentence_height[i] + line_spacing
     return text_image

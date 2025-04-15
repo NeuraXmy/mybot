@@ -10,6 +10,10 @@ import os
 import numpy as np
 from copy import deepcopy
 import math
+from pilmoji import Pilmoji
+from pilmoji import getsize as getsize_emoji
+from pilmoji.source import GoogleEmojiSource
+import emoji
 
 DEBUG_MODE = False
 
@@ -94,8 +98,11 @@ def get_font(path: str, size: int) -> Font:
     raise FileNotFoundError(f"Font file not found: {path}")
 
 def get_text_size(font: Font, text: str) -> Size:
-    bbox = font.getbbox(text)
-    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    if emoji.emoji_count(text) > 0:
+        return getsize_emoji(text, font=font)
+    else:
+        bbox = font.getbbox(text)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 def get_text_offset(font: Font, text: str) -> Position:
     bbox = font.getbbox(text)
@@ -244,12 +251,19 @@ class Painter:
         fill: Color = BLACK,
         align: str = "left"
     ):
-        draw = ImageDraw.Draw(self.img)
-        text_offset = get_text_offset(font, text)
-        text_offset = (text_offset[0] // 2, text_offset[1] // 2)
-        # text_offset = (0, 0)
-        pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
-        draw.text(pos, text, font=font, fill=fill, align=align)
+        has_emoji = emoji.emoji_count(text) > 0
+        if not has_emoji:
+            draw = ImageDraw.Draw(self.img)
+            text_offset = get_text_offset(font, text)
+            text_offset = (text_offset[0] // 2, text_offset[1] // 2)
+            pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
+            draw.text(pos, text, font=font, fill=fill, align=align)
+        else:
+            with Pilmoji(self.img, source=GoogleEmojiSource) as pilmoji:
+                text_offset = get_text_offset(font, text)
+                text_offset = (text_offset[0] // 2, text_offset[1] // 2)
+                pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
+                pilmoji.text(pos, text, font=font, fill=fill, align=align, emoji_position_offset=(0, font.size // 3))
         return self
         
     def paste(

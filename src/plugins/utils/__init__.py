@@ -38,6 +38,7 @@ import atexit
 from tenacity import retry, stop_after_attempt, wait_fixed
 from uuid import uuid4
 import decord
+import emoji
 
 
 # 配置文件
