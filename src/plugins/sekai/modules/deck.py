@@ -18,11 +18,20 @@ from sekai_deck_recommend import (
     DeckRecommendCardConfig, 
     DeckRecommendResult,
     DeckRecommendSaOptions,
+    RecommendDeck,
 )
 
 
 deck_recommend = SekaiDeckRecommend()
-deck_recommend_pool = ThreadPoolExecutor(max_workers=1)
+RECOMMEND_TIMEOUT = timedelta(seconds=5)
+SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=30)
+RECOMMEND_ALGS = ['dfs', 'sa']
+RECOMMEND_ALG_NAMES = {
+    'dfs': '深度优先搜索',
+    'sa': '模拟退火',
+}
+deck_recommend_pool = ThreadPoolExecutor(max_workers=len(RECOMMEND_ALGS))
+deck_recommend_lock = asyncio.Lock()
 
 last_deck_recommend_masterdata_version: Dict[str, datetime] = {}
 
@@ -152,95 +161,113 @@ def log_options(ctx: SekaiHandlerContext, user_id: int, options: DeckRecommendOp
     log += f"rarity_bd={options.rarity_birthday_config}, "
     logger.info(log)
 
-# 本地自动组卡实现 返回(结果，耗时)
-async def deck_recommend_local_impl(
-    ctx: SekaiHandlerContext, 
-    options: DeckRecommendOptions,
-) -> Tuple[DeckRecommendResult, timedelta]:
-    start_time = datetime.now()
-    global last_deck_recommend_masterdata_version
-    global last_deck_recommend_musicmeta_update_time
-    
-    # 准备masterdata
-    if last_deck_recommend_masterdata_version.get(ctx.region) != await ctx.md.get_version():
-        logger.info(f"重新加载本地自动组卡 {ctx.region} masterdata")
-        # 确保所有masterdata就绪
-        mds = [
-            ctx.md.area_item_levels.get(),
-            ctx.md.area_items.get(),
-            ctx.md.areas.get(),
-            ctx.md.card_episodes.get(),
-            ctx.md.cards.get(),
-            ctx.md.card_rarities.get(),
-            ctx.md.character_ranks.get(),
-            ctx.md.event_cards.get(),
-            ctx.md.event_deck_bonuses.get(),
-            ctx.md.event_exchange_summaries.get(),
-            ctx.md.events.get(),
-            ctx.md.event_items.get(),
-            ctx.md.event_rarity_bonus_rates.get(),
-            ctx.md.game_characters.get(),
-            ctx.md.game_character_units.get(),
-            ctx.md.honors.get(),
-            ctx.md.master_lessons.get(),
-            ctx.md.music_diffs.get(),
-            ctx.md.musics.get(),
-            ctx.md.music_vocals.get(),
-            ctx.md.shop_items.get(),
-            ctx.md.skills.get(),
-            ctx.md.world_bloom_different_attribute_bonuses.get(),
-            ctx.md.world_blooms.get(),
-            ctx.md.world_bloom_support_deck_bonuses.get(),
-        ]
-        if ctx.region == 'jp':
-            mds += [
-                ctx.md.world_bloom_support_deck_unit_event_limited_bonuses.get(),
-                ctx.md.card_mysekai_canvas_bonuses.get(),
-                ctx.md.mysekai_fixture_game_character_groups.get(),
-                ctx.md.mysekai_fixture_game_character_group_performance_bonuses.get(),
-                ctx.md.mysekai_gates.get(),
-                ctx.md.mysekai_gate_levels.get(),
-            ]
-        await asyncio.gather(*mds)
-        deck_recommend.update_masterdata(f"{SEKAI_ASSET_DIR}/masterdata/{ctx.region}/", ctx.region)
-        last_deck_recommend_masterdata_version[ctx.region] = await ctx.md.get_version()
-
-    # 准备musicmetas
-    if last_deck_recommend_musicmeta_update_time.get(ctx.region) is None \
-        or datetime.now() - last_deck_recommend_musicmeta_update_time[ctx.region] > DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL:
-        logger.info(f"重新加载本地自动组卡 {ctx.region} musicmetas")
-        try:
-            # 尝试从网络下载
-            musicmetas = await musicmetas_json.get()
-            await asave_json(MUSICMETAS_SAVE_PATH, musicmetas)
-        except Exception as e:
-            logger.warning(f"下载music_metas.json失败: {get_exc_desc(e)}")
-            if os.path.exists(MUSICMETAS_SAVE_PATH):
-                # 使用本地缓存
-                logger.info(f"使用本地缓存music_metas.json")
-            else:
-                raise ReplyException(f"获取music_metas.json失败: {get_exc_desc(e)}")
-        deck_recommend.update_musicmetas(MUSICMETAS_SAVE_PATH, ctx.region)
-        last_deck_recommend_musicmeta_update_time[ctx.region] = datetime.now()
-
-    # 组卡!
-    result = await run_in_pool(
-        deck_recommend.recommend,
-        options,
-        pool=deck_recommend_pool,
-    )
-    return result, datetime.now() - start_time
-        
-# 自动组卡
+# 本地自动组卡实现 返回(结果，{算法:耗时})
 async def do_deck_recommend(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
-) -> Tuple[DeckRecommendResult, timedelta]:
-    try:
-        return await deck_recommend_local_impl(ctx, options)
-    except Exception as e:
-        logger.print_exc("组卡失败")
-        raise ReplyException(f"组卡失败: {get_exc_desc(e)}")
+) -> Tuple[DeckRecommendResult, Dict[str, timedelta]]:
+    async with deck_recommend_lock:
+        global last_deck_recommend_masterdata_version
+        global last_deck_recommend_musicmeta_update_time
+        
+        # 准备masterdata
+        if last_deck_recommend_masterdata_version.get(ctx.region) != await ctx.md.get_version():
+            logger.info(f"重新加载本地自动组卡 {ctx.region} masterdata")
+            # 确保所有masterdata就绪
+            mds = [
+                ctx.md.area_item_levels.get(),
+                ctx.md.area_items.get(),
+                ctx.md.areas.get(),
+                ctx.md.card_episodes.get(),
+                ctx.md.cards.get(),
+                ctx.md.card_rarities.get(),
+                ctx.md.character_ranks.get(),
+                ctx.md.event_cards.get(),
+                ctx.md.event_deck_bonuses.get(),
+                ctx.md.event_exchange_summaries.get(),
+                ctx.md.events.get(),
+                ctx.md.event_items.get(),
+                ctx.md.event_rarity_bonus_rates.get(),
+                ctx.md.game_characters.get(),
+                ctx.md.game_character_units.get(),
+                ctx.md.honors.get(),
+                ctx.md.master_lessons.get(),
+                ctx.md.music_diffs.get(),
+                ctx.md.musics.get(),
+                ctx.md.music_vocals.get(),
+                ctx.md.shop_items.get(),
+                ctx.md.skills.get(),
+                ctx.md.world_bloom_different_attribute_bonuses.get(),
+                ctx.md.world_blooms.get(),
+                ctx.md.world_bloom_support_deck_bonuses.get(),
+            ]
+            if ctx.region == 'jp':
+                mds += [
+                    ctx.md.world_bloom_support_deck_unit_event_limited_bonuses.get(),
+                    ctx.md.card_mysekai_canvas_bonuses.get(),
+                    ctx.md.mysekai_fixture_game_character_groups.get(),
+                    ctx.md.mysekai_fixture_game_character_group_performance_bonuses.get(),
+                    ctx.md.mysekai_gates.get(),
+                    ctx.md.mysekai_gate_levels.get(),
+                ]
+            await asyncio.gather(*mds)
+            deck_recommend.update_masterdata(f"{SEKAI_ASSET_DIR}/masterdata/{ctx.region}/", ctx.region)
+            last_deck_recommend_masterdata_version[ctx.region] = await ctx.md.get_version()
+
+        # 准备musicmetas
+        if last_deck_recommend_musicmeta_update_time.get(ctx.region) is None \
+            or datetime.now() - last_deck_recommend_musicmeta_update_time[ctx.region] > DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL:
+            logger.info(f"重新加载本地自动组卡 {ctx.region} musicmetas")
+            try:
+                # 尝试从网络下载
+                musicmetas = await musicmetas_json.get()
+                await asave_json(MUSICMETAS_SAVE_PATH, musicmetas)
+            except Exception as e:
+                logger.warning(f"下载music_metas.json失败: {get_exc_desc(e)}")
+                if os.path.exists(MUSICMETAS_SAVE_PATH):
+                    # 使用本地缓存
+                    logger.info(f"使用本地缓存music_metas.json")
+                else:
+                    raise ReplyException(f"获取music_metas.json失败: {get_exc_desc(e)}")
+            deck_recommend.update_musicmetas(MUSICMETAS_SAVE_PATH, ctx.region)
+            last_deck_recommend_musicmeta_update_time[ctx.region] = datetime.now()
+
+        # 算法选择
+        if options.algorithm == "all": 
+            algs = RECOMMEND_ALGS
+            options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+        else:
+            algs = [options.algorithm]
+            options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+        # 组卡!
+        results: List[Tuple[DeckRecommendResult, str, timedelta]] = []
+        for alg in algs:
+            opt = DeckRecommendOptions(options)
+            opt.algorithm = alg
+            def do_recommend(opt: DeckRecommendOptions) -> Tuple[DeckRecommendResult, str, timedelta]:
+                start_time = datetime.now()
+                res = deck_recommend.recommend(opt)
+                cost_time = datetime.now() - start_time
+                return res, opt.algorithm, cost_time
+            results.append(await run_in_pool(do_recommend, opt, pool=deck_recommend_pool))
+
+        # 结果排序去重
+        decks: List[RecommendDeck] = []
+        cost_times = {}
+        deck_set = set()
+        for res, alg, cost_time in results:
+            cost_times[alg] = cost_time
+            for deck in res.decks:
+                deck_hash = str(deck.score) + str(deck.total_power) + str(deck.cards[0].card_id)
+                if deck_hash not in deck_set:
+                    deck_set.add(deck_hash)
+                    decks.append(deck)
+        decks = sorted(decks, key=lambda x: x.score, reverse=True)[:options.limit]
+
+        res = DeckRecommendResult()
+        res.decks = decks
+        return res, cost_times
 
 # 获取自动组卡图片
 async def compose_deck_recommend_image(
@@ -264,24 +291,24 @@ async def compose_deck_recommend_image(
         log_options(ctx, uid, options)
 
         # 组卡！
-        total_secs = 0
+        cost_times = {}
         result_decks = []
         if options.live_type == "challenge" and not options.challenge_live_character_id:
             # 挑战组卡没有指定角色情况下，每角色组1个最强
             for item in CHARACTER_NICKNAME_DATA:
                 options.challenge_live_character_id = item['id']
                 options.limit = 1
-                res, cost_time = await do_deck_recommend(ctx, options)
+                res, cts = await do_deck_recommend(ctx, options)
                 result_decks.extend(res.decks)
-                total_secs += cost_time.total_seconds()
+                for alg, cost in cts.items():
+                    if alg not in cost_times:
+                        cost_times[alg] = timedelta()
+                    cost_times[alg] += cost
             options.challenge_live_character_id = None
         else:
             # 正常组卡
-            res, cost_time = await do_deck_recommend(ctx, options)
+            res, cost_times = await do_deck_recommend(ctx, options)
             result_decks = res.decks
-            total_secs += cost_time.total_seconds()
-        
-    logger.info(f"组卡完成，耗时 {total_secs}s")
 
     # 获取音乐标题和封面
     music = await ctx.md.musics.find_by_id(options.music_id)
@@ -405,9 +432,12 @@ async def compose_deck_recommend_image(
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
                     tip_style = TextStyle(font=DEFAULT_FONT, size=16, color=(20, 20, 20))
                     TextBox(f"12星卡固定最大等级+最大突破+最大技能+剧情已读，34星及生日卡固定最大等级", tip_style)
-                    TextBox(f"组卡计算使用 https://github.com/NeuraXmy/sekai-deck-recommend-cpp    本次组卡耗时 {total_secs:.2f}s", tip_style)
-                    if options.algorithm != "dfs":
-                        TextBox(f"组卡使用随机近似算法，结果有较小概率不是理论最优", tip_style)
+                    TextBox(f"组卡代码来自 https://github.com/NeuraXmy/sekai-deck-recommend-cpp", tip_style)
+                    alg_and_cost_text = "本次组卡使用算法及耗时: "
+                    for alg, cost in cost_times.items():
+                        alg_and_cost_text += f"{RECOMMEND_ALG_NAMES[alg]}({cost.total_seconds():.2f}s) + "
+                    alg_and_cost_text = alg_and_cost_text[:-3]
+                    TextBox(alg_and_cost_text, tip_style)
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
@@ -418,6 +448,7 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     options = DeckRecommendOptions()
 
     # 算法
+    options.algorithm = "all"
     if "dfs" in args:
         options.algorithm = "dfs"
         args = args.replace("dfs", "").strip()
@@ -471,6 +502,7 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
     options.live_type = "challenge"
 
     # 算法
+    options.algorithm = "all"
     if "dfs" in args:
         options.algorithm = "dfs"
         args = args.replace("dfs", "").strip()
