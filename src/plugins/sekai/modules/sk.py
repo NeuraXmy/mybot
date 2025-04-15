@@ -960,6 +960,7 @@ async def _(ctx: SekaiHandlerContext):
 # ======================= 定时任务 ======================= #
 
 UPDATE_RANKING_LOG_INTERVAL_TIMES = 30
+RECORD_TIME_AFTER_EVENT_END = 60 * 10
 ranking_update_times = { region: 0 for region in ALL_SERVER_REGIONS }
 ranking_update_failures = { region: 0 for region in ALL_SERVER_REGIONS }
 
@@ -974,7 +975,9 @@ async def update_ranking():
             continue
         
         # 获取当前运行中的活动
-        if not (event := await get_current_event(ctx, need_running=True)):
+        if not (event := await get_current_event(ctx, need_running=False)):
+            continue
+        if datetime.now() > datetime.fromtimestamp(event['aggregateAt'] / 1000 + RECORD_TIME_AFTER_EVENT_END):
             continue
 
         # 获取榜线数据
@@ -988,7 +991,7 @@ async def update_ranking():
                             raise Exception(f"{resp.status}: {await resp.text()}")
                         return ctx.region, eid, await resp.json()
             except Exception as e:
-                logger.warning(f"获取 {region} 榜线数据失败: {get_exc_desc(e)}")
+                logger.warning(f"获取 {ctx.region} 榜线数据失败: {get_exc_desc(e)}")
                 return ctx.region, eid, None
             
         tasks.append(_get_ranking(ctx, event['id']))
@@ -1004,8 +1007,8 @@ async def update_ranking():
             # with open(f"sandbox/board_{region}_{eid}.json", "w") as f:
             #     json.dump(data, f, indent=4)
 
-            # 更新总榜或WL单榜
-            async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict):
+            # 更新总榜或WL单榜，返回是否更新成功
+            async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict) -> bool:
                 try:
                     # 插入数据库
                     rankings = await parse_rankings(ctx, eid, data, True)
@@ -1034,12 +1037,12 @@ async def update_ranking():
             # WL单榜
             wl_events = await get_wl_events(ctx, eid)
             for wl_event in wl_events:
-                if datetime.now() > datetime.fromtimestamp(wl_event['aggregateAt'] / 1000 + 1):
+                if datetime.now() > datetime.fromtimestamp(wl_event['aggregateAt'] / 1000 + RECORD_TIME_AFTER_EVENT_END):
                     continue
                 ok = ok and await update_board(ctx, wl_event['id'], data)
         
-        if not ok:
-            ranking_update_failures[region] += 1
+            if not ok:
+                ranking_update_failures[region] += 1
 
         # log
         if ranking_update_times[region] >= UPDATE_RANKING_LOG_INTERVAL_TIMES:
