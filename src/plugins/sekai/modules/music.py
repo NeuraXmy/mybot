@@ -85,13 +85,15 @@ VOCAL_CAPTION_MAP_DICT = {
 
 @dataclass
 class MusicAliasAddHistory:
-    region: str
     mid: int
     aliases: List[str]
 
-music_alias_db = get_file_db(f"{SEKAI_DATA_DIR}/music_alias.json", logger)
-music_alias_add_history: Dict[str, List[MusicAliasAddHistory]] = {}
+MUSIC_ALIAS_DB_NAMES = ['local', 'haruki']
+music_alias_dbs = { name : get_file_db(f"{SEKAI_DATA_DIR}/music_alias/{name}.json", logger) for name in MUSIC_ALIAS_DB_NAMES }
+music_alias_add_history: Dict[int, List[MusicAliasAddHistory]] = {}
+music_alias_lock = asyncio.Lock()
 MAX_MUSIC_ALIAS_ADD_HISTORY = 5
+MUSIC_ALIAS_ADD_LOG_PATH = f"{SEKAI_DATA_DIR}/music_alias/history.log"
 
 
 @dataclass
@@ -104,6 +106,78 @@ class PlayProgressCount:
 
 
 # ======================= 处理逻辑 ======================= #
+
+# 在指定区域和db和mid检查别名是否存在，不存在返回 None，存在返回(mid, region, db)
+async def check_music_alias_exists(alias: str, mid: Union[str, int] = 'all', region: str = 'all', db: str = 'all') -> Optional[Tuple[int, str, str]]:
+    assert db in MUSIC_ALIAS_DB_NAMES or db == 'all'
+    assert region in ALL_SERVER_REGIONS or region == 'all'
+    assert mid == 'all' or isinstance(mid, int)
+    dbs = MUSIC_ALIAS_DB_NAMES if db == 'all' else [db]
+    regions = ALL_SERVER_REGIONS if region == 'all' else [region]
+    for db in dbs:
+        for region in regions:
+            music_alias = music_alias_dbs[db].get(region, {})
+            # 查找单个mid
+            if isinstance(mid, int):
+                if alias in music_alias.get(str(mid), []):
+                    return int(mid), region, db
+            # 查找所有mid
+            else:
+                for i, aliases in music_alias.items():
+                    if alias in aliases:
+                        return int(i), region, db
+    return None
+
+# 获取歌曲id的所有别名（去重）
+async def get_music_aliases(mid: int, region: str = 'all', db: str = 'all') -> List[str]:
+    assert db in MUSIC_ALIAS_DB_NAMES or db == 'all'
+    assert region in ALL_SERVER_REGIONS or region == 'all'
+    dbs = MUSIC_ALIAS_DB_NAMES if db == 'all' else [db]
+    regions = ALL_SERVER_REGIONS if region == 'all' else [region]
+    aliases = set()
+    for db in dbs:
+        for region in regions:
+            music_alias = music_alias_dbs[db].get(region, {})
+            if str(mid) not in music_alias: continue
+            aliases.update(music_alias[str(mid)])
+    return list(aliases)
+
+# 添加歌曲id的别名 添加成功返回(True, None) 在所有别名库+所有区域发现重复别名则返回(False, (mid, region, db))
+async def add_music_alias(mid: int, alias: str, region: str, db: str = 'local') -> Tuple[bool, Optional[Tuple[int, str, str]]]:
+    async with music_alias_lock:
+        assert db in MUSIC_ALIAS_DB_NAMES
+        assert region in ALL_SERVER_REGIONS
+        if res := await check_music_alias_exists(alias, mid='all', region='all', db='all'):
+            logger.info(f"添加曲目别名: \"{alias}\" -> {mid} ({db}.{region}) 失败: 已经是 {res[0]} ({res[2]}.{res[1]}) 的别名")
+            return False, res
+        music_alias = music_alias_dbs[db].get(region, {})
+        if str(mid) not in music_alias:
+            music_alias[str(mid)] = []
+        music_alias[str(mid)].append(alias)
+        music_alias_dbs[db].set(region, music_alias)
+        logger.info(f"添加曲目别名: \"{alias}\" -> {mid} ({db}.{region})")
+        return True, None
+
+# 删除歌曲别名，会在所有db和区域搜索，成功返回True
+async def remove_music_alias(mid: int, alias: str, region: str = 'all', db: str = 'all') -> bool:
+    async with music_alias_lock:
+        assert db in MUSIC_ALIAS_DB_NAMES or db == 'all'
+        assert region in ALL_SERVER_REGIONS or region == 'all'
+        dbs = MUSIC_ALIAS_DB_NAMES if db == 'all' else [db]
+        regions = ALL_SERVER_REGIONS if region == 'all' else [region]
+        for db in dbs:
+            for region in regions:
+                music_alias = music_alias_dbs[db].get(region, {})
+                if str(mid) not in music_alias: continue
+                if alias not in music_alias[str(mid)]: continue
+                music_alias[str(mid)].remove(alias)
+                if not music_alias[str(mid)]:
+                    del music_alias[str(mid)]
+                music_alias_dbs[db].set(region, music_alias)
+                logger.info(f"删除曲目别名: \"{alias}\" of {mid} ({db}.{region})")
+                return True
+        logger.info(f"删除曲目别名: \"{alias}\" of {mid} ({db}.{region}) 失败: 别名不存在")
+        return False
 
 # 获取曲目翻译名 lang in ['cn', 'en']
 async def get_music_trans_title(mid: int, lang: str, default: str=None) -> str:
@@ -177,23 +251,6 @@ async def query_music_by_emb(ctx: SekaiHandlerContext, text: str, limit: int=5):
     scores = [item[1] for item in query_result]
     logger.info(f"曲名语义嵌入查询结果: {[(r['id'], r['title'], s) for r, s in zip(result_musics, scores)]}")
     return result_musics, scores
-
-# 根据别名查询曲目
-async def query_music_by_alias(ctx: SekaiHandlerContext, query: str, clean_fn=None) -> Optional[Dict]:
-    # 先尝试查询的区服，再尝试其他区服
-    if clean_fn:
-        query = clean_fn(query)
-    try_regions = [ctx.region] + [r for r in ALL_SERVER_REGIONS if r != ctx.region]
-    for region in try_regions:
-        music_alias = music_alias_db.get(f"{region}_alias", {})
-        for mid, aliases in music_alias.items():
-            for alias in aliases:
-                if clean_fn: 
-                    alias = clean_fn(alias)
-                if alias == query:
-                    music = await ctx.md.musics.find_by_id(int(mid))
-                    return music
-    return None
 
 # 获取活动歌曲 不存在返回None
 async def get_music_of_event(ctx: SekaiHandlerContext, event_id: int) -> Dict:
@@ -318,12 +375,18 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
 
     # 别名精确匹配
     if not search_type and options.use_alias:
-        if music := await query_music_by_alias(ctx, query, clean_fn=clean_name):
-            search_type = "alias"
-            if diff and not await check_music_has_diff(ctx, music['id'], diff):
-                err_msg = f"别名为{query}的曲目没有{diff}难度"
-            else:
-                ret_musics.append(music)
+        for music in musics:
+            aliases = await get_music_aliases(music['id'])
+            for alias in aliases:
+                if clean_q == clean_name(alias):
+                    search_type = "alias"
+                    if diff and not await check_music_has_diff(ctx, music['id'], diff):
+                        err_msg = f"别名为\"{query}\"的曲目没有{diff}难度"
+                    else:
+                        ret_musics.append(music)
+                    break
+            if search_type:
+                break
 
     # 子串/编辑距离匹配
     if not search_type and options.use_distance:
@@ -337,8 +400,8 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
                 names.add(cn_title)
             if en_title := await get_music_trans_title(music['id'], 'en'):
                 names.add(en_title)
-            for region in ALL_SERVER_REGIONS:
-                names.update(music_alias_db.get(f"{region}_alias", {}).get(str(mid), []))
+            for alias in await get_music_aliases(music['id']):
+                names.add(alias)
             min_dist = 1e9
             for name in names:
                 name = clean_name(name)
@@ -388,15 +451,10 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             ret_musics.extend(res)
             # 如果第一位距离小于阈值，添加别名
             if sims[0] >= math.exp(-options.emb_add_alias_score_threshold):
-                music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
-                mid = res[0]['id']
-                if query not in music_alias.get(str(mid), []):
-                    if str(mid) not in music_alias:
-                        music_alias[str(mid)] = []
-                    music_alias[str(mid)].append(query)
-                    music_alias_db.set(f"{ctx.region}_alias", music_alias)
+                ret, _ = await add_music_alias(int(res[0]['id']), query, ctx.region)
+                if ret:
                     additional_msg = f"已自动添加别名: {query}"
-
+                    
     music = ret_musics[0] if len(ret_musics) > 0 else None
     candidates = ret_musics[1:] if len(ret_musics) > 1 else []
     if music and sims:
@@ -534,15 +592,8 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                             t.set_size((gw, 40)).set_content_align('c').set_bg(RoundRectBg(fill=light_diff_color[i], radius=3))        
 
                 # 别名
-                music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
-                aliases = music_alias.get(str(mid), [])
-                alias_text = "，".join(aliases)
-                if ctx.region != 'jp':
-                    jp_music_alias = music_alias_db.get(f"jp_alias", {})
-                    jp_aliases = jp_music_alias.get(str(mid), [])
-                    jp_aliases = [a for a in jp_aliases if a not in aliases]
-                    if jp_aliases:
-                        alias_text += "   日服别名库: " + "，".join(jp_aliases)
+                aliases = await get_music_aliases(mid)
+                alias_text = "，". join(aliases) if aliases else None
                 if alias_text:
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
                         TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
@@ -732,6 +783,7 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
     return await run_in_pool(canvas.get_img)
 
 
+
 # ======================= 指令处理 ======================= #
 
 # 设置歌曲别名
@@ -743,54 +795,44 @@ pjsk_alias_set.check_cdrate(cd).check_wblist(gbl)
 @pjsk_alias_set.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
-    music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
 
     try:
-        mid, aliases = args.split(maxsplit=1)
-        music = await ctx.md.musics.find_by_id(int(mid))
-        title = music["title"]
+        query, aliases = args.split(maxsplit=1)
+        music = (await search_music(ctx, query, MusicSearchOptions(use_id=True, use_emb=False))).music
         assert music is not None
         assert aliases
-
         aliases = aliases.replace("，", ",")
         aliases = aliases.split(",")
         assert aliases
+        mid = music['id']
+        title = music["title"]
     except:
-        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias add 歌曲ID 别名1，别名2...")
-
-    alias_to_music = {}
-    for i, alias_list in music_alias.items():
-        for alias in alias_list:
-            alias_to_music[alias] = await ctx.md.musics.find_by_id(int(i))
+        return await ctx.asend_reply_msg(f"使用方式:\n{ctx.trigger_cmd} 歌曲ID/名称 别名1，别名2...")
 
     ok_aliases     = []
     failed_aliases = []
     for alias in aliases:
-        if alias in alias_to_music:
-            m = alias_to_music[alias]
-            mid = m["id"]
-            title = m["title"]
-            failed_aliases.append((alias, f"已经是【{mid}】{title} 的别名"))
-            continue
-        
-        ok_aliases.append(alias)
-        if str(music["id"]) not in music_alias:
-            music_alias[str(music["id"])] = []
-        music_alias[str(music["id"])].append(alias)
-        alias_to_music[alias] = music
-        logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 为歌曲 {mid} 设置了别名 {alias}")
+        ok, res = await add_music_alias(int(mid), alias, ctx.region)
+        with open(MUSIC_ALIAS_ADD_LOG_PATH, "a") as f:
+            f.write(f"{datetime.now()} {ctx.user_id}@{ctx.group_id} \"{alias}\" -> {mid}, {ok}\n") 
+        if not ok:
+            tmid, tregion, tdb = res
+            ttitle = (await SekaiHandlerContext.from_region(tregion).md.musics.find_by_id(tmid))["title"]
+            failed_aliases.append((alias, f"已经是【{tmid}】{ttitle} 的别名"))
+        else:
+            logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 为歌曲 {mid} 设置了别名 {alias}")
+            ok_aliases.append(alias)
 
-    msg = f"为【{mid}】{title} 设置别名"
+    msg = ""
     if ok_aliases:
-        music_alias_db.set(f"{ctx.region}_alias", music_alias)
-        msg += " | ".join(ok_aliases)
-        
+        msg += f"为【{mid}】{title} 设置别名: "
+        msg += "，".join(ok_aliases)
         hists = music_alias_add_history.get(ctx.user_id, [])
-        hists.append(MusicAliasAddHistory(ctx.region, int(mid), ok_aliases))
+        hists.append(MusicAliasAddHistory(int(mid), ok_aliases))
         hists = hists[-MAX_MUSIC_ALIAS_ADD_HISTORY:]
         music_alias_add_history[ctx.user_id] = hists
-
-    else:
+        msg += "\n使用\"/取消歌曲别名\"可以取消本次添加的别名"
+    if failed_aliases:
         msg += "\n以下别名设置失败:\n"
         for alias, reason in failed_aliases:
             msg += f"{alias}: {reason}\n"
@@ -808,18 +850,17 @@ pjsk_alias.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     try:
-        music = await ctx.md.musics.find_by_id(int(args))
+        music = (await search_music(ctx, args, MusicSearchOptions(use_id=True, use_emb=False))).music
         assert music is not None
     except:
-        return await ctx.asend_reply_msg("请输入正确的歌曲ID")
+        return await ctx.asend_reply_msg("请输入正确的歌曲ID/歌曲名")
 
-    music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
-    aliases = music_alias.get(str(music["id"]), [])
+    aliases = await get_music_aliases(music['id'])
     if not aliases:
         return await ctx.asend_reply_msg(f"【{music['id']}】{music['title']} 还没有别名")
 
-    msg = f"【{music['id']}】{music['title']} 的别名:\n"
-    msg += "\n".join(aliases)
+    msg = f"【{music['id']}】{music['title']} 的别名: "
+    msg += "，".join(aliases)
 
     return await ctx.asend_fold_msg_adaptive(msg.strip())
 
@@ -833,38 +874,36 @@ pjsk_alias_del.check_cdrate(cd).check_wblist(gbl).check_superuser()
 @pjsk_alias_del.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
-    music_alias = music_alias_db.get(f"{ctx.region}_alias", {})
 
     try:
-        mid, aliases = args.split(maxsplit=1)
-        music = await ctx.md.musics.find_by_id(int(mid))
-        title = music["title"]
+        query, aliases = args.split(maxsplit=1)
+        music = (await search_music(ctx, query, MusicSearchOptions(use_id=True, use_emb=False))).music
         assert music is not None
         assert aliases
-
         aliases = aliases.replace("，", ",")
         aliases = aliases.split(",")
         assert aliases
+        mid = music['id']
+        title = music["title"]
     except:
-        return await ctx.asend_reply_msg("使用方式:\n/pjsk alias del 歌曲ID 别名1 别名2...")
+        return await ctx.asend_reply_msg(f"使用方式:\n{ctx.trigger_cmd} 歌曲ID/歌曲名 别名1 别名2...")
 
-    current_aliases = music_alias.get(str(music["id"]), [])
     ok_aliases     = []
     failed_aliases = []
     for alias in aliases:
-        if alias not in current_aliases:
-            failed_aliases.append((alias, "不是这首歌的别名"))
-            continue
-        current_aliases.remove(alias)
-        ok_aliases.append(alias)
+        ok = await remove_music_alias(int(mid), alias)
+        if ok: 
+            ok_aliases.append(alias)
+            logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 删除了歌曲 {mid} 的别名 {alias}")
+        else:
+            failed_aliases.append((alias, "没有这个别名"))
     
-    msg = f"为【{mid}】{title} 删除别名"
+    msg = ""
     if ok_aliases:
-        music_alias[str(music["id"])] = current_aliases
-        music_alias_db.set(f"{ctx.region}_alias", music_alias)
-        msg += " | ".join(ok_aliases)
-    else:
-        msg += "以下别名删除失败:\n"
+        msg += f"为【{mid}】{title} 删除别名: "
+        msg += "，".join(ok_aliases)
+    if failed_aliases:
+        msg += "\n以下别名删除失败:\n"
         for alias, reason in failed_aliases:
             msg += f"{alias}: {reason}\n"
     
@@ -883,37 +922,29 @@ async def _(ctx: SekaiHandlerContext):
     if not hists:
         return await ctx.asend_reply_msg("没有别名添加记录")
     
-    region = hists[-1].region
     mid = hists[-1].mid
     aliases = hists[-1].aliases
 
-    all_music_alias = music_alias_db.get(f"{region}_alias", {})
-    this_music_alias = all_music_alias.get(str(mid), [])
 
     ok_aliases     = []
     failed_aliases = []
 
     for alias in aliases:
-        if alias not in this_music_alias:
+        ok = await remove_music_alias(mid, alias)
+        if ok: 
+            ok_aliases.append(alias)
+            logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 取消了歌曲 {mid} 的别名 {alias}")
+        else:
             failed_aliases.append((alias, "已经不是这首歌的别名"))
-            continue
-        ok_aliases.append(alias)
-        this_music_alias.remove(alias)
-        logger.info(f"群聊 {ctx.group_id} 的用户 {ctx.user_id} 取消了歌曲 {mid} 的别名 {alias}")
-    
 
-    msg = f"取消歌曲【{mid}】的别名添加"
+    msg = ""
     if ok_aliases:
-        all_music_alias[str(mid)] = this_music_alias
-        music_alias_db.set(f"{region}_alias", all_music_alias)
-
-        msg += " | ".join(ok_aliases)
-
+        msg += f"取消歌曲【{mid}】的别名添加: "
+        msg += "，".join(ok_aliases)
         hists.pop()
         music_alias_add_history[ctx.user_id] = hists
-
-    else:
-        msg += "以下别名取消失败:\n"
+    if failed_aliases:
+        msg += "\n以下别名取消失败:\n"
         for alias, reason in failed_aliases:
             msg += f"{alias}: {reason}\n"
 
@@ -1042,6 +1073,7 @@ async def _(ctx: SekaiHandlerContext):
         await compose_play_progress_image(ctx, diff, ctx.user_id),
         low_quality=True,
     ))
+
 
 
 # ======================= 定时任务 ======================= #

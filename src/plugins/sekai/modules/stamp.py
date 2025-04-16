@@ -111,15 +111,15 @@ async def _(ctx: SekaiHandlerContext):
         cid = (await ctx.md.stamps.find_by_id(sid))["characterId1"]
         nickname = get_nicknames_by_chara_id(cid)[0]
 
-        dst_len = get_str_appear_length(text)
-        text_zoom_ratio = min(1.0, 0.3 + 0.07 * (dst_len - 1))
+        text_zoom_ratio = 1.0
+        for line in text.splitlines():
+            dst_len = max(10, get_str_appear_length(line))
+            text_zoom_ratio = min(text_zoom_ratio, 0.3 + 0.07 * (dst_len - 1))
 
-        
         result_image = make_stamp(
             id = sid,
             character = nickname, 
             text = text,
-
             degree = 5,
             text_zoom_ratio = text_zoom_ratio,
             text_pos = "mu",
