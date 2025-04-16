@@ -607,13 +607,13 @@ async def get_mysekai_fixture_genre_name_and_image(ctx: SekaiHandlerContext, gid
     return genre['name'], image
 
 # 合成mysekai家具列表图片
-async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int, show_id: bool, only_craftable: bool) -> Image.Image:
+async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int, show_id: bool, only_craftable: bool, cid: int = None) -> Image.Image:
     # 获取玩家已获得的蓝图对应的家具ID
     obtained_fids = None
     if qid:
         uid = get_uid_from_qid(ctx, qid)
         basic_profile = await get_basic_profile(ctx, uid)
-        mysekai_info, pmsg = await get_mysekai_info(ctx, qid, raise_exc=True)
+        mysekai_info, mimsg = await get_mysekai_info(ctx, qid, raise_exc=True)
 
         assert_and_reply(
             'userMysekaiBlueprints' in mysekai_info['updatedResources'],
@@ -693,12 +693,27 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
     result = await batch_gather(*[get_mysekai_fixture_icon(ctx, item) for item in all_fixtures])
     for fixture, icon in zip(all_fixtures, result):
         fixture_icons[fixture['id']] = icon
+
+    # 获取家具对应的角色对话已读情况
+    noread_fids = None
+    if cid and only_craftable:
+        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
+        character_talks = profile.get('userMysekaiCharacterTalks', [])
+        noread_fids = set()
+        for fixture in all_fixtures:
+            fid = fixture['id']
+            obtained = not obtained_fids or fid in obtained_fids
+            if not obtained: continue
+            pass
     
     # 绘制
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
-            if qid:
-                await get_mysekai_info_card(ctx, mysekai_info, basic_profile, pmsg)
+            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(8):
+                if qid:
+                    await get_mysekai_info_card(ctx, mysekai_info, basic_profile, mimsg)
+                if cid and only_craftable:
+                    await get_detailed_profile_card(ctx, profile, pmsg)
 
             # 进度
             if qid and only_craftable:
@@ -748,6 +763,7 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
                                                     TextBox(f"{fid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
                                             if not obtained:
                                                 Spacer(w=f_sz, h=f_sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+                                            
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 

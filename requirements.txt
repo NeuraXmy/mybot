@@ -16,3 +16,4 @@ asteval
 yt-dlp
 imageio[ffmpeg]
 pilmoji[requests]
+zhon

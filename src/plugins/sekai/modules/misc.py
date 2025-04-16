@@ -7,7 +7,8 @@ from ..draw import *
 from .music import add_music_alias
 
 
-ALIAS_CRAWLER_TIMEOUT = timedelta(seconds=30)
+ALIAS_CRAWLER_TIMEOUT = timedelta(seconds=60)
+ALIAS_CRAWLER_DELAY = timedelta(seconds=5)
 ALIAS_CRAWLER_RECENT_FAIL_LIMIT = 3
 
 # ======================= 逻辑处理 ======================= #
@@ -78,7 +79,7 @@ class AliasCrawler:
                     recent_fail_count += 1
                     assert recent_fail_count < ALIAS_CRAWLER_RECENT_FAIL_LIMIT, f"连续失败超过{ALIAS_CRAWLER_RECENT_FAIL_LIMIT}次，停止爬取"
                 finally:
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(ALIAS_CRAWLER_DELAY.total_seconds())
         finally:
             self.listen_gid = None
             self.listen_uid = None

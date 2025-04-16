@@ -7,6 +7,7 @@ from ..draw import *
 from ..sub import SekaiUserSubHelper, SekaiGroupSubHelper
 from .profile import get_detailed_profile, get_detailed_profile_card, get_player_avatar_info_by_detailed_profile
 from .event import extract_ban_event
+from zhon.hanzi import punctuation
 
 
 music_group_sub = SekaiGroupSubHelper("music", "新曲通知", ALL_SERVER_REGIONS)
@@ -277,8 +278,9 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     diff = options.diff
     musics = await ctx.md.musics.get()
 
+    pattern = rf"[{re.escape(punctuation)}\s]"
     def clean_name(s: str) -> str:
-        s = re.sub(r"[^\w]", "", s).lower()
+        s = re.sub(pattern, "", s).lower()
         import zhconv
         s = zhconv.convert(s, 'zh-cn')
         return s
@@ -593,11 +595,12 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
 
                 # 别名
                 aliases = await get_music_aliases(mid)
-                alias_text = "，". join(aliases) if aliases else None
-                if alias_text:
+                if aliases:
+                    alias_text = "，". join(aliases)
+                    font_size = max(10, 24 - get_str_appear_length(alias_text) // 40 * 1)
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
                         TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
-                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70)), use_real_line_count=True).set_w(800)            
+                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=font_size, color=(70, 70, 70)), use_real_line_count=True).set_w(800)            
 
                 with HSplit().set_omit_parent_bg(True).set_item_bg(roundrect_bg()).set_padding(0).set_sep(16):
                     # 歌手
