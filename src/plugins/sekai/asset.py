@@ -324,24 +324,28 @@ class RegionMasterDataWrapper:
         data = await self.get()
         return find_by(data, key, value, mode)
 
-    async def collect_by(self, key: str, values: List[Any]):
+    async def collect_by(self, key: str, values: Union[List[Any], Set[Any]]):
         # 使用索引
         ind = await self.indices(key)
         if ind is not None:
-            return [ind.get(value, [None])[0] for value in values]
-        # 没有索引的情况下先存入字典再遍历
+            ret = []
+            for value in values:
+                if value in ind:
+                    ret.extend(ind[value])
+            return ret
+        # 没有索引
         data = await self.get()
         values_set = set(values)
-        items = {}
+        ret = []
         for item in data:
             if item[key] in values_set:
-                items[item[key]] = item
-        return [items.get(value) for value in values]
-
+                ret.append(item)
+        return ret
+                    
     async def find_by_id(self, id: int):
         return await self.find_by('id', id)
     
-    async def collect_by_ids(self, ids: List[int]):
+    async def collect_by_ids(self, ids: Union[List[int], Set[int]]):
         return await self.collect_by('id', ids)
 
 class RegionMasterDataCollection:
@@ -419,8 +423,9 @@ class RegionMasterDataCollection:
         self.mysekai_character_talk_fixture_common_mysekai_fixture_groups   = RegionMasterDataWrapper(region, "mysekaiCharacterTalkFixtureCommonMysekaiFixtureGroups")
         self.mysekai_character_talk_fixture_commons                         = RegionMasterDataWrapper(region, "mysekaiCharacterTalkFixtureCommons")
         self.mysekai_character_talks                                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalks")
+        self.mysekai_character_talk_condition_groups                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditionGroups")
+        self.mysekai_character_talk_conditions                              = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditions")
         
-
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
         return await wrapper.get()
@@ -440,6 +445,9 @@ MasterDataManager.set_index_keys("mysekaiFixtureOnlyDisassembleMaterials", ['id'
 MasterDataManager.set_index_keys("cardCostume3ds", ['cardId'])
 MasterDataManager.set_index_keys("mysekaiCharacterTalkFixtureCommonMysekaiFixtureGroups", ['mysekaiFixtureId', 'groupId'])
 MasterDataManager.set_index_keys("mysekaiCharacterTalkFixtureCommons", ['mysekaiCharacterTalkFixtureCommonMysekaiFixtureGroupId', 'gameCharacterUnitId', 'id'])
+MasterDataManager.set_index_keys("mysekaiCharacterTalks", ['id', 'mysekaiCharacterTalkConditionGroupId'])
+MasterDataManager.set_index_keys("mysekaiCharacterTalkConditionGroups", ['groupId', 'mysekaiCharacterTalkConditionId'])
+MasterDataManager.set_index_keys("mysekaiCharacterTalkConditions", ['id', 'mysekaiCharacterTalkConditionType'])
 
 # ================================ MasterData自定义下载 ================================ #
 

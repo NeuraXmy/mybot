@@ -299,7 +299,7 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                     name = game_data['name'] if not hide else "***"
                     user_id = game_data['userId'] if not hide else "****************"
                     colored_text_box(truncate(name, 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
-                    TextBox(f"{ctx.region.upper()}: {user_id}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {user_id} Suite数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:

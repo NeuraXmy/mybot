@@ -140,10 +140,10 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                     mode = get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
                     update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
-                    with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
+                    with HSplit().set_content_align('lb').set_item_align('lb').set_sep(5):
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
-                    TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {game_data['userId']} Mysekai数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
@@ -695,28 +695,68 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
         fixture_icons[fixture['id']] = icon
 
     # 获取家具对应的角色对话已读情况
-    noread_fids = None
-    if cid and only_craftable:
+    hastalk_fids = None
+    fid_noread_num = None
+    if cid:
         profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
-        character_talks = profile.get('userMysekaiCharacterTalks', [])
-        noread_fids = set()
+        fid_noread_num = {}
+        hastalk_fids = set()
+        read_num = 0
+        hastalk_num = 0
+        user_character_talks = profile.get('userMysekaiCharacterTalks', [])
+        chara_unit_ids = [item['id'] for item in await ctx.md.game_character_units.find_by('gameCharacterId', cid, mode='all')]
+        fixture_conds = await ctx.md.mysekai_character_talk_conditions.find_by("mysekaiCharacterTalkConditionType", "mysekai_fixture_id", mode='all')
         for fixture in all_fixtures:
             fid = fixture['id']
-            obtained = not obtained_fids or fid in obtained_fids
-            if not obtained: continue
-            pass
-    
+            conds = find_by(fixture_conds, "mysekaiCharacterTalkConditionTypeValue", fid, mode='all')
+            conditions_ids = set([cond['id'] for cond in conds])
+            groups = await ctx.md.mysekai_character_talk_condition_groups.collect_by('mysekaiCharacterTalkConditionId', conditions_ids)
+            group_ids = set([group['id'] for group in groups])
+            talks = await ctx.md.mysekai_character_talks.collect_by('mysekaiCharacterTalkConditionGroupId', group_ids)
+            chara_talks = []
+            for t in talks:
+                chara_group = await ctx.md.mysekai_game_character_unit_groups.find_by_id(t['mysekaiGameCharacterUnitGroupId'])
+                group_unit_ids = []
+                for i in range(1, 10):
+                    if f'gameCharacterUnitId{i}' in chara_group:
+                        group_unit_ids.append(chara_group[f'gameCharacterUnitId{i}'])
+                if any([unit_id in chara_unit_ids for unit_id in group_unit_ids]):
+                    chara_talks.append(t)
+            for talk_id in set([t['id'] for t in chara_talks]):
+                user_talk = find_by(user_character_talks, "mysekaiCharacterTalkId", talk_id)
+                if user_talk:
+                    hastalk_fids.add(fid)
+                    hastalk_num += 1
+                    if not user_talk['isRead']:
+                        if fid not in fid_noread_num:
+                            fid_noread_num[fid] = 0
+                        fid_noread_num[fid] += 1
+                    else:
+                        read_num += 1
+        # 仅显示有对话的家具
+        for main_genre_id in fixtures:
+            for sub_genre_id in fixtures[main_genre_id]:
+                fixtures[main_genre_id][sub_genre_id] = [
+                    item for item in fixtures[main_genre_id][sub_genre_id] 
+                    if item[0] in hastalk_fids
+                ]
+
     # 绘制
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
-            with HSplit().set_content_align('lt').set_item_align('lt').set_sep(8):
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
                 if qid:
                     await get_mysekai_info_card(ctx, mysekai_info, basic_profile, mimsg)
-                if cid and only_craftable:
+                if cid:
                     await get_detailed_profile_card(ctx, profile, pmsg)
 
             # 进度
-            if qid and only_craftable:
+            if cid:
+                with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
+                    ImageBox(get_chara_icon_by_chara_id(cid), size=(None, 30))
+                    TextBox(f"对话收集进度: {read_num}/{hastalk_num} ({read_num/hastalk_num*100:.1f}%)", 
+                            TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
+            elif qid and only_craftable:
                 TextBox(f"总收集进度: {total_obtained}/{total_all} ({total_obtained/total_all*100:.1f}%)", 
                         TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
 
@@ -731,7 +771,7 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
                         with HSplit().set_content_align('c').set_item_align('c').set_sep(5):
                             ImageBox(main_genre_image, size=(None, 30), use_alphablend=True).set_bg(RoundRectBg(fill=(200,200,200,255), radius=2))
                             TextBox(main_genre_name, TextStyle(font=DEFAULT_HEAVY_FONT, size=20, color=(150, 150, 150)))
-                            if qid and only_craftable:
+                            if qid and only_craftable and not cid:
                                 a, b = main_genre_obtained[main_genre_id], main_genre_all[main_genre_id]
                                 TextBox(f"{a}/{b} ({a/b*100:.1f}%)", TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=(150, 150, 150)))
 
@@ -746,7 +786,7 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
                                     with HSplit().set_content_align('c').set_item_align('c').set_sep(5):
                                         ImageBox(sub_genre_image, size=(None, 23), use_alphablend=True).set_bg(RoundRectBg(fill=(200,200,200,255), radius=2))
                                         TextBox(sub_genre_name, TextStyle(font=DEFAULT_BOLD_FONT, size=15, color=(150, 150, 150)))
-                                        if qid and only_craftable:
+                                        if qid and only_craftable and not cid:
                                             a, b = sub_genre_obtained[main_genre_id][sub_genre_id], sub_genre_all[main_genre_id][sub_genre_id]
                                             TextBox(f"{a}/{b} ({a/b*100:.1f}%)", TextStyle(font=DEFAULT_FONT, size=12, color=(150, 150, 150)))
 
@@ -763,7 +803,10 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
                                                     TextBox(f"{fid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
                                             if not obtained:
                                                 Spacer(w=f_sz, h=f_sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
-                                            
+                                            if fid_noread_num and fid in fid_noread_num:
+                                                color = (255, 50, 50, 255) if obtained else (255, 200, 50, 255)
+                                                Spacer(w=8, h=8).set_bg(RoundRectBg(fill=color, radius=4)).set_offset((f_sz-6, f_sz-6))
+
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
@@ -1169,8 +1212,14 @@ pjsk_mysekai_blueprint.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_blueprint.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+    show_id = False
+    if 'id' in args:
+        show_id = True
+        args = args.replace('id', '').strip()
+    cid = get_cid_by_nickname(args)
+
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id, show_id='id' in args, only_craftable=True),
+        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id, show_id=show_id, only_craftable=True, cid=cid),
         low_quality=True
     ))
 
@@ -1195,8 +1244,9 @@ async def _(ctx: SekaiHandlerContext):
             low_quality=True
         ))
     # 查询家具列表
+    cid = get_cid_by_nickname(args)
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=None, show_id=True, only_craftable=False),
+        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id if cid else None, show_id=True, only_craftable=False, cid=cid),
         low_quality=True
     ))
 
