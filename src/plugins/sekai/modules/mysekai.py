@@ -1011,11 +1011,12 @@ async def compose_mysekai_fixture_detail_image(ctx: SekaiHandlerContext, fids: L
     return await run_in_pool(canvas.get_img)
 
 # 合成mysekai门升级材料图片
-async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int, spec_gate_id: int = None, spec_lv: int = None) -> Image.Image:
+async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int, spec_gate_id: int = None) -> Image.Image:
     profile = None
-    uid = get_uid_from_qid(ctx, qid, check_bind=False)
-    if uid and spec_lv and spec_gate_id:
-        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False)
+    if qid:
+        uid = get_uid_from_qid(ctx, qid, check_bind=False)
+        if uid:
+            profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False)
 
     # 获取玩家的材料
     user_materials = {}
@@ -1039,10 +1040,18 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
             'sum_quantity': None,
         })
 
+    # 获取指定lv
+    spec_lvs = {}
+    if profile:
+        gates = profile.get('userMysekaiGates', [])
+        for item in gates:
+            gid = item['mysekaiGateId']
+            lv = item['mysekaiGateLevel']
+            spec_lvs[gid] = lv
+
     # 根据指定lv截断
-    if not spec_lv:
-        spec_lv = 0
     for gid, lv_materials in gate_materials.items():
+        spec_lv = spec_lvs.get(gid, 0)
         gate_materials[gid] = lv_materials[spec_lv:]
 
     # 指定门
@@ -1087,7 +1096,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
     
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
-            if uid and spec_lv and spec_gate_id:
+            if profile:
                 await get_detailed_profile_card(ctx, profile, pmsg)
 
             with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_bg(roundrect_bg()).set_padding(8):
@@ -1096,7 +1105,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_item_bg(roundrect_bg()).set_padding(8):
                         ImageBox(gate_icon, size=(None, 40))
                         lv_color = (50, 50, 50) if not profile else green_color
-                        for level, items in enumerate(lv_materials, spec_lv + 1):
+                        for level, items in enumerate(lv_materials, spec_lvs.get(gid, 0) + 1):
                             for item in items:
                                 if any(i['color'] == red_color for i in items):
                                     lv_color = red_color
@@ -1245,19 +1254,20 @@ pjsk_mysekai_gate.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_gate.handle()
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
+
+    full = False
+    if 'full' in args:
+        full = True
+        args = args.replace('full', '').strip()
+
     try: 
         unit, args = extract_unit(args)
         gate_id = UNIT_GATEID_MAP[unit]
     except: 
         gate_id = None
-    try: 
-        lv = int(args)
-        assert 0 <= lv <= 39
-    except: 
-        lv = None
 
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id, gate_id, lv),
+        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id if not full else None, gate_id),
         low_quality=True
     ))
 

@@ -8,7 +8,7 @@ from .music import add_music_alias
 
 
 ALIAS_CRAWLER_TIMEOUT = timedelta(seconds=10)
-ALIAS_CRAWLER_RECENT_FAIL_LIMIT = 10
+ALIAS_CRAWLER_RECENT_FAIL_LIMIT = 30
 
 # ======================= 逻辑处理 ======================= #
 
@@ -31,18 +31,23 @@ class AliasCrawler:
             text = event.get_plaintext()
             self.resp_queue.put_nowait(self.get_alias_func(text))
             
-    async def start(self, ctx: SekaiHandlerContext, uid: int):
+    async def start(self, ctx: SekaiHandlerContext, uid: int, start_idx: int):
         ok_count, fail_count, recent_fail_count = 0, 0, 0
         self.listen_gid = ctx.group_id
         self.listen_uid = uid
         self.resp_queue = asyncio.Queue(maxsize=1)
         try:
             musics = await ctx.md.musics.get()
-            await ctx.asend_msg(f"开始爬取 {self.name} 别名库共 {len(musics)} 首，目标bot为 [CQ:at,qq={uid}]")
+            await ctx.asend_msg(f"开始爬取 {self.name} 别名库共 {len(musics) - start_idx} 首，目标bot为 [CQ:at,qq={uid}]")
             for idx, music in enumerate(musics):
+                if idx < start_idx:
+                    continue
                 if not all([self.listen_gid, self.listen_uid, self.resp_queue]):
                     raise Exception("已停止")
                 try:
+                    # 开始前先清空响应队列
+                    while not self.resp_queue.empty():
+                        self.resp_queue.get_nowait()
                     # 发送查询指令
                     await ctx.asend_msg(self.cmd.format(title=music['title']))
                     # 等待回复
@@ -70,7 +75,7 @@ class AliasCrawler:
                     recent_fail_count += 1
                     assert recent_fail_count < ALIAS_CRAWLER_RECENT_FAIL_LIMIT, f"连续失败超过{ALIAS_CRAWLER_RECENT_FAIL_LIMIT}次，停止爬取"
                 finally:
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(5)
         finally:
             self.listen_gid = None
             self.listen_uid = None
@@ -140,14 +145,21 @@ pjsk_crawl_alias = SekaiCmdHandler([
 pjsk_crawl_alias.check_cdrate(cd).check_wblist(gbl).check_superuser().check_group()
 @pjsk_crawl_alias.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
-    assert_and_reply(args in crawler, "请指定要爬取的别名库")
+    args = ctx.get_args().strip().split()
+    assert_and_reply(1 <= len(args) <= 2, "请指定要爬取的别名库")
+    if len(args) == 1:
+        db = args[0]
+        start = 0
+    else:
+        db = args[0]
+        start = int(args[1])
+    assert_and_reply(db in crawler, "请指定要爬取的别名库")
     uid = None
     if at_qqs := extract_at_qq(await ctx.aget_msg()):
         uid = at_qqs[0]
     assert_and_reply(uid, "请@指定要爬取的bot号")
     await ctx.block(timeout=0)
-    await crawler[args].start(ctx, uid)
+    await crawler[db].start(ctx, uid, start)
 
 
 pjsk_crawl_alias_stop = SekaiCmdHandler([
