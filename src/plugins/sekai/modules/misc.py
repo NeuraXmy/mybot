@@ -7,8 +7,8 @@ from ..draw import *
 from .music import add_music_alias
 
 
-ALIAS_CRAWLER_TIMEOUT = timedelta(seconds=10)
-ALIAS_CRAWLER_RECENT_FAIL_LIMIT = 30
+ALIAS_CRAWLER_TIMEOUT = timedelta(seconds=30)
+ALIAS_CRAWLER_RECENT_FAIL_LIMIT = 3
 
 # ======================= 逻辑处理 ======================= #
 
@@ -52,20 +52,23 @@ class AliasCrawler:
                     await ctx.asend_msg(self.cmd.format(title=music['title']))
                     # 等待回复
                     resp = await asyncio.wait_for(self.resp_queue.get(), timeout=ALIAS_CRAWLER_TIMEOUT.total_seconds())
-                    assert resp, f"响应别名为空"
                     # 添加别名
-                    ok_alias, failed_alias = [], []
-                    for alias in resp:
-                        ok, _ = await add_music_alias(music['id'], alias, region=ctx.region, db=self.name)
-                        if ok: ok_alias.append(alias)
-                        else: failed_alias.append(alias)
-                    # 发送成功消息
                     msg = f"#{idx}/{len(musics)} 爬取【{music['id']}】{music['title']} 别名: "
-                    if ok_alias:
-                        msg += "，".join(ok_alias)
-                    if failed_alias:
-                        msg += "\n添加失败的别名: "
-                        msg += "，".join(failed_alias)
+                    if not resp:
+                        # 响应为空
+                        msg += "响应为空"
+                    else:
+                        # 响应不为空
+                        ok_alias, failed_alias = [], []
+                        for alias in resp:
+                            ok, _ = await add_music_alias(music['id'], alias, region=ctx.region, db=self.name)
+                            if ok: ok_alias.append(alias)
+                            else: failed_alias.append(alias)
+                        if ok_alias:
+                            msg += "，".join(ok_alias)
+                        if failed_alias:
+                            msg += "\n添加失败的别名: "
+                            msg += "，".join(failed_alias)
                     await ctx.asend_msg(msg)
                     ok_count += 1
                     recent_fail_count = 0
@@ -94,11 +97,23 @@ def get_haruki_alias(s: str) -> List[str]:
         return []
     return [a for a in lines[2].split("，") if a]
 
+def get_sakura_alias(s: str) -> List[str]:
+    start_idx = s.index("当前昵称:")
+    if start_idx == -1:
+        return []
+    s = s[start_idx + 5:]
+    return [a for a in s.split("，") if a]
+
 crawler = {
     "haruki": AliasCrawler(
         name="haruki",
         cmd="musicalias {title}",
         get_alias_func=get_haruki_alias,
+    ),
+    "sakura": AliasCrawler(
+        name="sakura",
+        cmd="song {title}",
+        get_alias_func=get_sakura_alias,
     ),
 }
 
@@ -140,7 +155,7 @@ async def _(ctx: SekaiHandlerContext):
 
 
 pjsk_crawl_alias = SekaiCmdHandler([
-    "/PCA"
+    "#PCA"
 ])
 pjsk_crawl_alias.check_cdrate(cd).check_wblist(gbl).check_superuser().check_group()
 @pjsk_crawl_alias.handle()
@@ -163,7 +178,7 @@ async def _(ctx: SekaiHandlerContext):
 
 
 pjsk_crawl_alias_stop = SekaiCmdHandler([
-    "/PCAS"
+    "#PCAS"
 ])
 pjsk_crawl_alias_stop.check_cdrate(cd).check_wblist(gbl).check_superuser().check_group()
 @pjsk_crawl_alias_stop.handle()
