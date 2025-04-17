@@ -954,6 +954,7 @@ def get_audio_cq(audio_path):
 
 # 缩短字符串
 def truncate(s, limit):
+    s = str(s)
     if s is None: return "<None>"
     l = 0
     for i, c in enumerate(s):

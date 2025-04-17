@@ -13,7 +13,7 @@ def get_user_default_region(user_id: int, fallback: str) -> str:
     """
     获取用户不填指令区服时的默认区服
     """
-    user_id = int(user_id)
+    user_id = str(user_id)
     default_regions = file_db.get("default_region", {})
     return default_regions.get(user_id, fallback)
 
@@ -21,7 +21,7 @@ def set_user_default_region(user_id: int, region: str):
     """
     设置用户不填指令区服时的默认区服
     """
-    user_id = int(user_id)
+    user_id = str(user_id)
     default_regions = file_db.get("default_region", {})
     default_regions[user_id] = region
     file_db.set("default_region", default_regions)

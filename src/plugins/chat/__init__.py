@@ -39,8 +39,6 @@ CLEANCHAT_TRIGGER_WORDS = ["cleanchat", "clean_chat", "cleanmode", "clean_mode"]
 NOTHINK_TRIGGER_WORDS = ['nothink', 'noreason']
 IMAGE_RESPONSE_TRIGGER_WORDS = ['生成图片', '图片生成', 'imagen', 'Imagen', 'IMAGEN']
 
-FORWARD_MSG_INPUT_LIMIT = 10
-
 # 使用工具 返回需要添加到回复的额外信息
 async def use_tool(handle, session, type, data, event):
     if type == "python":
@@ -70,6 +68,116 @@ async def use_tool(handle, session, type, data, event):
     else:
         raise Exception(f"unknown tool type")
 
+# ------------------------------------------ 聊天记录总结逻辑 ------------------------------------------ #
+
+image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
+DEFAULT_IMAGE_CAPTION_MODEL_NAME = "gemini-2-flash"
+IMAGE_CAPTION_TIMEOUT_SEC = 10
+IMAGE_CAPTION_LIMIT = 2048
+IMAGE_CAPTION_TEMPLATE_PATH = "data/chat/image_caption_prompt.txt"
+
+# 获取图片caption
+async def get_image_caption(mdata: dict, model_name: str, timeout: int, use_llm: bool):
+    summary = mdata.get("summary", '')
+    url = mdata.get("url", None)
+    file_unique = mdata.get("file_unique", '')
+    sub_type = mdata.get("sub_type", 0)
+    sub_type = "图片" if sub_type == 0 else "表情"
+    caption = image_caption_db.get(file_unique)
+    if not caption:
+        logger.info(f"chat尝试总结图片: file_unique={file_unique} url={url} summary={summary} subtype={sub_type}")
+        try:
+            if not use_llm:
+                return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
+
+            prompt = Path(IMAGE_CAPTION_TEMPLATE_PATH).read_text(encoding="utf-8").format(sub_type=sub_type)
+            img = await download_image_to_b64(url)
+            session = ChatSession()
+            session.append_user_content(prompt, imgs=[img], verbose=False)
+            resp = await asyncio.wait_for(
+                session.get_response(
+                    model_name=model_name, 
+                    enable_reasoning=False
+                ), 
+                timeout=timeout
+            )
+            caption = truncate(resp.result.strip(), 512)
+            assert caption, "图片总结为空"
+
+            logger.info(f"图片总结成功: {caption}")
+            image_caption_db.set(file_unique, caption)
+            keys = image_caption_db.get('keys', [])
+            keys.append(file_unique)
+            while len(keys) > IMAGE_CAPTION_LIMIT:
+                key = keys.pop(0)
+                image_caption_db.delete(key)
+                logger.info(f"删除图片caption: {key}")
+            image_caption_db.set('keys', keys)
+        
+        except Exception as e:
+            logger.print_exc(f"总结图片 url={url} 失败")
+            return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
+        
+    return f"[{sub_type}:{caption}]"
+
+# json消息段转换为纯文本
+def json_msg_to_readable_text(mdata: dict):
+    try:
+        data = json.loads(mdata['data'])
+        title = data["meta"]["detail_1"]["title"]
+        desc = truncate(data["meta"]["detail_1"]["desc"], 32)
+        url = data["meta"]["detail_1"]["qqdocurl"]
+        return f"[{title}分享:{desc}]"
+    except:
+        try:
+            return f"[转发消息:{data['prompt']}]"
+        except:
+            return "[转发消息(加载失败)]"
+
+# 转发聊天记录转换到文本
+async def get_forward_msg_text(model: str, forward_seg, indent: int = 0) -> str:
+    logger.info(f"chat开始总结聊天记录: {forward_seg['data']['id']}")
+    
+    forward_id = forward_seg['data']['id']
+    forward_content = forward_seg['data'].get("content")
+    if not forward_content:
+        forward_msg = await get_forward_msg(get_bot(), forward_id)
+        if not forward_msg:
+            logger.warning(f"chat获取聊天记录失败: {forward_id}")
+            return "[转发消息(加载失败)]"
+        forward_content = forward_msg['messages']
+
+    text = " " * indent + f"聊天记录```\n"
+    for msg_obj in forward_content:
+        sender_name = msg_obj['sender']['nickname']
+        segs = msg_obj['message']
+        text += " " * indent + f"{sender_name}: "
+        for seg in segs:
+            mtype, mdata = seg['type'], seg['data']
+            if mtype == "text":
+                text += f"{mdata['text']}"
+            elif mtype == "face":
+                text += f"[表情]"
+            elif mtype == "image":
+                text += await get_image_caption(mdata, model, IMAGE_CAPTION_TIMEOUT_SEC, use_llm=True)
+            elif mtype == "video":
+                text += f"[视频]"
+            elif mtype == "audio":
+                text += f"[音频]"
+            elif mtype == "file":
+                text += f"[文件]"
+            elif mtype == "at":
+                text += f"[@{mdata['qq']}]"
+            elif mtype == "reply":
+                text += f"[reply={mdata['id']}]"
+            elif mtype == "forward":
+                text += await get_forward_msg_text(model, seg, indent + 4)
+            elif mtype == "json":
+                text += json_msg_to_readable_text(mdata)
+        text += "\n"
+    text += " " * indent + "```\n"
+    return text
+        
 
 # ------------------------------------------ 模型选择逻辑 ------------------------------------------ #
 
@@ -271,7 +379,7 @@ async def _(ctx: HandlerContext):
                 reply_cqs = extract_cq_code(reply_msg)
                 reply_imgs = extract_image_url(reply_msg)
                 reply_uid = reply_msg_obj["sender"]["user_id"]
-                logger.info(f"获取回复消息:{reply_msg}, uid:{reply_uid}")
+                logger.info(f"获取回复消息: {reply_id}, uid:{reply_uid}")
                 # 不支持的回复类型
                 if any([t in reply_cqs for t in ["json", "video"]]):
                     # return await ctx.asend_reply_msg("不支持的消息类型")
@@ -279,15 +387,9 @@ async def _(ctx: HandlerContext):
                 session = ChatSession(system_prompt)
                 # 回复折叠内容
                 if "forward" in reply_cqs:
-                    forward_msgs = [m['message'] for m in reply_cqs['forward'][0]["content"]]
-                    if len(forward_msgs) > FORWARD_MSG_INPUT_LIMIT:
-                        forward_msgs = forward_msgs[-FORWARD_MSG_INPUT_LIMIT:]
-                    for forward_msg in forward_msgs:
-                        forward_msg_text = extract_text(forward_msg)
-                        forward_imgs = extract_image_url(forward_msg)
-                        forward_imgs = [await download_image_to_b64(img) for img in forward_imgs]
-                        if forward_msg_text.strip() != "" or forward_imgs:
-                            session.append_user_content(forward_msg_text, forward_imgs)
+                    logger.info(reply_cqs["forward"][0]["id"])
+                    forward_text = await get_forward_msg_text(DEFAULT_IMAGE_CAPTION_MODEL_NAME, find_by(reply_msg, 'type', "forward"))
+                    session.append_user_content(forward_text)
                 # 回复普通内容
                 elif len(reply_imgs) > 0 or reply_text.strip() != "":
                     reply_imgs = [await download_image_to_b64(img) for img in reply_imgs]
@@ -593,7 +695,6 @@ AUTO_CHAT_CONFIG_PATH = "autochat_config.yaml"
 autochat_sub = SubHelper("自动聊天", file_db, logger)
 autochat_msg_ids = set()
 replying_group_ids = set()
-image_caption_db = get_file_db("data/chat/image_caption_db.json", logger)
 
 @dataclass
 class SchedulerItem:
@@ -694,64 +795,6 @@ async def _(ctx: HandlerContext):
         return await ctx.asend_reply_msg(f"已为群聊{group_name}({group_id})关闭自动聊天")
 
 
-# json消息段转换为纯文本
-def json_msg_to_readable_text(mdata: dict):
-    try:
-        data = json.loads(mdata['data'])
-        title = data["meta"]["detail_1"]["title"]
-        desc = truncate(data["meta"]["detail_1"]["desc"], 32)
-        url = data["meta"]["detail_1"]["qqdocurl"]
-        return f"[{title}分享:{desc}]"
-    except:
-        try:
-            return f"[转发消息:{data['prompt']}]"
-        except:
-            return "[转发消息(加载失败)]"
-
-# 获取图片caption
-async def get_image_caption(mdata: dict, cfg: AutoChatConfig, use_llm: bool):
-    summary = mdata.get("summary", '')
-    url = mdata.get("url", None)
-    file_unique = mdata.get("file_unique", '')
-    sub_type = mdata.get("sub_type", 0)
-    sub_type = "图片" if sub_type == 0 else "表情"
-    caption = image_caption_db.get(file_unique)
-    if not caption:
-        if not use_llm:
-            return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
-        
-        logger.info(f"autochat尝试总结图片: file_unique={file_unique} url={url} summary={summary} subtype={sub_type}")
-        try:
-            prompt = cfg.image_caption_prompt.format(sub_type=sub_type)
-            img = await download_image_to_b64(url)
-            session = ChatSession()
-            session.append_user_content(prompt, imgs=[img], verbose=False)
-            resp = await asyncio.wait_for(
-                session.get_response(
-                    model_name=cfg.image_caption_model_name, 
-                    enable_reasoning=False
-                ), 
-                timeout=cfg.image_caption_timeout_sec
-            )
-            caption = truncate(resp.result.strip(), 256)
-            assert caption, "图片总结为空"
-
-            logger.info(f"图片总结成功: {caption}")
-            image_caption_db.set(file_unique, caption)
-            keys = image_caption_db.get('keys', [])
-            keys.append(file_unique)
-            while len(keys) > cfg.image_caption_limit:
-                key = keys.pop(0)
-                image_caption_db.delete(key)
-                logger.info(f"删除图片caption: {key}")
-            image_caption_db.set('keys', keys)
-        
-        except Exception as e:
-            logger.print_exc(f"总结图片 url={url} 失败")
-            return f"[{sub_type}(加载失败)]" if not summary else f"[{sub_type}:{summary}]"
-        
-    return f"[{sub_type}:{caption}]"
-
 # 将消息段转换为纯文本
 async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
     try:
@@ -760,11 +803,16 @@ async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
         for item in await get_msg(bot, msg['msg_id']):
             mtype, mdata = item['type'], item['data']
             if mtype == "text":
-                text += f"{mdata}"
+                text += f"{mdata['text']}"
             elif mtype == "face":
                 text += f"[表情]"
             elif mtype == "image":
-                text += await get_image_caption(mdata, cfg, use_llm=(random.random() < cfg.image_caption_prob))
+                text += await get_image_caption(
+                    mdata, 
+                    cfg.image_caption_model_name,
+                    cfg.image_caption_timeout_sec,
+                    use_llm=(random.random() < cfg.image_caption_prob)
+                )
             elif mtype == "video":
                 text += f"[视频]"
             elif mtype == "audio":
