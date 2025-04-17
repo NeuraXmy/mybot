@@ -113,16 +113,22 @@ async def extract_target_event(
     wl_events = await get_wl_events(ctx, event['id'])
     if wl_events:
         if not chapter_id and not chapter_nickname:
-            # 获取默认章节：寻找 开始时间-半天 <= 当前 <= 结束时间 的最晚的章节
-            ok_chapters = []
-            for chapter in wl_events:
-                start_time = datetime.fromtimestamp(chapter['startAt'] / 1000)
-                end_time = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
-                if start_time - timedelta(hours=12) <= datetime.now() <= end_time:
-                    ok_chapters.append(chapter)
-            assert_and_reply(ok_chapters, f"找不到默认的当期活动章节")
-            ok_chapters.sort(key=lambda x: x['startAt'], reverse=True)
-            chapter = ok_chapters[0]
+            # 获取默认章节
+            if datetime.now() < datetime.fromtimestamp(event['startAt'] / 1000):
+                # 活动还没开始，默认使用第一个章节
+                wl_events.sort(key=lambda x: x['startAt'])
+                chapter = wl_events[0]
+            else:
+                # 否则寻找 开始时间-半天 <= 当前 <= 结束时间 的最晚的章节
+                ok_chapters = []
+                for chapter in wl_events:
+                    start_time = datetime.fromtimestamp(chapter['startAt'] / 1000)
+                    end_time = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
+                    if start_time - timedelta(hours=12) <= datetime.now() <= end_time:
+                        ok_chapters.append(chapter)
+                assert_and_reply(ok_chapters, f"请指定一个要查询的WL章节")
+                ok_chapters.sort(key=lambda x: x['startAt'], reverse=True)
+                chapter = ok_chapters[0]
         elif chapter_id:
             chapter = find_by(wl_events, "id", 1000 * chapter_id + event['id'])
             assert_and_reply(chapter, f"活动 {event['id']} 没有章节 {chapter_id}")
@@ -321,6 +327,7 @@ async def compose_deck_recommend_image(
         event = await ctx.md.events.find_by_id(options.event_id)
         event_banner = await get_event_banner_img(ctx, event)
         event_title = event['name']
+        live_name = "5v5" if event['eventType'] == 'cheerful_carnival' else "协力"
 
     # 获取挑战角色名字和头像
     chara_name = None
@@ -370,7 +377,7 @@ async def compose_deck_recommend_image(
                             title += f"WL活动组卡"
 
                         if options.live_type == "multi":
-                            title += "(协力)"
+                            title += f"({live_name})"
                         elif options.live_type == "solo":
                             title += "(单人)"
                         elif options.live_type == "auto":
