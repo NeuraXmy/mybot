@@ -72,6 +72,11 @@ DEFAULT_LIMIT = 8
 
 # ======================= 处理逻辑 ======================= #
 
+# 获取deck的hash
+def get_deck_hash(deck: RecommendDeck) -> str:
+    deck_hash = str(deck.score) + str(deck.total_power) + str(deck.cards[0].card_id)
+    return deck_hash
+
 # 从参数获取组卡目标活动（如果是wl则会同时返回cid）返回 (活动, cid, 剩余参数)
 async def extract_target_event(
     ctx: SekaiHandlerContext, 
@@ -167,11 +172,11 @@ def log_options(ctx: SekaiHandlerContext, user_id: int, options: DeckRecommendOp
     log += f"rarity_bd={options.rarity_birthday_config}, "
     logger.info(log)
 
-# 本地自动组卡实现 返回(结果，{算法:耗时})
+# 本地自动组卡实现 返回(结果，结果算法来源，{算法:耗时})
 async def do_deck_recommend(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
-) -> Tuple[DeckRecommendResult, Dict[str, timedelta]]:
+) -> Tuple[DeckRecommendResult, List[str], Dict[str, timedelta]]:
     async with deck_recommend_lock:
         global last_deck_recommend_masterdata_version
         global last_deck_recommend_musicmeta_update_time
@@ -261,19 +266,21 @@ async def do_deck_recommend(
         # 结果排序去重
         decks: List[RecommendDeck] = []
         cost_times = {}
-        deck_set = set()
+        deck_src_alg = {}
         for res, alg, cost_time in results:
             cost_times[alg] = cost_time
             for deck in res.decks:
-                deck_hash = str(deck.score) + str(deck.total_power) + str(deck.cards[0].card_id)
-                if deck_hash not in deck_set:
-                    deck_set.add(deck_hash)
+                deck_hash = get_deck_hash(deck)
+                if deck_hash not in deck_src_alg:
+                    deck_src_alg[deck_hash] = alg
                     decks.append(deck)
+                else:
+                    deck_src_alg[deck_hash] += "+" + alg
         decks = sorted(decks, key=lambda x: x.score, reverse=True)[:options.limit]
-
+        src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
         res = DeckRecommendResult()
         res.decks = decks
-        return res, cost_times
+        return res, src_algs, cost_times
 
 # 获取自动组卡图片
 async def compose_deck_recommend_image(
@@ -299,13 +306,15 @@ async def compose_deck_recommend_image(
         # 组卡！
         cost_times = {}
         result_decks = []
+        result_algs = []
         if options.live_type == "challenge" and not options.challenge_live_character_id:
             # 挑战组卡没有指定角色情况下，每角色组1个最强
             for item in CHARACTER_NICKNAME_DATA:
                 options.challenge_live_character_id = item['id']
                 options.limit = 1
-                res, cts = await do_deck_recommend(ctx, options)
+                res, algs, cts = await do_deck_recommend(ctx, options)
                 result_decks.extend(res.decks)
+                result_algs.extend(algs)
                 for alg, cost in cts.items():
                     if alg not in cost_times:
                         cost_times[alg] = timedelta()
@@ -313,8 +322,9 @@ async def compose_deck_recommend_image(
             options.challenge_live_character_id = None
         else:
             # 正常组卡
-            res, cost_times = await do_deck_recommend(ctx, options)
+            res, algs, cost_times = await do_deck_recommend(ctx, options)
             result_decks = res.decks
+            result_algs = algs
 
     # 获取音乐标题和封面
     music = await ctx.md.musics.find_by_id(options.music_id)
@@ -429,11 +439,14 @@ async def compose_deck_recommend_image(
                                 else:
                                     bonus = f"{deck.event_bonus_rate:.1f}%"
                                 TextBox(bonus, tb_style).set_h(gh).set_content_align('c')
-                    # 综合力
+                    # 综合力和算法
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                         TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
-                        for deck in result_decks:
-                            TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c')
+                        for deck, alg in zip(result_decks, result_algs):
+                            with Frame().set_content_align('rb'):
+                                TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -10))
+                                with Frame().set_content_align('c'):
+                                    TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c')
         
                 # 说明
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
