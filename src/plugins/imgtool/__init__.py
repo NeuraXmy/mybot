@@ -438,6 +438,19 @@ gif 0.8 使用优化算法以80%不透明度阈值生成GIF
         finally:
             remove_file(tmp_path)
 
+class PngOperation(ImageOperation):
+    def __init__(self):
+        super().__init__("png", ImageType.Static, ImageType.Static, 'batch')
+        self.help = "将图片转换为png格式"
+
+    def parse_args(self, args: List[str]) -> dict:
+        assert_and_reply(not args, "该操作不接受参数")
+        return None
+    
+    def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
+        img = img.convert('RGBA')
+        return img
+
 class ResizeOperation(ImageOperation):
     def __init__(self):
         super().__init__("resize", ImageType.Any, ImageType.Any, 'batch')
@@ -1151,6 +1164,7 @@ class CutoutOperation(ImageOperation):
         img = img.convert('RGBA')
         img = rembg.remove(img)
         return img
+
 
 # 注册所有图片操作
 def register_all_ops():
