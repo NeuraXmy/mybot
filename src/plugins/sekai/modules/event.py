@@ -261,11 +261,17 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
     eps = []
     no_snippet_eps = []
     chara_talk_count: Dict[str, int] = {}
+
     for i, ep in enumerate(story['eventStoryEpisodes'], 1):
         ep_id = ep['scenarioId']
         ep_title = ep['title']
         ep_image = await ctx.rip.img(f"event_story/{asset_name}/episode_image_rip/{asset_name}_{i:02d}.png")
-        ep_data = await ctx.rip.json(f"event_story/{asset_name}/scenario_rip/{ep_id}.asset", allow_error=False)
+        ep_data = await ctx.rip.json(
+            f"event_story/{asset_name}/scenario_rip/{ep_id}.asset", 
+            allow_error=False, 
+            use_cache=True,
+            cache_expire_secs=0 if refresh else 60 * 60 * 24,    # refresh时读取最新的，否则一天更新一次
+        )
         cids = set([
             (await ctx.md.characters_2ds.find_by_id(item['Character2dId'])).get('characterId', None)
             for item in ep_data['AppearCharacters']

@@ -440,12 +440,14 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
     # 天气预报图片
     schedule = mysekai_info['mysekaiPhenomenaSchedules']
     phenom_imgs = []
+    phenom_ids = []
     phenom_texts = ["4:00", "16:00", "4:00", "16:00"]
     for i, item in enumerate(schedule):
         refresh_time = datetime.fromtimestamp(item['scheduleDate'] / 1000)
         phenom_id = item['mysekaiPhenomenaId']
         asset_name = (await ctx.md.mysekai_phenomenas.find_by_id(phenom_id))['iconAssetbundleName']
         phenom_imgs.append(await ctx.rip.img(f"mysekai/thumbnail/phenomena/{asset_name}_rip/{asset_name}.png"))
+        phenom_ids.append(phenom_id)
     current_hour = datetime.now().hour
     phenom_idx = 1 if current_hour < 4 or current_hour >= 16 else 0
 
@@ -530,8 +532,14 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
     site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
     logger.info(f"合成资源位置图耗时: {datetime.now() - t}")
     
+    try: 
+        phenom_bg_img = ctx.static_imgs.get(f"mysekai/phenom_bg/{phenom_ids[phenom_idx]}.png")
+        bg = ImageBg(phenom_bg_img)
+    except: 
+        bg = DEFAULT_BLUE_GRADIENT_BG
+    
     # 绘制数量图
-    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+    with Canvas(bg=bg).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
 
             with HSplit().set_sep(32).set_content_align('lb'):
@@ -546,7 +554,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
                                 TextBox(phenom_texts[i], TextStyle(font=DEFAULT_BOLD_FONT, size=15, color=color)).set_w(60).set_content_align('c')
                                 ImageBox(phenom_imgs[i], size=(None, 50), use_alphablend=True)   
             
-            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                 # 到访角色列表
                 with HSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_padding(16).set_sep(16):
                     gate_icon = ctx.static_imgs.get(f'mysekai/gate_icon/gate_{gate_id}.png')

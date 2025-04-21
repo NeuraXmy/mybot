@@ -24,6 +24,7 @@ from sekai_deck_recommend import (
 
 deck_recommend = SekaiDeckRecommend()
 RECOMMEND_TIMEOUT = timedelta(seconds=5)
+NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=10)
 SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=30)
 RECOMMEND_ALGS = ['dfs', 'sa']
 RECOMMEND_ALG_NAMES = {
@@ -246,10 +247,8 @@ async def do_deck_recommend(
         # 算法选择
         if options.algorithm == "all": 
             algs = RECOMMEND_ALGS
-            options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
         else:
             algs = [options.algorithm]
-            options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
 
         # 组卡!
         results: List[Tuple[DeckRecommendResult, str, timedelta]] = []
@@ -288,6 +287,23 @@ async def compose_deck_recommend_image(
     qid: int,
     options: DeckRecommendOptions,
 ) -> Image.Image:
+    # 是哪种组卡类型
+    if options.live_type == "challenge":
+        if options.challenge_live_character_id:
+            recommend_type = "challenge"
+        else:
+            recommend_type = "challenge_all"
+    elif options.event_id:
+        if options.world_bloom_character_id:
+            recommend_type = "wl"
+        else:
+            recommend_type = "event"
+    else:
+        if options.event_unit:
+            recommend_type = "unit_attr"
+        else:
+            recommend_type = "no_event"
+
     # 用户信息
     profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, ignore_hide=True)
     uid = profile['userGamedata']['userId']
@@ -307,7 +323,7 @@ async def compose_deck_recommend_image(
         cost_times = {}
         result_decks = []
         result_algs = []
-        if options.live_type == "challenge" and not options.challenge_live_character_id:
+        if recommend_type == "challenge_all":
             # 挑战组卡没有指定角色情况下，每角色组1个最强
             for item in CHARACTER_NICKNAME_DATA:
                 options.challenge_live_character_id = item['id']
@@ -333,25 +349,32 @@ async def compose_deck_recommend_image(
     music_cover = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", use_img_cache=True)
 
     # 获取活动banner和标题
-    if options.event_id:
+    live_name = "协力"
+    if recommend_type in ["event", "wl"]:
         event = await ctx.md.events.find_by_id(options.event_id)
         event_banner = await get_event_banner_img(ctx, event)
         event_title = event['name']
-        live_name = "5v5" if event['eventType'] == 'cheerful_carnival' else "协力"
+        if event['eventType'] == 'cheerful_carnival':
+            live_name = "5v5" 
 
     # 获取挑战角色名字和头像
     chara_name = None
-    if options.challenge_live_character_id:
+    if recommend_type == "challenge":
         chara = await ctx.md.game_characters.find_by_id(options.challenge_live_character_id)
         chara_name = chara.get('firstName', '') + chara.get('givenName', '')
         chara_icon = get_chara_icon_by_chara_id(chara['id'])
 
     # 获取WL角色名字和头像
     wl_chara_name = None
-    if options.world_bloom_character_id:
+    if recommend_type == "wl":
         wl_chara = await ctx.md.game_characters.find_by_id(options.world_bloom_character_id)
         wl_chara_name = wl_chara.get('firstName', '') + wl_chara.get('givenName', '')
         wl_chara_icon = get_chara_icon_by_chara_id(wl_chara['id'])
+
+    # 获取指定团名和属性的icon和logo
+    if recommend_type == "unit_attr":
+        unit_logo = get_unit_logo(options.event_unit)
+        attr_icon = get_attr_icon(options.event_attr)
 
     # 获取缩略图
     async def _get_thumb(card, pcard):
@@ -378,13 +401,18 @@ async def compose_deck_recommend_image(
                 # 标题
                 with VSplit().set_content_align('lb').set_item_align('lb').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                     title = ""
-                    if options.live_type == "challenge": 
+
+                    if recommend_type in ['challenge', 'challenge_all']: 
                         title += "每日挑战组卡"
                     else:
-                        if not wl_chara_name:
+                        if recommend_type == "event":
                             title += "活动组卡"
-                        else:
+                        elif recommend_type == "wl":
                             title += f"WL活动组卡"
+                        elif recommend_type == "unit_attr":
+                            title += f"指定团队&属性组卡"
+                        elif recommend_type == "no_event":
+                            title += f"无活动组卡"
 
                         if options.live_type == "multi":
                             title += f"({live_name})"
@@ -394,17 +422,20 @@ async def compose_deck_recommend_image(
                             title += "(AUTO)"
     
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
-                        if options.event_id:
+                        if recommend_type in ["event", "wl"]:
                             ImageBox(event_banner, size=(None, 50), use_alphablend=True)
-                            # TextBox(f"{event_title}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50)), use_real_line_count=True)
 
                         TextBox(title, TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50)), use_real_line_count=True)
-                        if chara_name:
+
+                        if recommend_type == "challenge":
                             ImageBox(chara_icon, size=(None, 50), use_alphablend=True)
                             TextBox(f"{chara_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
-                        if wl_chara_name:
+                        if recommend_type == "wl":
                             ImageBox(wl_chara_icon, size=(None, 50), use_alphablend=True)
                             TextBox(f"{wl_chara_name} 章节", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
+                        if recommend_type == "unit_attr":
+                            ImageBox(unit_logo, size=(None, 60), use_alphablend=True)
+                            ImageBox(attr_icon, size=(None, 50), use_alphablend=True)
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         with Frame().set_size((50, 50)):
@@ -419,7 +450,7 @@ async def compose_deck_recommend_image(
                     tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
                     # 分数
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
-                        TextBox("分数" if options.live_type == "challenge" else "PT", th_style).set_h(gh // 2).set_content_align('c')
+                        TextBox("分数" if recommend_type in ["challenge", "challenge_all"] else "PT", th_style).set_h(gh // 2).set_content_align('c')
                         for deck in result_decks:
                             TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c')
                     # 卡片
@@ -430,7 +461,7 @@ async def compose_deck_recommend_image(
                                 for card in deck.cards:
                                     ImageBox(card_imgs[card.card_id], size=(None, gh), use_alphablend=True)
                     # 加成
-                    if options.live_type != "challenge":
+                    if recommend_type not in ["challenge", "challenge_all", "no_event"]:
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                             TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
                             for deck in result_decks:
@@ -439,6 +470,7 @@ async def compose_deck_recommend_image(
                                 else:
                                     bonus = f"{deck.event_bonus_rate:.1f}%"
                                 TextBox(bonus, tb_style).set_h(gh).set_content_align('c')
+
                     # 综合力和算法
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                         TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
@@ -469,9 +501,11 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
 
     # 算法
     options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
     if "dfs" in args:
         options.algorithm = "dfs"
         args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
 
     # live类型
     if "多人" in args or '协力' in args: 
@@ -523,9 +557,11 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
 
     # 算法
     options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
     if "dfs" in args:
         options.algorithm = "dfs"
         args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
     
     # 指定角色
     options.challenge_live_character_id = None
@@ -556,7 +592,116 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
 
     # 模拟退火设置
     options.sa_options = DeckRecommendSaOptions()
-    options.sa_options.run_num = 5  # 挑战组卡卡少，适当减少模拟退火次数
+    if options.challenge_live_character_id is None:
+        options.sa_options.run_num = 5  # 不指定角色情况下适当减少模拟退火次数
+
+    return options
+
+# 从args中提取长草组卡参数
+async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(NO_EVENT_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+    # live类型
+    if "多人" in args or '协力' in args: 
+        options.live_type = "multi"
+        args = args.replace("多人", "").replace("协力", "").strip()
+    elif "单人" in args: 
+        options.live_type = "solo"
+        args = args.replace("单人", "").strip()
+    elif "自动" in args or "auto" in args: 
+        options.live_type = "auto"
+        args = args.replace("自动", "").replace("auto", "").strip()
+    else:
+        options.live_type = "multi"
+
+    # 活动id
+    options.event_id = None
+        
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 50000
+
+    return options
+
+# 从args中提取组卡参数
+async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+    # live类型
+    if "多人" in args or '协力' in args: 
+        options.live_type = "multi"
+        args = args.replace("多人", "").replace("协力", "").strip()
+    elif "单人" in args: 
+        options.live_type = "solo"
+        args = args.replace("单人", "").strip()
+    elif "自动" in args or "auto" in args: 
+        options.live_type = "auto"
+        args = args.replace("自动", "").replace("auto", "").strip()
+    else:
+        options.live_type = "multi"
+
+    # 活动id
+    options.event_id = None
+    options.event_unit, args = extract_unit(args, default=None)
+    options.event_attr, args = extract_card_attr(args, default=None)
+    assert_and_reply(options.event_unit, "请指定组卡的团（ln/mmj/vbs/ws/25/vs）")
+    assert_and_reply(options.event_attr, "请指定活动组卡的属性（例如: 紫/紫月/月亮）")
+        
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 10000
 
     return options
 
@@ -596,3 +741,36 @@ async def _(ctx: SekaiHandlerContext):
         low_quality=True,
     ))
 
+
+# 长草组卡
+pjsk_no_event_deck = SekaiCmdHandler([
+    "/pjsk_no_event_deck", "/pjsk no event deck", "/pjsk best deck", "/pjsk_best_deck",
+    "/长草组卡", "/长草组队", "/长草卡组", "/最强卡组", "/最强组卡", "/最强组队",
+], regions=['jp', 'cn'])
+pjsk_no_event_deck.check_cdrate(cd).check_wblist(gbl)
+@pjsk_no_event_deck.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_deck_recommend_image(
+            ctx, ctx.user_id,
+            await extract_no_event_options(ctx, ctx.get_args())
+        ),
+        low_quality=True,
+    ))
+
+
+# 指定属性和团名组卡
+pjsk_deck = SekaiCmdHandler([
+    "/pjsk deck", 
+    "/组卡", "/组队", "/指定属性组卡", "/指定属性组队",
+], regions=['jp', 'cn'])
+pjsk_deck.check_cdrate(cd).check_wblist(gbl)
+@pjsk_deck.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_deck_recommend_image(
+            ctx, ctx.user_id,
+            await extract_unit_attr_spec_options(ctx, ctx.get_args())
+        ),
+        low_quality=True,
+    ))

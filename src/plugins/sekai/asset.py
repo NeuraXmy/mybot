@@ -702,7 +702,7 @@ class RegionRipAssetManger:
         if use_cache:
             try:
                 assert os.path.exists(cache_path)
-                if cache_expire_secs:
+                if cache_expire_secs is not None:
                     assert datetime.now().timestamp() - os.path.getmtime(cache_path) < cache_expire_secs
                 with open(cache_path, "rb") as f:
                     return f.read()
