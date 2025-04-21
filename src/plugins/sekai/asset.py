@@ -425,6 +425,7 @@ class RegionMasterDataCollection:
         self.mysekai_character_talks                                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalks")
         self.mysekai_character_talk_condition_groups                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditionGroups")
         self.mysekai_character_talk_conditions                              = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditions")
+        self.character_archive_mysekai_character_talk_groups                = RegionMasterDataWrapper(region, "characterArchiveMysekaiCharacterTalkGroups")
         
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
