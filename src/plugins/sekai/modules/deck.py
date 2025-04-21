@@ -23,9 +23,9 @@ from sekai_deck_recommend import (
 
 
 deck_recommend = SekaiDeckRecommend()
-RECOMMEND_TIMEOUT = timedelta(seconds=5)
-NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=10)
-SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=30)
+RECOMMEND_TIMEOUT = timedelta(seconds=10)
+NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=20)
+SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=60)
 RECOMMEND_ALGS = ['dfs', 'sa']
 RECOMMEND_ALG_NAMES = {
     'dfs': '深度优先搜索',
