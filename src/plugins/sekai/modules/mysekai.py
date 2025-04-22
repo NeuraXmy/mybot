@@ -25,7 +25,7 @@ MOST_RARE_MYSEKAI_RES = [
 ]
 RARE_MYSEKAI_RES = [
     "mysekai_material_32", "mysekai_material_33", "mysekai_material_34", "mysekai_material_61", 
-    "mysekai_material_64",
+    "mysekai_material_64", "mysekai_material_65", 
 ]
 MYSEKAI_HARVEST_FIXTURE_IMAGE_NAME = {
     1001: "oak.png",

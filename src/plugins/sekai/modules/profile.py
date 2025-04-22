@@ -169,13 +169,16 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
     return bind_list.get(qid, None)
 
 # 根据游戏id获取玩家基本信息
-async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True) -> dict:
+async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True, raise_when_no_found=True) -> dict:
     cache_path = f"{SEKAI_PROFILE_DIR}/profile_cache/{ctx.region}/{uid}.json"
     try:
         url = get_profile_config(ctx).profile_api_url
         assert_and_reply(url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         profile = await download_json(url.format(uid=uid))
-        assert_and_reply(profile, f"找不到ID为 {uid} 的玩家")
+        if raise_when_no_found:
+            assert_and_reply(profile, f"找不到ID为 {uid} 的玩家")
+        elif not profile:
+            return {}
         create_parent_folder(cache_path)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=4)
@@ -472,25 +475,35 @@ async def _(ctx: SekaiHandlerContext):
     
     # 检查有效的服务器
     checked_regions = []
-    async def check_bind(region: str) -> Optional[Tuple[str, str]]:
+    async def check_bind(region: str) -> Optional[Tuple[str, str, str]]:
         try:
             region_ctx = SekaiHandlerContext.from_region(region)
             if not get_profile_config(region_ctx).profile_api_url:
                 return None
             checked_regions.append(get_region_name(region))
-            profile = await get_basic_profile(region_ctx, args, use_cache=False)
+            profile = await get_basic_profile(region_ctx, args, use_cache=False, raise_when_no_found=False)
+            if not profile:
+                return region, None, "找不到该ID的玩家"
             user_name = profile['user']['name']
-            return region, user_name
+            return region, user_name, None
         except Exception as e:
-            return None
+            logger.warning(f"在 {region} 服务器尝试绑定失败: {get_exc_desc(e)}")
+            return region, None, "内部错误，请稍后再试"
         
     check_results = await asyncio.gather(*[check_bind(region) for region in ALL_SERVER_REGIONS])
     check_results = [res for res in check_results if res]
-    assert_and_reply(check_results, f"在{'/'.join(checked_regions)}都找不到该玩家，请检查ID是否正确")
+    ok_check_results = [res for res in check_results if res[2] is None]
+
+    if not ok_check_results:
+        reply_text = f"所有支持的服务器尝试绑定失败，请检查ID是否正确"
+        for region, _, err_msg in check_results:
+            if err_msg:
+                reply_text += f"\n{get_region_name(region)}: {err_msg}"
+        return await ctx.asend_reply_msg(reply_text)
     
-    if len(check_results) > 1:
+    if len(ok_check_results) > 1:
         await ctx.asend_reply_msg(f"该ID在多个服务器都存在！默认绑定找到的第一个服务器")
-    region, user_name = check_results[0]
+    region, user_name, _ = ok_check_results[0]
 
     msg = f"{get_region_name(region)}ID绑定成功: {user_name}"
 
