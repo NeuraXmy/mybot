@@ -32,17 +32,28 @@ class EventListFilter:
 
 # ======================= 处理逻辑 ======================= #
 
-# 获取当前活动
-async def get_current_event(ctx: SekaiHandlerContext, need_running: bool = True) -> dict:
-    events = sorted(await ctx.md.events.get(), key=lambda x: x['aggregateAt'], reverse=True)
+# 获取当前活动 当前无进行中活动时mode = prev:选择上一个 next:选择下一个 prev_first:优先选择上一个 next_first: 优先选择下一个
+async def get_current_event(ctx: SekaiHandlerContext, mode: str = "running") -> dict:
+    assert mode in ("running", "prev", "next", "prev_first", "next_first")
+    events = sorted(await ctx.md.events.get(), key=lambda x: x['aggregateAt'], reverse=False)
+    now = datetime.now()
+    prev_event, cur_event, next_event = None, None, None
     for event in events:
-        now = datetime.now()
         start_time = datetime.fromtimestamp(event['startAt'] / 1000)
-        end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000)
-        if now < start_time: continue
-        if need_running and now > end_time: continue
-        return event
-    return None
+        end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+        if start_time <= now <= end_time:
+            cur_event = event
+        if end_time < now:
+            prev_event = event
+        if not next_event and start_time > now:
+            next_event = event
+    if mode == "running" or cur_event:
+        return cur_event
+    if mode == "prev" or (mode == "prev_first" and prev_event):
+        return prev_event
+    if mode == "next" or (mode == "next_first" and next_event):
+        return next_event
+    return prev_event or next_event
 
 # 获取活动banner图
 async def get_event_banner_img(ctx: SekaiHandlerContext, event: dict) -> Image.Image:
@@ -508,7 +519,7 @@ async def _(ctx: SekaiHandlerContext):
     try:
         event = await get_event_by_index(ctx, args)
     except:
-        event = await get_current_event(ctx, need_running=False)
+        event = await get_current_event(ctx, mode='next_first')
     await ctx.block_region(str(event['id']))
     return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh, DEFAULT_EVENT_STORY_SUMMARY_MODEL))
 
