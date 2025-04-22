@@ -957,7 +957,7 @@ async def _(ctx: SekaiHandlerContext):
 # 查曲
 pjsk_song = SekaiCmdHandler([
     "/pjsk song", "/pjsk_song", "/pjsk music", "/pjsk_music", 
-    "/查曲", "/查歌",
+    "/查曲", "/查歌", "/song", "/music",
 ])
 pjsk_song.check_cdrate(cd).check_wblist(gbl)
 @pjsk_song.handle()
