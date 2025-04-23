@@ -20,7 +20,7 @@ from .event import (
     get_event_banner_chara_id,
 )
 
-CARD_STORY_SUMMARY_MODEL = "gemini-2-flash"
+CARD_STORY_SUMMARY_MODEL = DEFAULT_STORY_SUMMARY_MODEL
 
 SEARCH_SINGLE_CARD_HELP = """
 查单张卡的方式:

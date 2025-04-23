@@ -7,7 +7,7 @@ from ..draw import *
 from .profile import get_card_full_thumbnail
 
 
-DEFAULT_EVENT_STORY_SUMMARY_MODEL = "gemini-2-flash"
+DEFAULT_EVENT_STORY_SUMMARY_MODEL = DEFAULT_STORY_SUMMARY_MODEL
 
 EVENT_TYPE_NAMES = [
     ("marathon", "普活"),
@@ -420,7 +420,7 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
                         ImageBox(icon, size=(32, 32), use_alphablend=True)
 
         msg_lists.append(f"""
-【第{i}章】{ep['title']} - {summary.get(f'ep_{i}_title', '')}
+【第{i}章】{summary.get(f'ep_{i}_title', ep['title'])}
 {await get_image_cq(await run_in_pool(canvas.get_img))}
 {summary.get(f'ep_{i}_summary', '')}
 """.strip())
