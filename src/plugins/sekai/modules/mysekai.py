@@ -814,7 +814,7 @@ async def compose_mysekai_fixture_list_image(
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
                 if qid:
                     await get_mysekai_info_card(ctx, mysekai_info, basic_profile, mimsg)
-                if profile:
+                if cid and profile:
                     await get_detailed_profile_card(ctx, profile, pmsg)
 
             # 进度
