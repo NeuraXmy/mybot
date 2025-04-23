@@ -615,7 +615,15 @@ async def get_mysekai_fixture_genre_name_and_image(ctx: SekaiHandlerContext, gid
     return genre['name'], image
 
 # 合成mysekai家具列表图片
-async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int, show_id: bool, only_craftable: bool, cid: int = None, unit: str = None) -> Image.Image:
+async def compose_mysekai_fixture_list_image(
+    ctx: SekaiHandlerContext, 
+    qid: int, 
+    show_id: bool, 
+    only_craftable: bool, 
+    cid: int = None, 
+    unit: str = None,
+    show_all_talks: bool = False,
+) -> Image.Image:
     # 获取玩家已获得的蓝图对应的家具ID
     obtained_fids = None
     if qid:
@@ -712,12 +720,16 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
             cid = cu['id']
         chara_icon = await ctx.rip.img(f"character_sd_l_rip/chr_sp_{cid}.png")
 
-        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
+        if not show_all_talks:
+            profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True)
+            assert_and_reply('userMysekaiCharacterTalks' in profile, "你的Suite抓包数据来源没有提供角色家具对话数据")
+            user_character_talks = profile['userMysekaiCharacterTalks']
+        else:
+            profile = None
+            user_character_talks = []
 
         # 获取角色收集对话项目的对应家具id和已读情况
         aid_reads = {}
-        assert_and_reply('userMysekaiCharacterTalks' in profile, "你的Suite抓包数据来源没有提供角色家具对话数据")
-        user_character_talks = profile['userMysekaiCharacterTalks']
         fixture_conds = await ctx.md.mysekai_character_talk_conditions.find_by("mysekaiCharacterTalkConditionType", "mysekai_fixture_id", mode='all')
         for fixture in all_fixtures:
             fid = fixture['id']
@@ -777,8 +789,10 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
             fids = [int(fid) for fid in fids.split()]
             total_talk_num += item['total']
             total_read_num += item['read']
-            if not fids: continue
-            if item['total'] == item['read']: continue
+            if not fids: 
+                continue
+            if item['total'] == item['read']:
+                continue
             main_genre_id, sub_genre_id = find_genre(fids[0])
             if main_genre_id not in new_fixtures:
                 new_fixtures[main_genre_id] = {}
@@ -800,15 +814,19 @@ async def compose_mysekai_fixture_list_image(ctx: SekaiHandlerContext, qid: int,
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
                 if qid:
                     await get_mysekai_info_card(ctx, mysekai_info, basic_profile, mimsg)
-                if cid:
+                if profile:
                     await get_detailed_profile_card(ctx, profile, pmsg)
 
             # 进度
             if cid:
                 with HSplit().set_content_align('l').set_item_align('l').set_sep(5):
                     ImageBox(chara_icon, size=(None, 60))
-                    TextBox(f"未读对话家具列表 - 收集进度: {total_read_num}/{total_talk_num} ({total_read_num/total_talk_num*100:.1f}%)", 
-                            TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
+                    if not show_all_talks:
+                        TextBox(f"未读对话家具列表 - 收集进度: {total_read_num}/{total_talk_num} ({total_read_num/total_talk_num*100:.1f}%)", 
+                                TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
+                    else:
+                        TextBox(f"对话家具列表 - 共 {total_talk_num} 条对话", 
+                                TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
             elif qid and only_craftable:
                 TextBox(f"总收集进度: {total_obtained}/{total_all} ({total_obtained/total_all*100:.1f}%)", 
                         TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
@@ -1295,11 +1313,24 @@ async def _(ctx: SekaiHandlerContext):
     if 'id' in args:
         show_id = True
         args = args.replace('id', '').strip()
+
+    show_all_talks = False
+    if 'all' in args:
+        show_all_talks = True
+        args = args.replace('all', '').strip()
     unit, args = extract_unit(args)
     cid = get_cid_by_nickname(args)
 
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id, show_id=show_id, only_craftable=True, cid=cid, unit=unit),
+        await compose_mysekai_fixture_list_image(
+            ctx, 
+            qid=ctx.user_id, 
+            show_id=show_id, 
+            only_craftable=True, 
+            cid=cid, 
+            unit=unit, 
+            show_all_talks=show_all_talks
+        ),
         low_quality=True
     ))
 
@@ -1323,11 +1354,25 @@ async def _(ctx: SekaiHandlerContext):
             await compose_mysekai_fixture_detail_image(ctx, fids),
             low_quality=True
         ))
+    
     # 查询家具列表
+    show_all_talks = False
+    if 'all' in args:
+        show_all_talks = True
+        args = args.replace('all', '').strip()
     unit, args = extract_unit(args)
     cid = get_cid_by_nickname(args)
+
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_fixture_list_image(ctx, qid=ctx.user_id if cid else None, show_id=True, only_craftable=False, cid=cid, unit=unit),
+        await compose_mysekai_fixture_list_image(
+            ctx, 
+            qid=ctx.user_id if cid else None, 
+            show_id=True, 
+            only_craftable=False, 
+            cid=cid, 
+            unit=unit, 
+            show_all_talks=show_all_talks
+        ),
         low_quality=True
     ))
 
