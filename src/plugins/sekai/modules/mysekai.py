@@ -831,15 +831,15 @@ async def compose_mysekai_fixture_list_image(
                 TextBox(f"总收集进度: {total_obtained}/{total_all} ({total_obtained/total_all*100:.1f}%)", 
                         TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
 
-            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
                 # 一级分类
                 for main_genre_id in sorted(fixtures.keys()):
                     if count_dict(fixtures[main_genre_id], 2) == 0: continue
 
-                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
+                    with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_item_bg(roundrect_bg()).set_padding(8):
                         # 标签
                         main_genre_name, main_genre_image = await get_mysekai_fixture_genre_name_and_image(ctx, main_genre_id, True)
-                        with HSplit().set_content_align('c').set_item_align('c').set_sep(5):
+                        with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_omit_parent_bg(True):
                             ImageBox(main_genre_image, size=(None, 30), use_alphablend=True).set_bg(RoundRectBg(fill=(200,200,200,255), radius=2))
                             TextBox(main_genre_name, TextStyle(font=DEFAULT_HEAVY_FONT, size=20, color=(150, 150, 150)))
                             if qid and only_craftable and not cid:
@@ -850,7 +850,7 @@ async def compose_mysekai_fixture_list_image(
                         for sub_genre_id in sorted(fixtures[main_genre_id].keys()):
                             if len(fixtures[main_genre_id][sub_genre_id]) == 0: continue
 
-                            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_bg(roundrect_bg()).set_padding(8):
+                            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_padding(8):
                                 # 标签
                                 if sub_genre_id != -1 and len(fixtures[main_genre_id]) > 1:  # 无二级分类或只有1个二级分类的不加标签
                                     sub_genre_name, sub_genre_image = await get_mysekai_fixture_genre_name_and_image(ctx, sub_genre_id, False)
