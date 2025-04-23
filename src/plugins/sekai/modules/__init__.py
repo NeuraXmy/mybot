@@ -1,6 +1,7 @@
 from .card import *
 from .chart import *
 from .deck import *
+from .entertainment import *
 from .event import *
 from .honor import *
 from .misc import *
