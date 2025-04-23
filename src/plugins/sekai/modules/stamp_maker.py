@@ -29,7 +29,7 @@ spacing = 32 + preview_font_size
 
 sticker_colors = {
     "airi": (251, 138, 172),
-    "akito": (255, 199, 34),
+    "akt": (255, 199, 34),
     "an": (0, 186, 220),
     "emu": (255, 102, 187),
     "ena": (177, 143, 108),

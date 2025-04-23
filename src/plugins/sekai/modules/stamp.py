@@ -43,6 +43,35 @@ async def compose_character_all_stamp_image(ctx: SekaiHandlerContext, cid):
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 制作表情
+async def make_stamp_image(ctx: SekaiHandlerContext, sid: int, text: str) -> Image.Image:
+    stamp = await ctx.md.stamps.find_by_id(sid)
+    assert_and_reply(stamp, f"表情 {sid} 不存在")
+    cid = stamp.get('characterId1')
+    cid2 = stamp.get('characterId2')
+    assert_and_reply(cid and not cid2, f"该表情不支持制作")
+    nickname = get_nicknames_by_chara_id(cid)[0]
+    text_zoom_ratio = 1.0
+    line_count = 0
+    for line in text.splitlines():
+        dst_len = get_str_appear_length(line)
+        text_zoom_ratio = min(text_zoom_ratio, 0.3 + dst_len * 0.04)
+        line_count += 1
+    text_y_offset = int(15 - 30 * (1.0 - text_zoom_ratio))
+    result_image = make_stamp(
+        id = sid,
+        character = nickname, 
+        text = text,
+        degree = 5,
+        text_zoom_ratio = text_zoom_ratio,
+        text_pos = "mu",
+        line_spacing = 0,
+        text_x_offset = 0,
+        text_y_offset = text_y_offset,
+        disable_different_font_size = False
+    )
+    assert_and_reply(result_image, f"该表情ID不支持制作\n使用/pjsk stamp 角色简称 查询哪些表情支持制作")
+    return result_image
 
 
 # ======================= 指令处理 ======================= #
@@ -108,33 +137,52 @@ async def _(ctx: SekaiHandlerContext):
     # 制作表情
     if qtype == "id_text":
         logger.info(f"制作表情: sid={sid} text={text}")
-        cid = (await ctx.md.stamps.find_by_id(sid))["characterId1"]
-        nickname = get_nicknames_by_chara_id(cid)[0]
-
-        text_zoom_ratio = 1.0
-        for line in text.splitlines():
-            dst_len = max(10, get_str_appear_length(line))
-            text_zoom_ratio = min(text_zoom_ratio, 0.3 + 0.07 * (dst_len - 1))
-
-        result_image = make_stamp(
-            id = sid,
-            character = nickname, 
-            text = text,
-            degree = 5,
-            text_zoom_ratio = text_zoom_ratio,
-            text_pos = "mu",
-            line_spacing = 0,
-            text_x_offset = 0,
-            text_y_offset = 20,
-            disable_different_font_size = False
-        )
-        if result_image is None:
-            return await ctx.asend_reply_msg("该表情ID不支持制作\n使用/pjsk stamp 角色简称 查询哪些表情支持制作")
-        
-        # 添加水印
-        result_image.paste((255, 255, 255, 255), (0, 0, 1, 1), mask=None)
-
+        result_image = await make_stamp_image(ctx, sid, text)
         with TempFilePath("gif") as path:
             save_high_quality_static_gif(result_image, path)
             return await ctx.asend_reply_msg(await get_image_cq(path, force_read=True))
 
+
+# 随机表情 
+pjsk_rand_stamp = SekaiCmdHandler([
+    "/pjsk rand stamp", "/pjsk随机表情", "/pjsk随机表情制作", "/随机表情",
+])
+pjsk_rand_stamp.check_cdrate(cd).check_wblist(gbl)
+@pjsk_rand_stamp.handle()
+async def _(ctx: SekaiHandlerContext):
+    await ctx.block_region()
+    args = ctx.get_args().strip()
+
+    async def get_rand_sid(cid, can_make):
+        stamps = await ctx.md.stamps.get()
+        for i in range(10000):
+            stamp = random.choice(stamps)
+            if cid and stamp.get('characterId1') != cid and stamp.get('characterId2') != cid:
+                continue
+            if can_make and not check_stamp_can_make(stamp['id']):
+                continue
+            return stamp['id']
+        return None
+
+    # 如果存在角色昵称，只返回指定角色昵称的随机表情
+    cid = None
+    if args:
+        for item in CHARACTER_NICKNAME_DATA:
+            for nickname in item['nicknames']:
+                if args.startswith(nickname):
+                    cid = item['id']
+                    args = args[len(nickname):].strip()
+                    break
+
+    if args:
+        # 表情制作模式
+        sid = await get_rand_sid(cid, True)
+        assert_and_reply(sid, f"没有符合条件的表情")
+        img = await make_stamp_image(ctx, sid, args)
+        with TempFilePath("gif") as path:
+            save_high_quality_static_gif(img, path)
+            return await ctx.asend_reply_msg(await get_image_cq(path, force_read=True))
+    else:
+        sid = await get_rand_sid(cid, False)
+        assert_and_reply(sid, f"没有符合条件的表情")
+        return await ctx.asend_reply_msg(await get_stamp_image_cq(ctx, sid))
