@@ -99,11 +99,10 @@ async def get_guess_resp_event(bot: Bot, event: GroupMessageEvent):
 # 开始猜x  start_fn接受ctx，返回本次猜x的guess_data  check_fn接受ctx, guess_data, uid, mid, text，返回是否猜对  timeout_fn接受ctx, guess_data
 async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timedelta, start_fn, check_fn, timeout_fn):
     gid = ctx.group_id
-    assert_and_reply(
-        guess_type not in guess_resp_queues.get(gid, {}),
-        f"当前{guess_type}正在进行！"
-    )
-    await ctx.block(f"{gid}_{guess_type}")
+    current_guesses = list(guess_resp_queues.get(gid, {}).keys())
+    current_guess = current_guesses[0] if len(current_guesses) > 0 else None
+    assert_and_reply(not current_guess, f"当前{current_guess}正在进行")
+    await ctx.block(f"{gid}", timeout=0)
 
     if gid not in guess_resp_queues:
         guess_resp_queues[gid] = {}
