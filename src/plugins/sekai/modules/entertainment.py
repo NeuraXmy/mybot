@@ -4,10 +4,48 @@ from ..common import *
 from ..handler import *
 from ..asset import *
 from ..draw import *
-from .music import search_music, MusicSearchOptions, MusicSearchResult
+from .music import (
+    search_music, 
+    MusicSearchOptions, 
+    MusicSearchResult, 
+    extract_diff, 
+    get_music_diff_info,
+)
+from PIL.Image import Transpose
+from PIL import ImageOps
+
 
 GUESS_INTERVAL = timedelta(seconds=1)
 GUESS_COVER_TIMEOUT = timedelta(seconds=60)
+
+@dataclass
+class RandomCropOptions:
+    rate_min: float
+    rate_max: float
+    flip_prob: float = 0.
+    inv_prob: float = 0.
+    gray_prob: float = 0.
+    rgb_shuffle_prob: float = 0.
+
+    def get_effect_tip_text(self):
+        effects = []
+        if self.flip_prob > 0: effects.append("翻转")
+        if self.inv_prob > 0: effects.append("反色")
+        if self.gray_prob > 0: effects.append("灰度")
+        if self.rgb_shuffle_prob > 0: effects.append("RGB打乱")
+        if len(effects) == 0: return ""
+        return f"（概率出现{'、'.join(effects)}效果）"
+    
+
+GUESS_COVER_DIFF_OPTIONS = {
+    'easy':     RandomCropOptions(0.4, 0.5),
+    'normal':   RandomCropOptions(0.3, 0.5),
+    'hard':     RandomCropOptions(0.2, 0.3),
+    'expert':   RandomCropOptions(0.1, 0.3),
+    'master':   RandomCropOptions(0.1, 0.15),
+    'append':   RandomCropOptions(0.2, 0.4, flip_prob=0.5, inv_prob=0.3, gray_prob=0.3, rgb_shuffle_prob=0.3),
+}
+
 
 # ======================= 处理逻辑 ======================= #
 
@@ -69,15 +107,31 @@ async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timede
             del guess_resp_queues[gid][guess_type]
 
 # 随机裁剪图片到 w=[w*rate_min, w*rate_max], h=[h*rate_min, h*rate_max]
-async def random_crop_image(image: Image.Image, rate_min: float, rate_max: float) -> Image.Image:
+async def random_crop_image(image: Image.Image, options: RandomCropOptions) -> Image.Image:
+    image = image.convert("RGB")
     w, h = image.size
-    w_rate = random.uniform(rate_min, rate_max)
-    h_rate = random.uniform(rate_min, rate_max)
+    w_rate = random.uniform(options.rate_min, options.rate_max)
+    h_rate = random.uniform(options.rate_min, options.rate_max)
     w_crop = int(w * w_rate)
     h_crop = int(h * h_rate)
     x = random.randint(0, w - w_crop)
     y = random.randint(0, h - h_crop)
-    return image.crop((x, y, x + w_crop, y + h_crop))
+    ret = image.crop((x, y, x + w_crop, y + h_crop))
+    if random.random() < options.flip_prob:
+        if random.random() < 0.5:
+            ret = ret.transpose(Transpose.FLIP_LEFT_RIGHT)
+        else:
+            ret = ret.transpose(Transpose.FLIP_TOP_BOTTOM)
+    if random.random() < options.inv_prob:
+        ret = ImageOps.invert(ret)
+    if random.random() < options.gray_prob:
+        ret = ImageOps.grayscale(ret)
+    if random.random() < options.rgb_shuffle_prob:
+        channels = list(range(3))
+        random.shuffle(channels)
+        ret = ret.split()
+        ret = Image.merge("RGB", (ret[channels[0]], ret[channels[1]], ret[channels[2]]))
+    return ret
 
 # 随机歌曲相关资源，返回歌曲数据和资源
 @retry(stop=stop_after_attempt(3), reraise=True)
@@ -101,34 +155,54 @@ pjsk_guess_cover = SekaiCmdHandler([
 pjsk_guess_cover.check_cdrate(cd).check_wblist(gbl)
 @pjsk_guess_cover.handle()
 async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    diff, args = extract_diff(args, default='expert')
+
     async def start_fn(ctx: SekaiHandlerContext):
         music, cover_img = await random_music_res(ctx, 'cover')
-        crop_img = await random_crop_image(cover_img, 0.1, 0.3)
+        cover_img = cover_img.resize((512, 512))
+        crop_img = await random_crop_image(cover_img, GUESS_COVER_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
-        msg += f"猜这是哪首歌曲的曲绘！"
+        msg += f"猜这是哪首歌曲的曲绘（{diff.upper()}模式）{GUESS_COVER_DIFF_OPTIONS[diff].get_effect_tip_text()}"
         msg += f"你有{int(GUESS_COVER_TIMEOUT.total_seconds())}秒的时间来回答"
         msg += "（直接发送歌名/id/别名，无需回复，发送过于频繁的消息会被忽略）"
         await ctx.asend_reply_msg(msg)
         return music, cover_img
     
     async def check_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image], uid: int, mid: int, text: str):
+        music, _ = guess_data
+        if '提示' in text:
+            music_diff = await get_music_diff_info(ctx, music['id'])
+
+            HINT_TYPES = ['ma_diff']
+            if music_diff.has_append: HINT_TYPES.append('apd_diff')
+            hint_type = random.choice(HINT_TYPES)
+
+            msg = f"[CQ:reply,id={mid}]提示："
+            if hint_type == 'ma_diff':
+                msg += f"MASTER Lv.{music_diff.level['master']}"
+            elif hint_type == 'apd_diff':
+                msg += f"APPEND Lv.{music_diff.level['append']}"
+            await ctx.asend_msg(msg)
+            return False
+
         music, cover_img = guess_data
         ret: MusicSearchResult = await search_music(ctx, text,  MusicSearchOptions(use_emb=False, raise_when_err=False))
         if ret.music is None:
             return False
         if ret.music['id'] == music['id']:
             msg = f"[CQ:reply,id={mid}]你猜对了！\n"
-            msg += f"【{music['id']}】{music['title']}\n"
-            msg += await get_image_cq(cover_img, low_quality=True)
+            msg += f"【{music['id']}】{music['title']}"
             await ctx.asend_msg(msg)
+            await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
             return True
         return False
 
     async def timeout_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image]):
         music, cover_img = guess_data
         msg = f"猜曲绘结束，正确答案：\n"
-        msg += f"【{music['id']}】{music['title']}\n"
-        msg += await get_image_cq(cover_img, low_quality=True)
+        msg += f"【{music['id']}】{music['title']}"
         await ctx.asend_msg(msg)
+        await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
 
     await start_guess(ctx, '猜曲绘', GUESS_COVER_TIMEOUT, start_fn, check_fn, timeout_fn)

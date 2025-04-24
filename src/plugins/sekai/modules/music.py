@@ -89,7 +89,7 @@ class MusicAliasAddHistory:
     mid: int
     aliases: List[str]
 
-MUSIC_ALIAS_DB_NAMES = ['local', 'haruki', 'sakura']
+MUSIC_ALIAS_DB_NAMES = ['local', 'haruki']
 music_alias_dbs = { name : get_file_db(f"{SEKAI_DATA_DIR}/music_alias/{name}.json", logger) for name in MUSIC_ALIAS_DB_NAMES }
 music_alias_add_history: Dict[int, List[MusicAliasAddHistory]] = {}
 music_alias_lock = asyncio.Lock()
