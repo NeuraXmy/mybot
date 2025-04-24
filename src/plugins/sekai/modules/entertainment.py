@@ -152,18 +152,15 @@ async def random_crop_image(image: Image.Image, options: ImageRandomCropOptions)
     y = random.randint(0, h - h_crop)
     ret = image.crop((x, y, x + w_crop, y + h_crop))
 
-    flip = random.random() < options.flip_prob
-    inv = random.random() < options.inv_prob
-    gray = random.random() < options.gray_prob
-    rgb_shuffle = random.random() < options.rgb_shuffle_prob
-
-    if options.at_least_one_effect and not any([flip, inv, gray, rgb_shuffle]):
-        t = random.choice([0, 1, 2, 3])
-        if t == 0: flip = True
-        elif t == 1: inv = True
-        elif t == 2: gray = True
-        elif t == 3: rgb_shuffle = True
-
+    flip, inv, gray, rgb_shuffle = False, False, False, False
+    while True:
+        flip = random.random() < options.flip_prob
+        inv = random.random() < options.inv_prob
+        gray = random.random() < options.gray_prob
+        rgb_shuffle = random.random() < options.rgb_shuffle_prob
+        if not options.at_least_one_effect or any([flip, inv, gray, rgb_shuffle]):
+            break
+        
     if flip:
         if random.random() < 0.5:
             ret = ret.transpose(Transpose.FLIP_LEFT_RIGHT)
