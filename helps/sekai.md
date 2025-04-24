@@ -104,6 +104,8 @@ Project Sekai（世界计划）游戏多服务器相关服务
 #### 🎪 娱乐
 
 - [猜曲绘](#猜曲绘)
+- [猜谱面](#猜谱面)
+- [猜卡面](#猜卡面)
 
 #### ⚙️ 其他
 
@@ -722,13 +724,30 @@ Project Sekai（世界计划）游戏多服务器相关服务
 
 ### 猜曲绘
 `/pjsk猜曲绘` `/pjsk猜曲封` `/猜曲绘` `/猜曲封` `/pjsk guess cover`
-> 猜曲绘，包含easy~master+append难度  
-append难度下随机出现类似翻转、反色的特效  
+> 猜曲绘，包含easy~master+append模式  
 发送`提示`获取提示  
 支持服务器: `jp`
 
-- `/猜曲绘` 开始默认expert难度猜曲绘
-- `/猜曲绘 master` 开始master难度猜曲绘
+- `/猜曲绘` 开始默认expert模式猜曲绘
+- `/猜曲绘 master` 开始master模式猜曲绘
+
+### 猜谱面
+`/pjsk猜谱面` `/pjsk猜铺面` `/猜谱面` `/猜铺面` `/pjsk guess chart`
+> 猜谱面，包含easy~master模式  
+发送`提示`获取提示  
+支持服务器: `jp`
+
+- `/猜谱面` 开始默认expert模式猜谱面
+- `/猜谱面 master` 开始master模式猜谱面
+
+### 猜卡面
+`/pjsk猜卡面` `/猜卡面` `/pjsk guess card`
+> 猜卡面是哪个角色的卡，包含easy~master模式  
+发送`提示`获取提示  
+支持服务器: `jp`
+
+- `/猜卡面` 开始默认expert模式猜卡面
+- `/猜卡面 master` 开始master模式猜卡面
 
 ---
 

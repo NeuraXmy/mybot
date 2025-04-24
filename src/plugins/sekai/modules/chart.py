@@ -5,7 +5,7 @@ from ..asset import *
 from ..draw import *
 from .music import *
 
-# ======================= 谱面生成 ======================= #
+# ======================= 处理逻辑 ======================= #
 
 import pjsekai.scores
 
@@ -26,9 +26,20 @@ async def generate_music_chart(
     ctx: SekaiHandlerContext, 
     music_id: int,
     difficulty: str,
+    need_reply: bool = True,
+    random_clip_length_rate: float = None,
+    style_sheet: str = 'black',
+    use_cache: bool = True,
+    refresh: bool = False,
 ) -> Image.Image:
+    if use_cache:
+        await ctx.block_region(f"chart_{music_id}_{difficulty}")
+    cache_path = CHART_CACHE_PATH.format(region=ctx.region, mid=music_id, diff=difficulty)
+    create_parent_folder(cache_path)
+    if use_cache and not refresh and os.path.exists(cache_path):
+        return open_image(cache_path)
+
     # 获取信息
-    await ctx.block_region(f"chart_{music_id}_{difficulty}")
     music = await ctx.md.musics.find_by_id(music_id)
     assert_and_reply(music, f'曲目 {music_id} 不存在')
 
@@ -50,7 +61,8 @@ async def generate_music_chart(
         playlevel = diff_info.level.get(difficulty, '?')
 
     logger.info(f'生成谱面图片 mid={music_id} {difficulty}')
-    await ctx.asend_reply_msg(f'正在生成【{music_id}】{music_title} 的谱面图片...')
+    if need_reply:
+        await ctx.asend_reply_msg(f'正在生成【{music_id}】{music_title} 的谱面图片...')
 
     # 谱面
     chart_sus = await ctx.rip.get_asset(f"music/music_score/{music_id:04d}_01_rip/{difficulty}", allow_error=False)
@@ -63,10 +75,22 @@ async def generate_music_chart(
 
     with TempFilePath('sus') as sus_path:
         with TempFilePath('svg') as svg_path:
-            def get_svg():
+            def get_svg(style_sheet):
                 with open(sus_path, mode='wb') as f:
                     f.write(chart_sus)
                 score = pjsekai.scores.Score.open(sus_path, encoding='UTF-8')
+
+                if random_clip_length_rate is not None:
+                    clip_len = int(len(score.notes) * random_clip_length_rate)
+                    clip_start = random.randint(0, len(score.notes) - clip_len)
+                    start_note_bar = score.notes[clip_start].bar
+                    score.notes = score.notes[clip_start: clip_start + clip_len]
+                    for note in score.notes:
+                        note.bar -= start_note_bar
+                    score.events = []
+                    score._init_notes()
+                    score._init_events()    
+
                 score.meta = pjsekai.scores.score.Meta(
                     title=music_title,
                     artist=artist,
@@ -75,37 +99,30 @@ async def generate_music_chart(
                     jacket=jacket,
                     songid=str(music_id),
                 )
+                style_sheet = Path(f'{CHART_ASSET_DIR}/css/{style_sheet}.css').read_text()
                 drawing = pjsekai.scores.Drawing(
                     score=score,
+                    style_sheet=style_sheet,
                     note_host=f'file://{note_host}',
                 )
                 drawing.svg().saveas(svg_path)
-            await run_in_pool(get_svg)
+            await run_in_pool(get_svg, style_sheet)
 
             # 渲染svg
             img = await download_and_convert_svg(f"file://{os.path.abspath(svg_path)}")
+            if random_clip_length_rate:
+                img = img.crop((0, 0, img.size[0], img.size[1] - 260))
+
             MAX_SIZE = 2048 * 2048
             if img.size[0] * img.size[1] > MAX_SIZE:
                 img = resize_keep_ratio(img, max_size=MAX_SIZE, mode='wxh')
             logger.info(f'生成 mid={music_id} {difficulty} 谱面图片完成')
+
+            if use_cache:
+                img.save(cache_path)
             return img
 
-
-# ======================= 处理逻辑 ======================= #
-
-# 获取谱面图片
-async def get_music_chart(ctx: SekaiHandlerContext, mid: int, diff: str, use_cache=True) -> Image.Image:
-    cache_path = CHART_CACHE_PATH.format(region=ctx.region, mid=mid, diff=diff)
-    create_parent_folder(cache_path)
-    if use_cache and os.path.exists(cache_path):
-        return open_image(cache_path)
-    img = await generate_music_chart(ctx, mid, diff)
-    img.save(cache_path)
-    return img
-    
-
 # ======================= 指令处理 ======================= #
-
 
 # 谱面查询
 pjsk_chart = SekaiCmdHandler([
@@ -118,9 +135,9 @@ async def _(ctx: SekaiHandlerContext):
     query = ctx.get_args().strip()
     assert_and_reply(query, MUSIC_SEARCH_HELP)
     
-    use_cache = True
+    refresh = True
     if 'refresh' in query:
-        use_cache = False
+        refresh = False
         query = query.replace('refresh', '').strip()
 
     diff, query = extract_diff(query)
@@ -131,7 +148,7 @@ async def _(ctx: SekaiHandlerContext):
     msg = ""
     try:
         msg = await get_image_cq(
-            await get_music_chart(ctx, mid, diff, use_cache),
+            await generate_music_chart(ctx, mid, diff, refresh=refresh, use_cache=True),
             low_quality=True,
         )
     except Exception as e:
