@@ -27,6 +27,7 @@ class ImageRandomCropOptions:
     inv_prob: float = 0.
     gray_prob: float = 0.
     rgb_shuffle_prob: float = 0.
+    at_least_one_effect: bool = False
 
     def get_effect_tip_text(self):
         effects = []
@@ -57,7 +58,7 @@ GUESS_COVER_DIFF_OPTIONS = {
     'hard':     ImageRandomCropOptions(0.2, 0.3),
     'expert':   ImageRandomCropOptions(0.1, 0.3),
     'master':   ImageRandomCropOptions(0.1, 0.15),
-    'append':   ImageRandomCropOptions(0.2, 0.5, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4),
+    'append':   ImageRandomCropOptions(0.2, 0.5, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
 }
 
 GUESS_CHART_TIMEOUT = timedelta(seconds=60)
@@ -76,7 +77,7 @@ GUESS_CARD_DIFF_OPTIONS = {
     'hard':     ImageRandomCropOptions(0.3, 0.4),
     'expert':   ImageRandomCropOptions(0.2, 0.3),
     'master':   ImageRandomCropOptions(0.1, 0.2),
-    'append':   ImageRandomCropOptions(0.2, 0.5, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4),
+    'append':   ImageRandomCropOptions(0.2, 0.5, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
 }
 
 
@@ -150,16 +151,29 @@ async def random_crop_image(image: Image.Image, options: ImageRandomCropOptions)
     x = random.randint(0, w - w_crop)
     y = random.randint(0, h - h_crop)
     ret = image.crop((x, y, x + w_crop, y + h_crop))
-    if random.random() < options.flip_prob:
+
+    flip = random.random() < options.flip_prob
+    inv = random.random() < options.inv_prob
+    gray = random.random() < options.gray_prob
+    rgb_shuffle = random.random() < options.rgb_shuffle_prob
+
+    if options.at_least_one_effect and not any([flip, inv, gray, rgb_shuffle]):
+        t = random.choice([0, 1, 2, 3])
+        if t == 0: flip = True
+        elif t == 1: inv = True
+        elif t == 2: gray = True
+        elif t == 3: rgb_shuffle = True
+
+    if flip:
         if random.random() < 0.5:
             ret = ret.transpose(Transpose.FLIP_LEFT_RIGHT)
         else:
             ret = ret.transpose(Transpose.FLIP_TOP_BOTTOM)
-    if random.random() < options.inv_prob:
+    if inv:
         ret = ImageOps.invert(ret)
-    if random.random() < options.gray_prob:
+    if gray:
         ret = ImageOps.grayscale(ret).convert("RGB")
-    if random.random() < options.rgb_shuffle_prob:
+    if rgb_shuffle:
         channels = list(range(3))
         random.shuffle(channels)
         ret = ret.split()
