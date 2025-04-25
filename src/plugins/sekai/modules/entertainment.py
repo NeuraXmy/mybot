@@ -77,7 +77,7 @@ GUESS_CARD_DIFF_OPTIONS = {
     'hard':     ImageRandomCropOptions(0.3, 0.4),
     'expert':   ImageRandomCropOptions(0.2, 0.3),
     'master':   ImageRandomCropOptions(0.1, 0.2),
-    'append':   ImageRandomCropOptions(0.2, 0.5, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
+    'append':   ImageRandomCropOptions(0.2, 0.3, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
 }
 
 
@@ -259,7 +259,7 @@ async def send_guess_card_hint(ctx: SekaiHandlerContext, card: Dict, after_train
         time = datetime.fromtimestamp(card['releaseAt'] / 1000.)
         msg += f"发布时间为{time.year}年{time.month}月"
     elif hint == 'attr':
-        attr = card['attribute']
+        attr = card['attr']
         if attr == 'cool': msg += "蓝星"
         elif attr == 'happy': msg += "橙心"
         elif attr == 'mysterious': msg += "紫月"
@@ -292,6 +292,7 @@ async def _(ctx: SekaiHandlerContext):
 
     async def start_fn(ctx: SekaiHandlerContext):
         music, cover_img = await random_music(ctx, 'cover')
+        logger.info(f"群聊 {ctx.group_id} 猜曲绘目标: {music['id']}")
         crop_img = await random_crop_image(cover_img, GUESS_COVER_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
         msg += f"{diff.upper()}模式猜曲绘{GUESS_COVER_DIFF_OPTIONS[diff].get_effect_tip_text()}"
@@ -348,6 +349,7 @@ async def _(ctx: SekaiHandlerContext):
 
     async def start_fn(ctx: SekaiHandlerContext):
         music, cover_img = await random_music(ctx, 'cover')
+        logger.info(f"群聊 {ctx.group_id} 猜谱面目标: {music['id']}")
         diff_info = await get_music_diff_info(ctx, music['id'])
         chart_diff = random.choice(['master', 'append']) if diff_info.has_append else 'master'
         chart_lv = diff_info.level[chart_diff]
@@ -411,10 +413,11 @@ pjsk_guess_card.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     diff, args = extract_diff(args, default='expert')
-    assert_and_reply(diff in GUESS_CHART_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CHART_DIFF_OPTIONS.keys())}")
+    assert_and_reply(diff in GUESS_CARD_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CARD_DIFF_OPTIONS.keys())}")
 
     async def start_fn(ctx: SekaiHandlerContext):
         card, card_img, after_training = await random_card(ctx)
+        logger.info(f"群聊 {ctx.group_id} 猜卡面目标: {card['id']}")
         crop_img = await random_crop_image(card_img, GUESS_CARD_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
         msg += f"{diff.upper()}模式猜卡面{GUESS_CARD_DIFF_OPTIONS[diff].get_effect_tip_text()}"

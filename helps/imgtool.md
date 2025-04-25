@@ -609,7 +609,10 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 
 ## `cutout`
 ```
-抠图
+抠图，可用抠图方法:
+floodfill: 用于移除纯色背景
+ai: ai抠图
+adaptive: 自适应选择以上两种方法
 ```
 
 - **输入输出**
@@ -618,7 +621,9 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 
 - **示例**
 
-    `coutout`
+    `coutout` 默认使用adaptive方法抠图
+
+    `cutout floodfill` 使用floodfill方法抠图
 
 
 --- 
