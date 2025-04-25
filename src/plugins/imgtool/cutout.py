@@ -3,7 +3,7 @@ import rembg
 import numpy as np
 
 SAME_COLOR_THRESHOLD = (10 ** 2) * 3
-FLOODFILL_EDGE_COLOR_NUM_RATE_THRESHOLD = 0.8
+FLOODFILL_EDGE_COLOR_NUM_RATE_THRESHOLD = 0.6
 
 def color_distance(c1, c2):
     return (c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2 + (c1[2] - c2[2]) ** 2
@@ -62,5 +62,5 @@ def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
         return Image.fromarray(data.astype(np.uint8))
 
     else:
-        data = rembg.remove(data)
+        data = rembg.remove(img)
         return Image.fromarray(data)
