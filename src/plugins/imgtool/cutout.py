@@ -2,7 +2,7 @@ from ..utils import *
 import rembg
 import numpy as np
 
-SAME_COLOR_THRESHOLD = 20 ** 2
+SAME_COLOR_THRESHOLD = (10 ** 2) * 3
 FLOODFILL_EDGE_COLOR_NUM_RATE_THRESHOLD = 0.8
 
 def color_distance(c1, c2):
@@ -56,6 +56,8 @@ def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
         for x in range(data.shape[1]):
             for y in range(data.shape[0]):
                 if x == 0 or x == data.shape[1] - 1 or y == 0 or y == data.shape[0] - 1:
+                    if data[y, x][3] == 0:
+                        continue
                     floodfill(data, visited, x, y, np.concatenate([first_color, [255]]), np.array([0, 0, 0, 0]))
         return Image.fromarray(data.astype(np.uint8))
 
