@@ -1305,19 +1305,20 @@ async def compose_mysekai_musicrecord_image(ctx: SekaiHandlerContext, qid: int, 
     user_records = mysekai_info['updatedResources'].get('userMysekaiMusicRecords', [])
 
     category_mids = { tag: [] for tag in MUSIC_TAG_UNIT_MAP.keys() }
-    mid_obtained = {}
+    mid_obtained_at = {}
     for record in await ctx.md.mysekai_musicrecords.get():
         if record['mysekaiMusicTrackType'] != 'music': continue
         rid, mid = record['id'], record['externalId']
-        obtained = find_by(user_records, 'mysekaiMusicRecordId', rid) is not None
-        mid_obtained[mid] = obtained
+        user_record = find_by(user_records, 'mysekaiMusicRecordId', rid)
+        if user_record:
+            mid_obtained_at[mid] = user_record['obtainedAt']
         tags = [t for t in await ctx.md.music_tags.find_by('musicId', mid, mode='all') if t['musicTag'] not in ['all', 'vocaloid']]
         if tags: tag = tags[0]['musicTag']
         else:    tag = 'vocaloid'
         category_mids[tag].append(mid)
 
     for tag in category_mids:
-        category_mids[tag].sort(key=lambda x: x - mid_obtained[x] * 1000000)
+        category_mids[tag].sort(key=lambda x: mid_obtained_at.get(x, x * 1e12))
 
     total_num, obtained_num = 0, 0
     category_total_num = { tag: 0 for tag in MUSIC_TAG_UNIT_MAP.keys() }
@@ -1326,7 +1327,7 @@ async def compose_mysekai_musicrecord_image(ctx: SekaiHandlerContext, qid: int, 
         for mid in mids:
             total_num += 1
             category_total_num[tag] += 1
-            if mid_obtained.get(mid):
+            if mid in mid_obtained_at:
                 obtained_num += 1
                 category_obtained_num[tag] += 1
 
@@ -1362,7 +1363,7 @@ async def compose_mysekai_musicrecord_image(ctx: SekaiHandlerContext, qid: int, 
                                     with VSplit().set_content_align('c').set_item_align('c').set_sep(3):
                                         with Frame():
                                             ImageBox(cover, size=(sz, sz))
-                                            if not mid_obtained.get(mid):
+                                            if mid not in mid_obtained_at:
                                                 Spacer(w=sz, h=sz).set_bg(FillBg((0,0,0,120)))
                                         if show_id:
                                             TextBox(f"{mid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
