@@ -101,6 +101,15 @@ UNKNOWN_IMG = Image.open(f"{SEKAI_ASSET_DIR}/static_images/unknown.png")
 
 CHARACTER_NICKNAME_DATA: List[Dict[str, Any]] = json.load(open(f"{SEKAI_DATA_DIR}/character_nicknames.json", 'r'))
 
+MUSIC_TAG_UNIT_MAP = {
+    'light_music_club': 'light_sound',
+    'street': 'street',
+    'idol': 'idol',
+    'theme_park': 'theme_park',
+    'school_refusal': 'school_refusal',
+    'vocaloid': 'piapro',
+    'other': None,
+}
 
 # ======================= 通用功能 ======================= #
 

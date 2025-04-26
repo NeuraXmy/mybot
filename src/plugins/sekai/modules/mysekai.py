@@ -15,6 +15,7 @@ from .profile import (
     get_detailed_profile,
     get_detailed_profile_card,
 )
+from .music import get_music_cover_thumb
 
 
 msr_sub = SekaiUserSubHelper("msr", "烤森资源查询自动推送", ['jp'])
@@ -591,7 +592,17 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
                                         text_color = (200, 50, 0)
                                     elif res_key in RARE_MYSEKAI_RES:
                                         text_color = (50, 0, 200)
-                                    ImageBox(res_img, size=(40, 40), use_alphablend=True)
+
+                                    if res_key.startswith("mysekai_music_record"):
+                                        record_id = int(res_key.split("_")[-1])
+                                        has_music_record = find_by(mysekai_info['updatedResources'].get('userMysekaiMusicRecords', []), 'mysekaiMusicRecordId', record_id) is not None
+                                        with Frame().set_content_align('rb'):
+                                            ImageBox(res_img, size=(40, 40), use_alphablend=True)
+                                            if has_music_record:
+                                                music_record_icon = ctx.static_imgs.get('mysekai/music_record.png')
+                                                ImageBox(music_record_icon, size=(25, 25), use_alphablend=True).set_offset((5, 5))
+                                    else:
+                                        ImageBox(res_img, size=(40, 40), use_alphablend=True)
                                     TextBox(f"{res_quantity}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=text_color)).set_w(80).set_content_align('l')
 
     # 绘制位置图
@@ -865,13 +876,13 @@ async def compose_mysekai_fixture_list_image(
                                 def draw_single_fid(fid: int, obtained: bool):
                                     f_sz = 30
                                     image = fixture_icons.get(fid)
-                                    with Frame():
-                                        with VSplit().set_content_align('c').set_item_align('c').set_sep(2):
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(2):
+                                        with Frame():
                                             ImageBox(image, size=(None, f_sz), use_alphablend=True)
-                                            if show_id:
-                                                TextBox(f"{fid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
-                                        if not obtained:
-                                            Spacer(w=f_sz, h=f_sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+                                            if not obtained:
+                                                Spacer(w=f_sz, h=f_sz).set_bg(RoundRectBg(fill=(0,0,0,120), radius=2))
+                                        if show_id:
+                                            TextBox(f"{fid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
 
                                 # 家具列表
                                 COL_COUNT, cur_idx = 15, 0
@@ -1286,6 +1297,79 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 合成mysekai唱片列表
+async def compose_mysekai_musicrecord_image(ctx: SekaiHandlerContext, qid: int, show_id: bool = False) -> Image.Image:
+    mysekai_info, pmsg = await get_mysekai_info(ctx, qid, raise_exc=True)
+    uid = get_uid_from_qid(ctx, qid, check_bind=True)
+    basic_profile = await get_basic_profile(ctx, uid)
+    user_records = mysekai_info['updatedResources'].get('userMysekaiMusicRecords', [])
+
+    category_mids = { tag: [] for tag in MUSIC_TAG_UNIT_MAP.keys() }
+    mid_obtained = {}
+    for record in await ctx.md.mysekai_musicrecords.get():
+        if record['mysekaiMusicTrackType'] != 'music': continue
+        rid, mid = record['id'], record['externalId']
+        obtained = find_by(user_records, 'mysekaiMusicRecordId', rid) is not None
+        mid_obtained[mid] = obtained
+        tags = [t for t in await ctx.md.music_tags.find_by('musicId', mid, mode='all') if t['musicTag'] not in ['all', 'vocaloid']]
+        if tags: tag = tags[0]['musicTag']
+        else:    tag = 'vocaloid'
+        category_mids[tag].append(mid)
+
+    for tag in category_mids:
+        category_mids[tag].sort(key=lambda x: x - mid_obtained[x] * 1000000)
+
+    total_num, obtained_num = 0, 0
+    category_total_num = { tag: 0 for tag in MUSIC_TAG_UNIT_MAP.keys() }
+    category_obtained_num = { tag: 0 for tag in MUSIC_TAG_UNIT_MAP.keys() }
+    for tag, mids in category_mids.items():
+        for mid in mids:
+            total_num += 1
+            category_total_num[tag] += 1
+            if mid_obtained.get(mid):
+                obtained_num += 1
+                category_obtained_num[tag] += 1
+
+    music_covers = {}
+    for tag, mids in category_mids.items():
+        music_covers[tag] = await batch_gather(*[get_music_cover_thumb(ctx, i) for i in mids])
+        
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16) as vs:
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+                await get_mysekai_info_card(ctx, mysekai_info, basic_profile, pmsg)
+
+                a, b = obtained_num, total_num
+                TextBox(f"总收集进度: {a}/{b} ({a/b*100:.1f}%)", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=(100, 100, 100)))
+
+                with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
+                   for tag, mids in category_mids.items():
+                        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5).set_item_bg(roundrect_bg()).set_padding(8):
+                            # 标签
+                            with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_omit_parent_bg(True):
+                                if MUSIC_TAG_UNIT_MAP[tag]:
+                                    tag_icon = get_unit_icon(MUSIC_TAG_UNIT_MAP[tag])
+                                    ImageBox(tag_icon, size=(None, 30))
+                                else:
+                                    TextBox("其他", TextStyle(font=DEFAULT_HEAVY_FONT, size=20, color=(150, 150, 150)))
+                                a, b = category_obtained_num[tag], category_total_num[tag]
+                                TextBox(f"{a}/{b} ({a/b*100:.1f}%)", TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=(150, 150, 150)))
+
+                            # 歌曲列表
+                            sz = 30
+                            with Grid(col_count=20).set_content_align('lt').set_item_align('lt').set_sep(3, 3):
+                                for mid, cover in zip(mids, music_covers[tag]):
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(3):
+                                        with Frame():
+                                            ImageBox(cover, size=(sz, sz))
+                                            if not mid_obtained.get(mid):
+                                                Spacer(w=sz, h=sz).set_bg(FillBg((0,0,0,120)))
+                                        if show_id:
+                                            TextBox(f"{mid}", TextStyle(font=DEFAULT_FONT, size=10, color=(50, 50, 50)))
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -1465,6 +1549,30 @@ async def _(ctx: SekaiHandlerContext):
 
     return await ctx.asend_reply_msg(await get_image_cq(
         await compose_mysekai_door_upgrade_image(ctx, ctx.user_id if not full else None, gate_id),
+        low_quality=True
+    ))
+
+
+# 查询烤森唱片数据
+pjsk_mysekai_musicrecord = SekaiCmdHandler([
+    "/pjsk mysekai musicrecord", "/pjsk_mysekai_musicrecord",
+    "/msm",
+])
+pjsk_mysekai_musicrecord.check_cdrate(cd).check_wblist(gbl)
+@pjsk_mysekai_musicrecord.handle()
+async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    show_id = False
+    if 'id' in args:
+        show_id = True
+        args = args.replace('id', '').strip()
+
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_mysekai_musicrecord_image(
+            ctx, 
+            ctx.user_id,
+            show_id=show_id,
+        ),
         low_quality=True
     ))
 

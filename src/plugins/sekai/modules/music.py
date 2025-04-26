@@ -108,6 +108,13 @@ class PlayProgressCount:
 
 # ======================= 处理逻辑 ======================= #
 
+# 根据歌曲id获取封面缩略图
+async def get_music_cover_thumb(ctx: SekaiHandlerContext, mid: int) -> str:
+    music = await ctx.md.musics.find_by_id(mid)
+    assert_and_reply(music, f"歌曲ID={mid}不存在")
+    asset_name = music['assetbundleName']
+    return await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", use_img_cache=True)
+
 # 在指定区域和db和mid检查别名是否存在，不存在返回 None，存在返回(mid, region, db)
 async def check_music_alias_exists(alias: str, mid: Union[str, int] = 'all', region: str = 'all', db: str = 'all') -> Optional[Tuple[int, str, str]]:
     assert db in MUSIC_ALIAS_DB_NAMES or db == 'all'
@@ -633,8 +640,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
 async def compose_music_list_image(ctx: SekaiHandlerContext, diff: str, lv_musics: List[Tuple[int, List[Dict]]], qid: int, show_id: bool, show_leak: bool) -> Image.Image:
     for i in range(len(lv_musics)):
         lv, musics = lv_musics[i]
-        asset_names = [m['assetbundleName'] for m in musics]
-        covers = await asyncio.gather(*[ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", use_img_cache=True) for asset_name in asset_names])
+        covers = await batch_gather(*[get_music_cover_thumb(ctx, m['id']) for m in musics])
         for m, cover in zip(musics, covers):
             m['cover_img'] = cover
         

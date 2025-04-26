@@ -426,6 +426,8 @@ class RegionMasterDataCollection:
         self.mysekai_character_talk_condition_groups                        = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditionGroups")
         self.mysekai_character_talk_conditions                              = RegionMasterDataWrapper(region, "mysekaiCharacterTalkConditions")
         self.character_archive_mysekai_character_talk_groups                = RegionMasterDataWrapper(region, "characterArchiveMysekaiCharacterTalkGroups")
+        self.mysekai_musicrecord_categories                                 = RegionMasterDataWrapper(region, "mysekaiMusicRecordCategories")
+        self.music_tags                                                     = RegionMasterDataWrapper(region, "musicTags")
         
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
@@ -449,6 +451,8 @@ MasterDataManager.set_index_keys("mysekaiCharacterTalkFixtureCommons", ['mysekai
 MasterDataManager.set_index_keys("mysekaiCharacterTalks", ['id', 'mysekaiCharacterTalkConditionGroupId'])
 MasterDataManager.set_index_keys("mysekaiCharacterTalkConditionGroups", ['groupId', 'mysekaiCharacterTalkConditionId'])
 MasterDataManager.set_index_keys("mysekaiCharacterTalkConditions", ['id', 'mysekaiCharacterTalkConditionType'])
+MasterDataManager.set_index_keys("mysekaiMusicRecords", ['id', 'externalId'])
+MasterDataManager.set_index_keys("musicTags", ['id', 'musicId'])
 
 # ================================ MasterData自定义下载 ================================ #
 
