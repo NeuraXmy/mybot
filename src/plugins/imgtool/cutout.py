@@ -62,5 +62,4 @@ def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
         return Image.fromarray(data.astype(np.uint8))
 
     else:
-        data = rembg.remove(img)
-        return Image.fromarray(data)
+        return rembg.remove(img)
