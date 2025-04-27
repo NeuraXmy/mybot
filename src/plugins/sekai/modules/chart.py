@@ -135,9 +135,9 @@ async def _(ctx: SekaiHandlerContext):
     query = ctx.get_args().strip()
     assert_and_reply(query, MUSIC_SEARCH_HELP)
     
-    refresh = True
+    refresh = False
     if 'refresh' in query:
-        refresh = False
+        refresh = True
         query = query.replace('refresh', '').strip()
 
     diff, query = extract_diff(query)
