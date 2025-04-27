@@ -211,6 +211,7 @@ async def download_image(image_url, force_http=True) -> Image.Image:
             image = await resp.read()
             return Image.open(io.BytesIO(image))
 
+
 svg_webdriver = None
 svg_pool = ThreadPoolExecutor(max_workers=1)
 
@@ -248,6 +249,10 @@ async def download_and_convert_svg(svg_url: str) -> Image.Image:
 
     return await run_in_pool(download, pool=svg_pool)
 
+
+md_webdriver = None
+md_pool = ThreadPoolExecutor(max_workers=1)
+
 # markdown转图片
 async def markdown_to_image(markdown_text: str, width: int = 600) -> Image.Image:
     def draw():
@@ -272,25 +277,30 @@ async def markdown_to_image(markdown_text: str, width: int = 600) -> Image.Image
             from selenium.webdriver.firefox.service import Service
             from selenium.webdriver.firefox.options import Options
             import time
-            options = Options()
-            options.add_argument("--headless") 
-            driver = webdriver.Firefox(service=Service(), options=options)
-            driver.set_window_size(width, width)
+            global md_webdriver
+            if not md_webdriver:
+                options = Options()
+                options.add_argument("--headless") 
+                md_webdriver = webdriver.Firefox(service=Service(), options=options)
+                md_webdriver.set_window_size(width, width)
             
             with TempFilePath('html') as html_path:
                 with open(html_path, 'w') as f:
                     f.write(full_html)
-                driver.get(f"file://{osp.abspath(html_path)}")
+                md_webdriver.get(f"file://{osp.abspath(html_path)}")
                 time.sleep(1)
                 with TempFilePath('png') as img_path:
-                    driver.save_full_page_screenshot(img_path)
+                    md_webdriver.save_full_page_screenshot(img_path)
                     return open_image(img_path)
         except:
             utils_logger.print_exc(f'markdown转图片失败')
         finally:
-            driver.quit()
+            md_webdriver.delete_all_cookies()
+            md_webdriver.execute_script("window.localStorage.clear();")
+            md_webdriver.execute_script("window.sessionStorage.clear();")
+            md_webdriver.get("about:blank")
 
-    return await run_in_pool(draw)
+    return await run_in_pool(draw, pool=md_pool)
 
 
 # 下载文件到本地路径

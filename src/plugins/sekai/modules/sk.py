@@ -541,7 +541,7 @@ async def compose_sk_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     # 查询单个
     if len(ret_ranks) == 1:
         rank = ret_ranks[0]
-        texts.append((f"{truncate(rank.name, 40)}({rank.uid})", style2))
+        texts.append((f"{truncate(rank.name, 40)}", style2))
         texts.append((f"排名 {get_board_rank_str(rank.rank)} - 分数 {get_board_score_str(rank.score)}", style3))
         skl_ranks = [r for r in latest_ranks if r.rank in list(range(1, 10)) + SKL_QUERY_RANKS]
         if prev_rank := find_prev_ranking(skl_ranks, rank.rank):

@@ -1218,7 +1218,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
         if not spec_gate_id:
             # 如果没有指定门，则使用最大等级的门
             for gid, lv in spec_lvs.items():
-                if spec_lvs.get(gid, 0) > spec_lvs.get(spec_gate_id, 0):
+                if lv > spec_lvs.get(spec_gate_id, 0) and lv != 40:
                     spec_gate_id = gid
 
     # 根据指定lv截断
