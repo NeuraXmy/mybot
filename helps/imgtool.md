@@ -609,10 +609,11 @@ QQ无法正确显示带有透明部分png格式图片，转换为gif后可以正
 
 ## `cutout`
 ```
-抠图，可用抠图方法:
-floodfill: 用于移除纯色背景
-ai: ai抠图
-adaptive: 自适应选择以上两种方法
+抠图，可用抠图方法:  
+floodfill: 洪水算法抠图，用于移除纯色背景  
+ai: ai抠图  
+不加方法参数时根据图片自动选择  
+洪水算法抠图时可以指定容差，默认为20  
 ```
 
 - **输入输出**
@@ -621,9 +622,15 @@ adaptive: 自适应选择以上两种方法
 
 - **示例**
 
-    `coutout` 默认使用adaptive方法抠图
+    `cutout` 自动选择洪水算法和AI模型抠图，洪水算法容差为默认20
 
-    `cutout floodfill` 使用floodfill方法抠图
+    `cutout 50` 自动选择洪水算法和AI模型抠图，并指定洪水算法容差为50
+
+    `cutout floodfill` 使用洪水算法抠图，容差为默认20
+
+    `cutout floodfill 50` 使用洪水算法抠图，容差为50
+
+    `cutout ai` 使用AI模型抠图
 
 
 --- 

@@ -507,7 +507,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
     asset_name = music['assetbundleName']
     cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png")
     name    = music["title"]
-    cn_name = await get_music_trans_title(mid, 'cn', name)
+    cn_name = await get_music_trans_title(mid, 'cn', None)
     composer        = music["composer"]
     lyricist        = music["lyricist"]
     arranger        = music["arranger"]

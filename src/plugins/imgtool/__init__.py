@@ -1145,21 +1145,25 @@ class CutoutOperation(ImageOperation):
         super().__init__("cutout", ImageType.Any, ImageType.Any, 'batch')
         self.help = """
 抠图，使用方式:
-cutout: 默认抠图，自动选择洪水算法和AI模型抠图
-cutout floodfill: 使用洪水算法抠图
+cutout: 自动选择洪水算法和AI模型抠图，洪水算法容差为默认20
+cutout 50: 自动选择洪水算法和AI模型抠图，并指定洪水算法容差为50
+cutout floodfill: 使用洪水算法抠图，容差为默认20
+cutout floodfill 50: 使用洪水算法抠图，容差为50
 cutout ai: 使用AI模型抠图
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        assert_and_reply(len(args) <= 1, "最多只支持一个参数")
-        ret = {'method': 'adaptive'}
-        if args:
-            assert_and_reply(args[0] in ['floodfill', 'ai'], "抠图方式错误，必须是floodfill或ai")
-            ret['method'] = args[0]
+        ret = {'method': 'adaptive', 'tolerance': 10 }
+        for arg in args:
+            if arg in ['floodfill', 'ai']:
+                ret['method'] = arg
+            elif arg.isdigit():
+                ret['tolerance'] = int(arg)
+                assert_and_reply(0 <= ret['tolerance'] <= 255, "容差值只能在0-255之间（默认容差为20）")
         return ret
     
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
-        return cutout_img(img, args['method'])
+        return cutout_img(img, args['method'], args['tolerance'])
 
 
 # 注册所有图片操作

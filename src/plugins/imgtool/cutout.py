@@ -2,19 +2,18 @@ from ..utils import *
 import rembg
 import numpy as np
 
-SAME_COLOR_THRESHOLD = (10 ** 2) * 3
 FLOODFILL_EDGE_COLOR_NUM_RATE_THRESHOLD = 0.6
 
 def color_distance(c1, c2):
     return (c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2 + (c1[2] - c2[2]) ** 2
  
 
-def floodfill(data: np.ndarray, visited: np.ndarray, x: int, y: int, target_color: np.ndarray, replacement_color: np.ndarray) -> None:
+def floodfill(data: np.ndarray, visited: np.ndarray, x: int, y: int, target_color: np.ndarray, replacement_color: np.ndarray, thres: int) -> None:
     width, height = data.shape[1], data.shape[0]
     stack = [(x, y)]
     while stack:
         x, y = stack.pop()
-        if not visited[y, x] and color_distance(data[y, x][:3], target_color[:3]) < SAME_COLOR_THRESHOLD:
+        if not visited[y, x] and color_distance(data[y, x][:3], target_color[:3]) < thres:
             data[y, x] = replacement_color
             visited[y, x] = True
             if x > 0 and not visited[y, x - 1]:
@@ -27,7 +26,8 @@ def floodfill(data: np.ndarray, visited: np.ndarray, x: int, y: int, target_colo
                 stack.append((x, y + 1))
 
 
-def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
+def cutout_img(img: Image.Image, method: str = "adaptive", tolerance=20) -> Image.Image:
+    thres = (tolerance ** 2) * 3
     img = img.convert("RGBA")
     assert method in ["adaptive", "floodfill", "ai"]
     if method in ['adaptive', 'floodfill']:
@@ -40,7 +40,7 @@ def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
         ], axis=0)
         unique_colors, counts = np.unique(edge_colors, axis=0, return_counts=True)
         first_color = unique_colors[np.argmax(counts)]
-        same_pos = [color_distance(first_color, color) < SAME_COLOR_THRESHOLD for color in unique_colors]
+        same_pos = [color_distance(first_color, color) < thres for color in unique_colors]
         same_num = counts[same_pos].sum()
         total_num = counts.sum()
         if method == "adaptive":
@@ -58,7 +58,7 @@ def cutout_img(img: Image.Image, method: str = "adaptive") -> Image.Image:
                 if x == 0 or x == data.shape[1] - 1 or y == 0 or y == data.shape[0] - 1:
                     if data[y, x][3] == 0:
                         continue
-                    floodfill(data, visited, x, y, np.concatenate([first_color, [255]]), np.array([0, 0, 0, 0]))
+                    floodfill(data, visited, x, y, np.concatenate([first_color, [255]]), np.array([0, 0, 0, 0]), thres)
         return Image.fromarray(data.astype(np.uint8))
 
     else:
