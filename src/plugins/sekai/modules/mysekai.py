@@ -724,11 +724,16 @@ async def compose_mysekai_fixture_list_image(
     # 获取家具对应的角色对话已读情况
     if cid:
         # 获取vs角色的cuid
-        if cid > 20:
-            assert_and_reply(unit, f"查询V家角色时需要同时指定组合，例如\"{ctx.trigger_cmd} miku ln\"")
-            cu = find_by(await ctx.md.game_character_units.find_by('gameCharacterId', cid, mode='all'), "unit", unit)
+        mysekai_cuids = set([item['gameCharacterUnitId'] for item in await ctx.md.mysekai_gate_character_lotteries.get()])
+        cus = [cu for cu in await ctx.md.game_character_units.find_by('gameCharacterId', cid, mode='all') if cu['id'] in mysekai_cuids]
+        if len(cus) > 1:
+            assert_and_reply(unit, f"查询存在多个组合的V家角色时需要同时指定组合，例如\"{ctx.trigger_cmd} miku ln\"")
+            cu = find_by(cus, "unit", unit)
             assert_and_reply(cu, f"找不到要查询的角色")
-            cid = cu['id']
+        else:
+            cu = cus[0]
+            assert_and_reply(not unit or cu['unit'] == unit, f"找不到要查询的角色")
+        cid = cu['id']
         chara_icon = await ctx.rip.img(f"character_sd_l_rip/chr_sp_{cid}.png")
 
         if not show_all_talks:

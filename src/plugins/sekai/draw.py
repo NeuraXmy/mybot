@@ -73,6 +73,7 @@ def roundrect_bg(fill=WIDGET_BG_COLOR, radius=WIDGET_BG_RADIUS, alpha=None):
 
 
 COMMON_BG_NAMES = [
+    "bg/title_background.png",
     "bg/bg_area_1.png",
     "bg/bg_area_2.png",
     "bg/bg_area_3.png",
@@ -82,11 +83,12 @@ COMMON_BG_NAMES = [
     "bg/bg_area_13.png",
 ]
 GROUP_BG_NAMES = {
-    UNIT_LN:   ["bg/bg_area_5.png",  "bg/bg_area_17.png"],
-    UNIT_MMJ:  ["bg/bg_area_7.png",  "bg/bg_area_18.png"],
-    UNIT_VBS:  ["bg/bg_area_8.png",  "bg/bg_area_19.png"],
-    UNIT_WS:   ["bg/bg_area_9.png",  "bg/bg_area_20.png"],
-    UNIT_25:   ["bg/bg_area_10.png", "bg/bg_area_21.png"],
+    UNIT_LN:   ["bg/bg_area_5.png",  "bg/bg_area_17.png", "bg/bg_light_sound.png"],
+    UNIT_MMJ:  ["bg/bg_area_7.png",  "bg/bg_area_18.png", "bg/bg_idol.png"],
+    UNIT_VBS:  ["bg/bg_area_8.png",  "bg/bg_area_19.png", "bg/bg_street.png"],
+    UNIT_WS:   ["bg/bg_area_9.png",  "bg/bg_area_20.png", "bg/bg_theme_park.png"],
+    UNIT_25:   ["bg/bg_area_10.png", "bg/bg_area_21.png", "bg/bg_school_refusal.png"],
+    UNIT_VS:   ["bg/bg_virtual_singer.png"]
 }
 
 # 随机选择团队背景
