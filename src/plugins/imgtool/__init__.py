@@ -1,8 +1,9 @@
 from ..utils import *
 from .mirage import generate_mirage
-from .cutout import cutout_img
 from PIL import Image, ImageSequence, ImageOps, ImageEnhance
 from enum import Enum
+import sys
+import numpy as np
 
 
 config = get_config('imgtool')
@@ -893,7 +894,7 @@ extract 2: 以间隔2帧拆分
     
     def operate(self, img: Image.Image, args: dict, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> List[Image.Image]: 
         interval = args['interval']
-        frames = [img.copy() for frame in ImageSequence.Iterator(img)]
+        frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
         n_frames = len(frames)
         max_frame_num = 32
         if interval: 
@@ -1142,18 +1143,16 @@ class DemirageOperation(ImageOperation):
 
 class CutoutOperation(ImageOperation):
     def __init__(self):
-        super().__init__("cutout", ImageType.Any, ImageType.Any, 'batch')
+        super().__init__("cutout", ImageType.Any, ImageType.Any, 'single')
         self.help = """
 抠图，使用方式:
-cutout: 自动选择洪水算法和AI模型抠图，洪水算法容差为默认20
-cutout 50: 自动选择洪水算法和AI模型抠图，并指定洪水算法容差为50
-cutout floodfill: 使用洪水算法抠图，容差为默认20
-cutout floodfill 50: 使用洪水算法抠图，容差为50
+cutout: 使用洪水算法抠图（适合纯色背景），容差为默认20
+cutout 50: 使用洪水算法抠图，容差为50
 cutout ai: 使用AI模型抠图
 """.strip()
         
     def parse_args(self, args: List[str]) -> dict:
-        ret = {'method': 'adaptive', 'tolerance': 10 }
+        ret = {'method': 'floodfill', 'tolerance': 10 }
         for arg in args:
             if arg in ['floodfill', 'ai']:
                 ret['method'] = arg
@@ -1163,8 +1162,49 @@ cutout ai: 使用AI模型抠图
         return ret
     
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
-        return cutout_img(img, args['method'], args['tolerance'])
+        if is_gif(img):
+            frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
+        else:
+            frames = [img]
 
+        n, w, h = len(frames), img.width, img.height
+
+        if args['method'] == 'floodfill':
+            with TempFilePath('input') as input_path:
+                with TempFilePath('output') as output_path:
+                    # 图像输入文件
+                    with open(input_path, 'wb') as f:
+                        f.write(int(n).to_bytes(4, sys.byteorder))
+                        f.write(int(h).to_bytes(4, sys.byteorder))
+                        f.write(int(w).to_bytes(4, sys.byteorder))
+                        for i in range(n):
+                            frame = frames[i].convert('RGBA')
+                            f.write(frame.tobytes('raw', 'RGBA'))
+
+                    # 调用抠图
+                    cmd = f"data/imgtool/cutout {input_path} {output_path} {args['tolerance']}"
+                    assert_and_reply(os.system(cmd) == 0, "抠图失败")
+
+                    # 读取输出文件
+                    with open(output_path, 'rb') as f:
+                        frames = []
+                        for i in range(n):
+                            frame = Image.new('RGBA', (w, h))
+                            frame.frombytes(f.read(w * h * 4), 'raw', 'RGBA')
+                            frames.append(frame)
+        
+        elif args['method'] == 'ai':
+            from rembg import remove
+            for i in range(len(frames)):
+                frames[i] = remove(frames[i])
+
+        if len(frames) == 1:
+            return frames[0]
+        else:
+            with TempFilePath('gif') as gif_path:
+                save_transparent_gif(frames, get_gif_duration(img), gif_path)
+                return Image.open(gif_path)
+            
 
 # 注册所有图片操作
 def register_all_ops():

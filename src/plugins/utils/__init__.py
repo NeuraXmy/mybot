@@ -174,7 +174,7 @@ class TempFilePath:
 
 # 从GIF获取帧间隔
 def get_gif_duration(img: Image.Image):
-    return img.info.get('duration', 100)
+    return img.info.get('duration', 50)
 
 # 从GIF获取帧序列
 def get_frames_from_gif(img: Image.Image):
