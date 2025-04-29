@@ -109,7 +109,9 @@ async def extract_target_event(
             end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
             if start_time - timedelta(days=2) <= datetime.now() <= end_time:
                 ok_events.append(event)
-        assert_and_reply(ok_events, "找不到正在进行的/即将开始的活动")
+        assert_and_reply(ok_events, """
+找不到正在进行的/即将开始的活动，使用\"/组卡\"指定团队+属性组卡，或使用\"/活动组卡help\"查看如何组往期活动
+""".strip())
         ok_events.sort(key=lambda x: x['startAt'], reverse=True)
         event = ok_events[0]
     else:
