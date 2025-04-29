@@ -419,15 +419,14 @@ gif 0.8 使用优化算法以80%不透明度阈值生成GIF
         return ret
 
     def operate(self, img: Image.Image, args: dict=None, image_type: ImageType=None, frame_idx: int=0, total_frame: int=1) -> Image.Image:
-        try:
-            tmp_path = f"data/imgtool/tmp/{rand_filename('gif')}"
+        if is_gif(img):
+            return img
+        with TempFilePath("gif") as tmp_path:
             if args['opt']:
                 save_high_quality_static_gif(img, tmp_path, args['threshold'])
             else:
                 img.convert('RGBA').save(tmp_path, save_all=True, append_images=[], duration=0, loop=0)
-            return Image.open(tmp_path)
-        finally:
-            remove_file(tmp_path)
+            return open_image(tmp_path)
 
 class PngOperation(ImageOperation):
     def __init__(self):

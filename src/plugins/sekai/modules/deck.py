@@ -109,7 +109,7 @@ async def extract_target_event(
             end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
             if start_time - timedelta(days=2) <= datetime.now() <= end_time:
                 ok_events.append(event)
-        assert_and_reply(ok_events, "找不到默认的当期活动")
+        assert_and_reply(ok_events, "找不到正在进行的/即将开始的活动")
         ok_events.sort(key=lambda x: x['startAt'], reverse=True)
         event = ok_events[0]
     else:
