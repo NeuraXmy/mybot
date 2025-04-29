@@ -221,7 +221,7 @@ def process_hide_uid(ctx: SekaiHandlerContext, uid: int) -> bool:
     return uid
 
 # 根据获取玩家详细信息，返回(profile, err_msg)
-async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None, ignore_hide=True) -> Tuple[dict, str]:
+async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None, ignore_hide=False) -> Tuple[dict, str]:
     cache_path = None
     try:
         # 获取绑定的游戏id
