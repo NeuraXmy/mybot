@@ -209,9 +209,16 @@ def get_user_data_mode(ctx: SekaiHandlerContext, qid: int) -> str:
     return data_modes.get(ctx.region, {}).get(str(qid), DEFAULT_DATA_MODE)
 
 # 用户是否隐藏抓包信息
-def is_user_hide_detail(ctx: SekaiHandlerContext, qid: int) -> bool:
-    hide_list = profile_db.get("hide_list", {}).get(ctx.region, [])
+def is_user_hide_suite(ctx: SekaiHandlerContext, qid: int) -> bool:
+    hide_list = profile_db.get("hide_suite_list", {}).get(ctx.region, [])
     return qid in hide_list
+
+# 如果ctx的用户隐藏id则返回隐藏的uid，否则原样返回
+def process_hide_uid(ctx: SekaiHandlerContext, uid: int) -> bool:
+    hide_list = profile_db.get("hide_id_list", {}).get(ctx.region, [])
+    if ctx.user_id in hide_list:
+        return "*" * 16
+    return uid
 
 # 根据获取玩家详细信息，返回(profile, err_msg)
 async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=False, mode=None, ignore_hide=True) -> Tuple[dict, str]:
@@ -225,7 +232,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             raise e
         
         # 检测是否隐藏抓包信息
-        if not ignore_hide and is_user_hide_detail(ctx, qid):
+        if not ignore_hide and is_user_hide_suite(ctx, qid):
             logger.info(f"获取 {qid} 抓包数据失败: 用户已隐藏抓包信息")
             raise Exception("已隐藏抓包信息")
         
@@ -286,21 +293,20 @@ async def get_player_avatar_info_by_detailed_profile(ctx: SekaiHandlerContext, d
     return PlayerAvatarInfo(card_id, cid, unit, avatar_img)
 
 # 获取玩家详细信息的简单卡片控件，返回Frame
-async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err_msg: str, mode=None, hide=False) -> Frame:
+async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err_msg: str, mode=None) -> Frame:
     with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
         with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
             if profile:
                 avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
-                avatar_img = avatar_info.img if not hide else UNKNOWN_IMG
-                ImageBox(avatar_img, size=(80, 80), image_size_mode='fill')
+                ImageBox(avatar_info.img, size=(80, 80), image_size_mode='fill')
                 with VSplit().set_content_align('c').set_item_align('l').set_sep(5):
                     game_data = profile['userGamedata']
                     source = profile.get('source', '?')
                     mode = mode or get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000)
                     update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
-                    name = game_data['name'] if not hide else "***"
-                    user_id = game_data['userId'] if not hide else "****************"
+                    name = game_data['name']
+                    user_id = process_hide_uid(ctx, game_data['userId'])
                     colored_text_box(truncate(name, 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                     TextBox(f"{ctx.region.upper()}: {user_id} Suite数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -327,7 +333,7 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
-                        TextBox(f"{ctx.region.upper()}: {game_data['userId']}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
+                        TextBox(f"{ctx.region.upper()}: {process_hide_uid(ctx, game_data['userId'])}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(ctx.static_imgs.get("lv_rank_bg.png"), size=(180, None))
                             TextBox(f"{game_data['rank']}", TextStyle(font=DEFAULT_FONT, size=30, color=WHITE)).set_offset((110, 0))
@@ -527,38 +533,72 @@ async def _(ctx: SekaiHandlerContext):
     return await ctx.asend_reply_msg(msg)
 
 
-# 隐藏详细信息
-pjsk_hide = SekaiCmdHandler([
-    "/pjsk hide", "/pjsk_hide", 
-    "/pjsk隐藏", "/pjsk 隐藏", "/不给看",
+# 隐藏抓包信息
+pjsk_hide_suite = SekaiCmdHandler([
+    "/pjsk hide suite", "/pjsk_hide_suite", 
+    "/pjsk隐藏抓包",
 ])
-pjsk_hide.check_cdrate(cd).check_wblist(gbl)
-@pjsk_hide.handle()
+pjsk_hide_suite.check_cdrate(cd).check_wblist(gbl)
+@pjsk_hide_suite.handle()
 async def _(ctx: SekaiHandlerContext):
-    lst = profile_db.get("hide_list", {})
+    lst = profile_db.get("hide_suite_list", {})
     if ctx.region not in lst:
         lst[ctx.region] = []
     if ctx.user_id not in lst[ctx.region]:
         lst[ctx.region].append(ctx.user_id)
-    profile_db.set("hide_list", lst)
+    profile_db.set("hide_suite_list", lst)
     return await ctx.asend_reply_msg("已隐藏抓包信息")
     
 
-# 展示详细信息
-pjsk_show = SekaiCmdHandler([
-    "/pjsk show", "/pjsk_show",
-    "/pjsk显示", "/pjsk 显示", "/pjsk展示", "/pjsk 展示", "/给看",
+# 展示抓包信息
+pjsk_show_suite = SekaiCmdHandler([
+    "/pjsk show suite", "/pjsk_show_suite",
+    "/pjsk显示抓包", "/pjsk展示抓包",
 ])
-pjsk_show.check_cdrate(cd).check_wblist(gbl)
-@pjsk_show.handle()
+pjsk_show_suite.check_cdrate(cd).check_wblist(gbl)
+@pjsk_show_suite.handle()
 async def _(ctx: SekaiHandlerContext):
-    lst = profile_db.get("hide_list", {})
+    lst = profile_db.get("hide_suite_list", {})
     if ctx.region not in lst:
         lst[ctx.region] = []
     if ctx.user_id in lst[ctx.region]:
         lst[ctx.region].remove(ctx.user_id)
-    profile_db.set("hide_list", lst)
+    profile_db.set("hide_suite_list", lst)
     return await ctx.asend_reply_msg("已展示抓包信息")
+
+
+# 隐藏id信息
+pjsk_hide_id = SekaiCmdHandler([
+    "/pjsk hide id", "/pjsk_hide_id",
+    "/pjsk隐藏id", "/pjsk隐藏ID",
+])
+pjsk_hide_id.check_cdrate(cd).check_wblist(gbl)
+@pjsk_hide_id.handle()
+async def _(ctx: SekaiHandlerContext):
+    lst = profile_db.get("hide_id_list", {})
+    if ctx.region not in lst:
+        lst[ctx.region] = []
+    if ctx.user_id not in lst[ctx.region]:
+        lst[ctx.region].append(ctx.user_id)
+    profile_db.set("hide_id_list", lst)
+    return await ctx.asend_reply_msg("已隐藏ID信息")
+
+
+# 展示id信息
+pjsk_show_id = SekaiCmdHandler([
+    "/pjsk show id", "/pjsk_show_id",
+    "/pjsk显示id", "/pjsk显示ID", "/pjsk展示id", "/pjsk展示ID",
+])
+pjsk_show_id.check_cdrate(cd).check_wblist(gbl)
+@pjsk_show_id.handle()
+async def _(ctx: SekaiHandlerContext):
+    lst = profile_db.get("hide_id_list", {})
+    if ctx.region not in lst:
+        lst[ctx.region] = []
+    if ctx.user_id in lst[ctx.region]:
+        lst[ctx.region].remove(ctx.user_id)
+    profile_db.set("hide_id_list", lst)
+    return await ctx.asend_reply_msg("已展示ID信息")
 
 
 # 查询个人名片

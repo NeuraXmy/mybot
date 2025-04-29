@@ -14,6 +14,7 @@ from .profile import (
     get_user_data_mode,
     get_detailed_profile,
     get_detailed_profile_card,
+    process_hide_uid,
 )
 from .music import get_music_cover_thumb
 
@@ -128,7 +129,6 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
 
 # 获取玩家mysekai抓包数据的简单卡片 返回 Frame
 async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, basic_profile: dict, err_msg: str) -> Frame:
-    region_name = get_region_name(ctx.region)
     with Frame().set_bg(roundrect_bg()).set_padding(16) as f:
         with HSplit().set_content_align('c').set_item_align('c').set_sep(16):
             if mysekai_info:
@@ -144,7 +144,7 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                     with HSplit().set_content_align('lb').set_item_align('lb').set_sep(5):
                         colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
-                    TextBox(f"{ctx.region.upper()}: {game_data['userId']} Mysekai数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
+                    TextBox(f"{ctx.region.upper()}: {process_hide_uid(ctx, game_data['userId'])} Mysekai数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
             if err_msg:
@@ -436,7 +436,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
 
     upload_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
     if upload_time < get_mysekai_last_refresh_time() and check_time:
-        raise ReplyException(f"数据已过期({upload_time.strftime('%Y-%m-%d %H:%M:%S')})，请重新上传")
+        raise ReplyException(f"数据已过期({upload_time.strftime('%m-%d %H:%M:%S')})")
 
     # 天气预报图片
     schedule = mysekai_info['mysekaiPhenomenaSchedules']

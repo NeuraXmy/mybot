@@ -9,7 +9,7 @@ from .profile import (
     get_detailed_profile, 
     get_detailed_profile_card, 
     get_card_full_thumbnail,
-    is_user_hide_detail,
+    is_user_hide_suite,
 )
 from .music import DIFF_NAMES, search_music, MusicSearchOptions, extract_diff
 from sekai_deck_recommend import (
@@ -397,7 +397,7 @@ async def compose_deck_recommend_image(
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
-            await get_detailed_profile_card(ctx, profile, pmsg, hide=is_user_hide_detail(ctx, qid))
+            await get_detailed_profile_card(ctx, profile, pmsg)
 
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                 # 标题
