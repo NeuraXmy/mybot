@@ -1188,7 +1188,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
     if qid:
         uid = get_uid_from_qid(ctx, qid, check_bind=False)
         if uid:
-            profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False)
+            profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False, ignore_hide=True)
 
     # 获取玩家的材料
     user_materials = {}

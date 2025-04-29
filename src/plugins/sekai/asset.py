@@ -565,6 +565,7 @@ def event_story_units_map_fn(event_story_units):
             ret['banner_event_story_id_set'].add(esid)
         else:
             ret['events'][esid]["sub"].append(unit)
+            ret['banner_event_story_id_set'].discard(esid)
     return ret
 
 @MasterDataManager.map_function("ngWords")

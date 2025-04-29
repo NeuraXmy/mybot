@@ -89,13 +89,15 @@ def extract_event_type(text: str, default: str = None) -> Tuple[str, str]:
                 return event_type[0], text
     return default, text
 
+# 获取所有箱活id集合（通过书下曲判断）
+async def get_ban_events_id_set(ctx: SekaiHandlerContext) -> Set[int]:
+    return set([item['eventId'] for item in await ctx.md.event_musics.get()])
+
 # 判断是否是箱活
 async def is_ban_event(ctx: SekaiHandlerContext, event: dict) -> bool:
     if event['eventType'] not in ('marathon', 'cheerful_carnival'):
         return False
-    event_story = await ctx.md.event_stories.find_by('eventId', event['id'])
-    banner_event_story_id_set = (await ctx.md.event_story_units.get())['banner_event_story_id_set']
-    return event_story['id'] in banner_event_story_id_set
+    return event['id'] in await get_ban_events_id_set(ctx)
 
 # 获取箱活ban主角色id 不是箱活返回None
 async def get_event_banner_chara_id(ctx: SekaiHandlerContext, event: dict) -> int:
@@ -108,8 +110,8 @@ async def get_event_banner_chara_id(ctx: SekaiHandlerContext, event: dict) -> in
 async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]:
     nickname = get_nicknames_by_chara_id(cid)[0]
     chara_ban_stories = await ctx.md.event_stories.find_by('bannerGameCharacterUnitId', cid, mode="all")
-    banner_event_story_id_set = (await ctx.md.event_story_units.get())['banner_event_story_id_set']
-    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in banner_event_story_id_set]
+    ban_event_id_set = await get_ban_events_id_set(ctx)
+    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in ban_event_id_set]
     assert_and_reply(chara_ban_stories, f"角色{nickname}没有箱活")  
     event_ids = [s['eventId'] for s in chara_ban_stories]
     events = []
@@ -229,8 +231,8 @@ async def get_event_by_ban_name(ctx: SekaiHandlerContext, ban_name: str) -> dict
     cid = get_cid_by_nickname(nickname)
     assert_and_reply(cid, f"无效的角色昵称：{nickname}")
     chara_ban_stories = await ctx.md.event_stories.find_by('bannerGameCharacterUnitId', cid, mode="all")
-    banner_event_story_id_set = (await ctx.md.event_story_units.get())['banner_event_story_id_set']
-    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in banner_event_story_id_set]
+    ban_event_id_set = await get_ban_events_id_set(ctx)
+    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in ban_event_id_set]
     assert_and_reply(chara_ban_stories, f"角色{nickname}没有箱活")  
     event_ids = [s['eventId'] for s in chara_ban_stories]
     events = []
