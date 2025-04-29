@@ -312,16 +312,13 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             assert mid > 0
             music = await ctx.md.musics.find_by_id(mid)
         except: 
-            mid = None
-        if mid:
+            music = None
+        if music:
             search_type = "id"
-            if music:
-                if diff and not await check_music_has_diff(ctx, mid, diff):
-                    err_msg = f"ID为{mid}的曲目没有{diff}难度"
-                else:
-                    ret_musics.append(music)
+            if diff and not await check_music_has_diff(ctx, mid, diff):
+                err_msg = f"ID为{mid}的曲目没有{diff}难度"
             else:
-                err_msg = f"找不到id为{mid}的曲目"
+                ret_musics.append(music)
 
     # 负数索引匹配
     if not search_type and options.use_nidx:
