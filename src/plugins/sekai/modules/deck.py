@@ -677,6 +677,12 @@ async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) ->
     else:
         options.live_type = "multi"
 
+    # 5v5
+    if "5v5" in args or "5V5" in args:
+        options.live_type = "multi"
+        args = args.replace("5v5", "").replace("5V5", "").strip()
+        options.event_type = "cheerful_carnival"
+
     # 活动id
     options.event_id = None
     options.event_unit, args = extract_unit(args, default=None)
