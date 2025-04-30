@@ -20,7 +20,10 @@ from .event import (
     get_event_banner_chara_id,
 )
 
-CARD_STORY_SUMMARY_MODEL = DEFAULT_STORY_SUMMARY_MODEL
+DEFAULT_CARD_STORY_SUMMARY_MODEL = [
+    'gemini-2.5-flash',
+    'gemini-2-flash',
+]
 
 SEARCH_SINGLE_CARD_HELP = """
 查单张卡的方式:
@@ -182,7 +185,7 @@ async def get_card_image(ctx: SekaiHandlerContext, cid: int, after_training: boo
     return await ctx.rip.img(f"character/member/{card['assetbundleName']}_rip/card_{image_type}.png", timeout=30, allow_error=allow_error)
 
 # 获取卡牌剧情总结
-async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: bool, summary_model: str) -> List[str]:
+async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: bool, summary_model: List[str], save: bool) -> List[str]:
     cid = card['id']
     title = card['prefix']
     cn_title = await translate_text(title, additional_info="该文本是偶像抽卡游戏中卡牌的标题", default=title)
@@ -249,12 +252,19 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
             summary_prompt_template = Path(f"{SEKAI_DATA_DIR}/story_summary/card_story_summary_prompt.txt").read_text()
             summary_prompt = summary_prompt_template.format(raw_story=raw_story,)
             
-            @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
+            if isinstance(summary_model, str):
+                summary_model = [summary_model]
+            models = summary_model.copy()
+            
+            @retry(stop=stop_after_attempt(len(models)), wait=wait_fixed(1), reraise=True)
             async def do_summary():
                 try:
+                    model = models[0]
+                    models.pop(0)
+
                     session = ChatSession()
                     session.append_user_content(summary_prompt, verbose=False)
-                    resp = await session.get_response(summary_model)
+                    resp = await session.get_response(model)
 
                     resp_text = resp.result
                     if len(resp_text) > 1024:
@@ -280,11 +290,12 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
 
                 except Exception as e:
                     logger.warning(f"生成剧情总结失败: {e}")
-                    await ctx.asend_reply_msg(f"生成剧情总结失败: {e}, 重新生成中...")
+                    await ctx.asend_reply_msg(f"生成剧情总结失败, 重新生成中...")
                     raise Exception(f"生成剧情总结失败: {e}")
 
             summary[ep['title']] = await do_summary()
-        summary_db.set("summary", summary)
+        if save:
+            summary_db.set("summary", summary)
 
     ## 生成回复
     msg_lists = []
@@ -890,12 +901,23 @@ pjsk_card_story.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     refresh = False
+    save = True
+
     if 'refresh' in args:
         args = args.replace('refresh', '').strip()
         refresh = True
+
+    model = DEFAULT_CARD_STORY_SUMMARY_MODEL
+    if 'model:' in args:
+        assert_and_reply(check_superuser(ctx.event), "仅超级用户可指定模型")
+        model = args.split('model:')[1].strip()
+        args = args.split('model:')[0].strip()
+        refresh = True
+        save = False
+
     card = await get_card_by_index(ctx, args)
     await ctx.block_region(str(card['id']))
-    return await ctx.asend_multiple_fold_msg(await get_card_story_summary(ctx, card, refresh, CARD_STORY_SUMMARY_MODEL))
+    return await ctx.asend_multiple_fold_msg(await get_card_story_summary(ctx, card, refresh, model, save))
 
 
 # 查询box

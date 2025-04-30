@@ -7,7 +7,10 @@ from ..draw import *
 from .profile import get_card_full_thumbnail
 
 
-DEFAULT_EVENT_STORY_SUMMARY_MODEL = DEFAULT_STORY_SUMMARY_MODEL
+DEFAULT_EVENT_STORY_SUMMARY_MODEL = [
+    'gemini-2-flash',
+    'gpt-4.1-mini',
+]
 
 EVENT_TYPE_NAMES = [
     ("marathon", "普活"),
@@ -260,7 +263,7 @@ async def get_event_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
         return await get_event_by_ban_name(ctx, index)
 
 # 获取活动剧情总结
-async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh: bool, summary_model: str) -> List[str]:
+async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh: bool, summary_model: List[str], save: bool) -> List[str]:
     eid = event['id']
     title = event['name']
     banner_img_cq = await get_image_cq(await get_event_banner_img(ctx, event))
@@ -348,13 +351,20 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
             outline=outline,
             raw_story=raw_story,
         )
+
+        if isinstance(summary_model, str):
+            summary_model = [summary_model]
+        models = summary_model.copy()
         
-        @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
+        @retry(stop=stop_after_attempt(len(models)), wait=wait_fixed(1), reraise=True)
         async def do_summary():
             try:
+                model = models[0]
+                models.pop(0)
+
                 session = ChatSession()
                 session.append_user_content(summary_prompt, verbose=False)
-                resp = await session.get_response(summary_model)
+                resp = await session.get_response(model)
 
                 resp_text = resp.result
                 if len(resp_text) > 4096:
@@ -388,12 +398,13 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
 
                 summary['chapter_num'] = len(eps)
 
-                summary_db.set("summary", summary)
+                if save:
+                    summary_db.set("summary", summary)
                 return summary
 
             except Exception as e:
                 logger.warning(f"生成剧情总结失败: {e}")
-                await ctx.asend_reply_msg(f"生成剧情总结失败: {e}, 重新生成中...")
+                await ctx.asend_reply_msg(f"生成剧情总结失败, 重新生成中...")
                 raise Exception(f"生成剧情总结失败: {e}")
 
         summary = await do_summary()
@@ -515,13 +526,23 @@ pjsk_event_story.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
     refresh = False
+    save = True
     if 'refresh' in args:
         refresh = True
         args = args.replace('refresh', '').strip()
+
+    model = DEFAULT_EVENT_STORY_SUMMARY_MODEL
+    if 'model:' in args:
+        assert_and_reply(check_superuser(ctx.event), "仅超级用户可指定模型")
+        model = args.split('model:')[1].strip()
+        args = args.split('model:')[0].strip()
+        refresh = True
+        save = False
+        
     try:
         event = await get_event_by_index(ctx, args)
     except:
         event = await get_current_event(ctx, mode='next_first')
     await ctx.block_region(str(event['id']))
-    return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh, DEFAULT_EVENT_STORY_SUMMARY_MODEL))
+    return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh, model, save))
 

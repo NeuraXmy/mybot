@@ -807,12 +807,13 @@ async def msg_to_readable_text(cfg: AutoChatConfig, group_id: int, msg: dict):
             elif mtype == "face":
                 text += f"[表情]"
             elif mtype == "image":
-                text += await get_image_caption(
-                    mdata, 
-                    cfg.image_caption_model_name,
-                    cfg.image_caption_timeout_sec,
-                    use_llm=(random.random() < cfg.image_caption_prob)
-                )
+                if random.random() < cfg.image_caption_prob:
+                    text += await get_image_caption(
+                        mdata, 
+                        cfg.image_caption_model_name,
+                        cfg.image_caption_timeout_sec,
+                        use_llm=True,
+                    )
             elif mtype == "video":
                 text += f"[视频]"
             elif mtype == "audio":

@@ -19,8 +19,6 @@ gbl = get_group_black_list(file_db, logger, 'sekai')
 
 # ======================= 通用常量 ======================= #
 
-DEFAULT_STORY_SUMMARY_MODEL = 'gemini-2-flash'
-
 ALL_SERVER_REGIONS = ['jp', 'en', 'tw', 'kr', 'cn']
 ALL_SERVER_REGION_NAMES = ['日服', '国际服', '台服', '韩服', '国服']
 
