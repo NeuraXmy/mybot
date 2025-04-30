@@ -468,12 +468,13 @@ def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union
         if uid := get_uid_from_qid(ctx, ctx.user_id, check_bind=False):
             return 'self', uid
     else:
-        segs = args.split()
+        segs = [s for s in args.split() if s]
         if len(segs) > 1 and all(s.isdigit() for s in segs):
             ranks = [int(s) for s in segs]
             for rank in ranks:
                 if rank not in ALL_RANKS:
                     raise ReplyException(f"不支持的排名: {rank}")
+            return 'ranks', ranks
         elif args.isdigit():
             if int(args) in ALL_RANKS:
                 return 'rank', int(args)
