@@ -625,12 +625,49 @@ def pjsekai_moe_url_map(url: str) -> str:
     url = url.replace("_rip", "")
     return url
 
+def unipjsk_url_map(url: str) -> str:
+    STARTAPP_PREFIXS = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
+    ONDEMAND_PREFIXS = ['event', 'gacha', 'music', 'mysekai']
+
+    idx = url.find("assets.unipjsk.com/")
+    assert idx != -1, f"解包资源url格式错误: {url}"
+    idx = idx + len("assets.unipjsk.com/")
+    part1, part2 = url[:idx], url[idx:]
+
+    # 移除_rip
+    part2 = part2.replace("_rip", "")
+    # 替换.asset为.json
+    part2 = part2.replace(".asset", ".json")
+    # 添加.txt
+    if 'music_score' in part2:
+        part2 = part2 + ".txt"
+    # 需要删除倒数第二个目录的情况
+    NEED_REMOVE_SECOND_LAST_PREFIXES = [
+        'mysekai/icon/', 
+        "mysekai/thumbnail/",
+        "bonds_honor/word/",
+    ]
+    if any([part2.startswith(prefix) for prefix in NEED_REMOVE_SECOND_LAST_PREFIXES]):
+        segs = part2.split('/')
+        segs.pop(-2)
+        part2 = '/'.join(segs)
+    # 添加类别
+    if any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXS]):
+        category = 'startapp'
+    elif any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXS]):
+        category = 'ondemand'
+    else:
+        logger.warning(f"在startapp和ondemand都找不到: {url}")
+        category = 'ondemand'
+
+    return f"{part1}{category}/{part2}"
 
 # 预设的解包资源url映射方法
 DEFAULT_URL_MAP_METHODS = {
     "sekai.best": sekai_best_url_map,
     "haruki": haruki_url_map,
     "pjsekai.moe": pjsekai_moe_url_map,
+    "unipjsk": unipjsk_url_map,
 }
 
 class RegionRipAssetSource:
@@ -750,6 +787,64 @@ class RegionRipAssetManger:
         logger.warning(f"从所有数据源获取 {self.region} 解包资源 {path} 失败: {error_list}，返回默认值")
         return default
 
+    async def get_asset_cache_path(
+        self,
+        path: str, 
+        allow_error=True, 
+        default=None, 
+        cache_expire_secs=None, 
+        timeout=DEFAULT_GET_RIP_ASSET_TIMEOUT,
+    ) -> str:
+        """
+        获取任意类型解包资源在本地缓存的路径参数
+        - `path`: 解包资源路径
+        - `allow_error`: 是否允许错误
+        - `default`: 允许错误的情况下的默认值
+        - `cache_expire_secs`: 缓存过期时间
+        - `timeout`: 超时时间
+        """
+        cache_path = pjoin(self.cache_dir, path)
+        # 首先尝试从缓存加载
+        try:
+            assert os.path.exists(cache_path)
+            if cache_expire_secs is not None:
+                assert datetime.now().timestamp() - os.path.getmtime(cache_path) < cache_expire_secs
+            return cache_path
+        except:
+            pass
+        
+        # 尝试从网络下载
+        error_list: List[Tuple[str, str]] = []
+        for source in self.sources:
+            if source.prefixes and not any([path.startswith(prefix) for prefix in source.prefixes]):
+                continue
+
+            url = None
+            try:
+                if not source.base_url.endswith("/"):
+                    source.base_url += "/"
+                url = source.url_map_method(source.base_url + path)
+                data = await self._download_data(url, timeout)
+                create_parent_folder(cache_path)
+                with open(cache_path, "wb") as f:
+                    f.write(data)
+                return cache_path
+            
+            except Exception as e:
+                e = get_exc_desc(e)
+                error_list.append((source.name, e))
+                # logger.print_exc(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}, url={url}")
+                logger.warning(f"从数据源 [{source.name}] 获取 {self.region} 解包资源 {path} 失败: {e}, url={url}")
+
+        if not allow_error:
+            error_list_text = ""
+            for source_name, err in error_list:
+                error_list_text += f"[{source_name}] {truncate(err, 40)}\n"
+            raise Exception(f"从所有数据源获取 {self.region} 解包资源 {path} 失败:\n{error_list_text.strip()}")
+        
+        logger.warning(f"从所有数据源获取 {self.region} 解包资源 {path} 失败: {error_list}，返回默认值")
+        return default
+
     async def img(
         self,
         path: str, 
@@ -815,7 +910,7 @@ class RegionRipAssetManger:
         logger.warning(f"解析下载的 {self.region} 解包资源 {path} 为json失败: 返回默认值")
         return default
 
-
+        
 # ================================ 静态图片资源 ================================ #
 
 DEFAULT_STATIC_IMAGE_DIR = f"{SEKAI_ASSET_DIR}/static_images"

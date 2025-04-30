@@ -511,6 +511,13 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
     mv_info         = music['categories']
     publish_time    = datetime.fromtimestamp(music['publishedAt'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
+    audio_len = await get_music_audio_length(ctx, mid)
+    if not audio_len:
+        audio_len = "?"
+    else:
+        secs = audio_len.total_seconds()
+        audio_len = f"  {secs:.1f}秒（{int(secs) // 60}分{secs % 60.:.1f}秒）"
+    
     diff_info   = await get_music_diff_info(ctx, mid)
     diffs       = ['easy', 'normal', 'hard', 'expert', 'master', 'append']
     diff_lvs    = [diff_info.level.get(diff, None) for diff in diffs]
@@ -561,6 +568,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                             TextBox(f"作词", style1)
                             TextBox(f"编曲", style1)
                             TextBox(f"MV", style1)
+                            TextBox(f"时长", style1)
                             TextBox(f"发布时间", style1)
 
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
@@ -575,6 +583,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                             mv_text = mv_text[:-3]
                             if not mv_text: mv_text = "无"
                             TextBox(mv_text, style2)
+                            TextBox(audio_len, style2)
                             TextBox(publish_time, style2)
                 
                  # 难度等级/物量
@@ -604,7 +613,8 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                     font_size = max(10, 24 - get_str_appear_length(alias_text) // 40 * 1)
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
                         TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
-                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=font_size, color=(70, 70, 70)), use_real_line_count=True).set_w(800)            
+                        aw = 800 if not has_append else 850
+                        TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=font_size, color=(70, 70, 70)), use_real_line_count=True).set_w(aw)            
 
                 with HSplit().set_omit_parent_bg(True).set_item_bg(roundrect_bg()).set_padding(0).set_sep(16):
                     # 歌手
@@ -788,6 +798,45 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 获取歌曲音频mp3地址
+async def get_music_audio_mp3_path(ctx: SekaiHandlerContext, mid: int) -> Optional[str]:
+    vocal = await ctx.md.music_vocals.find_by('musicId', mid)
+    if not vocal:
+        return None
+    asset_name = vocal['assetbundleName']
+    return await ctx.rip.get_asset_cache_path(f"music/long/{asset_name}/{asset_name}.mp3")
+
+# 获取歌曲长度并缓存
+async def get_music_audio_length(ctx: SekaiHandlerContext, mid: int) -> Optional[timedelta]:
+    music_audio_lengths = file_db.get("music_audio_lengths", {})
+    key = f"{ctx.region}_{mid}"
+    if key in music_audio_lengths:
+        return timedelta(seconds=music_audio_lengths[key])
+    path = await get_music_audio_mp3_path(ctx, mid)
+    if not path:
+        return None
+    # 获取音频长度
+    music = await ctx.md.musics.find_by_id(mid)
+    assert_and_reply(music, f'曲目 {mid} 不存在')
+    filler_sec = music.get('fillerSec', 0)
+    import pydub
+    audio = pydub.AudioSegment.from_mp3(path)
+    length = len(audio) / 1000 - filler_sec
+    music_audio_lengths[key] = length
+    file_db.set("music_audio_lengths", music_audio_lengths)
+    return timedelta(seconds=length)
+
+# 获取谱面时长（还有bug）
+async def get_music_chart_length(ctx: SekaiHandlerContext, music_id: int, difficulty: str) -> Optional[timedelta]:
+    music = await ctx.md.musics.find_by_id(music_id)
+    assert_and_reply(music, f'曲目 {music_id} 不存在')
+
+    sus_path = await ctx.rip.get_asset_cache_path(f"music/music_score/{music_id:04d}_01_rip/{difficulty}")
+    if not sus_path:
+        return None
+    import pjsekai.scores
+    score = pjsekai.scores.Score.open(sus_path, encoding='UTF-8')
+    return timedelta(seconds=float(score.timed_events[-1][0]))
 
 
 # ======================= 指令处理 ======================= #
