@@ -1616,7 +1616,10 @@ async def asave_json(path, data):
 # 下载json文件，返回json
 async def download_json(url):
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, verify_ssl=False) as resp:
+        headers = {
+            'Accept-Language': 'en',
+        }
+        async with session.get(url, headers=headers, verify_ssl=False) as resp:
             if resp.status != 200:
                 try:
                     detail = await resp.text()

@@ -814,6 +814,9 @@ async def get_music_audio_length(ctx: SekaiHandlerContext, mid: int) -> Optional
         return timedelta(seconds=music_audio_lengths[key])
     path = await get_music_audio_mp3_path(ctx, mid)
     if not path:
+        jp_ctx = SekaiHandlerContext.from_region("jp")
+        path = await get_music_audio_mp3_path(jp_ctx, mid)
+    if not path:
         return None
     # 获取音频长度
     music = await ctx.md.musics.find_by_id(mid)
