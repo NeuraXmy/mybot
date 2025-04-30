@@ -638,9 +638,6 @@ def unipjsk_url_map(url: str) -> str:
     part2 = part2.replace("_rip", "")
     # 替换.asset为.json
     part2 = part2.replace(".asset", ".json")
-    # 添加.txt
-    if 'music_score' in part2:
-        part2 = part2 + ".txt"
     # 需要删除倒数第二个目录的情况
     NEED_REMOVE_SECOND_LAST_PREFIXES = [
         'mysekai/icon/', 
