@@ -100,7 +100,10 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
             rank_img = await ctx.rip.img(f"rank_live/honor/{asset_name}_rip/{ms}.png", allow_error=True, default=None, timeout=3)
         else:
             img = (await ctx.rip.img(f"honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")).copy()
-            rank_img = await ctx.rip.img(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None, timeout=3)
+            if gtype == 'event':
+                rank_img = await ctx.rip.img(f"honor/{asset_name}_rip/rank_{ms}.png", allow_error=True, default=None, timeout=3)
+            else:
+                rank_img = None
 
         add_frame(img, rarity)
         if rank_img:

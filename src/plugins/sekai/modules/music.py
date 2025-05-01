@@ -587,15 +587,15 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                             TextBox(publish_time, style2)
                 
                  # 难度等级/物量
-                hs, vs, gw = 8, 12, 180
+                hs, vs, gw = 8, 12, 180 if not has_append else 150
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(vs).set_padding(32):
                     with Grid(col_count=(6 if has_append else 5), item_size_mode='fixed').set_sep(hsep=hs, vsep=vs):
                         # 难度等级
                         light_diff_color = []
                         for i, (diff, color) in enumerate(DIFF_COLORS.items()):
                             if diff == 'append' and not has_append: continue
-                            t = TextBox(f"{diff.upper()} {diff_lvs[i]}", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=WHITE))
-                            t.set_bg(RoundRectBg(fill=color, radius=3)).set_size((gw, 40)).set_content_align('c')
+                            t = TextBox(f"{diff.upper()} {diff_lvs[i]}", TextStyle(font=DEFAULT_BOLD_FONT, size=22, color=WHITE))
+                            t.set_bg(RoundRectBg(fill=color, radius=3)).set_size((gw, 40)).set_content_align('c').set_overflow('clip')
                             if not isinstance(color, LinearGradient):
                                 light_diff_color.append(adjust_color(lerp_color(color, WHITE, 0.5), a=100))
                             else:
@@ -613,7 +613,7 @@ async def compose_music_detail_image(ctx: SekaiHandlerContext, mid: int, title: 
                     font_size = max(10, 24 - get_str_appear_length(alias_text) // 40 * 1)
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16).set_padding(16):
                         TextBox("歌曲别名", TextStyle(font=DEFAULT_HEAVY_FONT, size=24, color=(50, 50, 50)))
-                        aw = 800 if not has_append else 850
+                        aw = 800
                         TextBox(alias_text, TextStyle(font=DEFAULT_FONT, size=font_size, color=(70, 70, 70)), use_real_line_count=True).set_w(aw)            
 
                 with HSplit().set_omit_parent_bg(True).set_item_bg(roundrect_bg()).set_padding(0).set_sep(16):
