@@ -192,7 +192,7 @@ async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, I
 async def send_guess_music_hint(ctx: SekaiHandlerContext, music: Dict, msg_id: int):
     music_diff = await get_music_diff_info(ctx, music['id'])
 
-    HINT_TYPES = ['ma_diff', 'title_first', 'title_last', 'month']
+    HINT_TYPES = ['ma_diff', 'title_first', 'title_last']
     if music_diff.has_append: HINT_TYPES.append('apd_diff')
     hint_type = random.choice(HINT_TYPES)
 
@@ -240,7 +240,7 @@ async def random_card(ctx: SekaiHandlerContext) -> Tuple[Dict, Image.Image, str]
 
 # 发送猜卡面提示
 async def send_guess_card_hint(ctx: SekaiHandlerContext, card: Dict, after_training: bool, msg_id: int):
-    HINT_TYPES = ['name', 'after_training', 'rarity', 'month', 'attr', 'unit']
+    HINT_TYPES = ['name', 'rarity', 'attr', 'unit']
     hint = random.choice(HINT_TYPES)
     msg = f"[CQ:reply,id={msg_id}]提示："
     if hint == 'name':

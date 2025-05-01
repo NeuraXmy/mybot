@@ -40,6 +40,12 @@ from uuid import uuid4
 import decord
 import emoji
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+import time
 
 
 # 配置文件
@@ -212,95 +218,91 @@ async def download_image(image_url, force_http=True) -> Image.Image:
             return Image.open(io.BytesIO(image))
 
 
-svg_webdriver = None
-svg_pool = ThreadPoolExecutor(max_workers=1)
+WEB_DRIVER_NUM = 2
+_webdrivers: asyncio.Queue[webdriver.Firefox] = None
+
+class WebDriver:
+    def __init__(self):
+        self.driver = None
+
+    async def __aenter__(self) -> webdriver.Firefox:
+        global _webdrivers
+        if _webdrivers is None:
+            _webdrivers = asyncio.Queue()
+            for _ in range(WEB_DRIVER_NUM):
+                options = Options()
+                options.add_argument("--headless") 
+                _webdrivers.put_nowait(webdriver.Firefox(service=Service(), options=options))
+            utils_logger.info(f"初始化 {WEB_DRIVER_NUM} 个WebDriver")
+        self.driver = await _webdrivers.get()
+        return self.driver
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        global _webdrivers
+        if self.driver:
+            self.driver.delete_all_cookies()
+            self.driver.execute_script("window.localStorage.clear();")
+            self.driver.execute_script("window.sessionStorage.clear();")
+            self.driver.get("about:blank")
+            await _webdrivers.put(self.driver)
+            self.driver = None
+        else:
+            raise Exception("WebDriver not initialized")
+        return False
+
 
 # 下载svg图片，返回PIL.Image对象
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True)
 async def download_and_convert_svg(svg_url: str) -> Image.Image:
-    def download():
-        from selenium import webdriver
-        from selenium.webdriver.firefox.service import Service
-        from selenium.webdriver.firefox.options import Options
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
-        global svg_webdriver
-        if not svg_webdriver:
-            options = Options()
-            options.add_argument("--headless") 
-            svg_webdriver = webdriver.Firefox(service=Service(), options=options)
-        try:
-            svg_webdriver.get(svg_url)
-            svg = WebDriverWait(svg_webdriver, 10).until(lambda d: d.find_element(By.TAG_NAME, 'svg'))
-            width = svg.size['width']
-            height = svg.size['height']
-            svg_webdriver.set_window_size(width, height)
-            with TempFilePath('png') as path:
-                if not svg_webdriver.save_full_page_screenshot(path):
-                    raise Exception("保存截图失败")
-                return open_image(path)
-        except:
-            utils_logger.print_exc(f'下载SVG图片失败')
-        finally:
-            svg_webdriver.delete_all_cookies()
-            svg_webdriver.execute_script("window.localStorage.clear();")
-            svg_webdriver.execute_script("window.sessionStorage.clear();")
-            svg_webdriver.get("about:blank")
-
-    return await run_in_pool(download, pool=svg_pool)
-
-
-md_webdriver = None
-md_pool = ThreadPoolExecutor(max_workers=1)
+    async with WebDriver() as driver:
+        def download():
+            try:
+                driver.get(svg_url)
+                svg = WebDriverWait(driver, 10).until(lambda d: d.find_element(By.TAG_NAME, 'svg'))
+                width = svg.size['width']
+                height = svg.size['height']
+                driver.set_window_size(width, height)
+                with TempFilePath('png') as path:
+                    if not driver.save_full_page_screenshot(path):
+                        raise Exception("保存截图失败")
+                    return open_image(path)
+            except:
+                utils_logger.print_exc(f'下载SVG图片失败')
+        return await run_in_pool(download)
 
 # markdown转图片
 async def markdown_to_image(markdown_text: str, width: int = 600) -> Image.Image:
-    def draw():
-        css_content = Path("data/utils/m2i/m2i.css").read_text()
-        try:
-            import mistune
-            md_renderer = mistune.create_markdown()
-            html = md_renderer(markdown_text)
-            # 插入css
-            full_html = f"""
-                <html>
-                    <head><style>
-                        {css_content}
-                        .markdown-body {{
-                            padding: 32px;
-                        }}
-                    </style></head>
-                    <body class="markdown-body">{html}</body>
-                </html>
-            """
-            from selenium import webdriver
-            from selenium.webdriver.firefox.service import Service
-            from selenium.webdriver.firefox.options import Options
-            import time
-            global md_webdriver
-            if not md_webdriver:
-                options = Options()
-                options.add_argument("--headless") 
-                md_webdriver = webdriver.Firefox(service=Service(), options=options)
-                md_webdriver.set_window_size(width, width)
-            
-            with TempFilePath('html') as html_path:
-                with open(html_path, 'w') as f:
-                    f.write(full_html)
-                md_webdriver.get(f"file://{osp.abspath(html_path)}")
-                time.sleep(1)
-                with TempFilePath('png') as img_path:
-                    md_webdriver.save_full_page_screenshot(img_path)
-                    return open_image(img_path)
-        except:
-            utils_logger.print_exc(f'markdown转图片失败')
-        finally:
-            md_webdriver.delete_all_cookies()
-            md_webdriver.execute_script("window.localStorage.clear();")
-            md_webdriver.execute_script("window.sessionStorage.clear();")
-            md_webdriver.get("about:blank")
-
-    return await run_in_pool(draw, pool=md_pool)
+    async with WebDriver() as driver:
+        def draw():
+            css_content = Path("data/utils/m2i/m2i.css").read_text()
+            try:
+                import mistune
+                md_renderer = mistune.create_markdown()
+                html = md_renderer(markdown_text)
+                # 插入css
+                full_html = f"""
+                    <html>
+                        <head><style>
+                            {css_content}
+                            .markdown-body {{
+                                padding: 32px;
+                            }}
+                        </style></head>
+                        <body class="markdown-body">{html}</body>
+                    </html>
+                """
+                driver.set_window_size(width, width)
+                with TempFilePath('html') as html_path:
+                    with open(html_path, 'w') as f:
+                        f.write(full_html)
+                    driver.get(f"file://{osp.abspath(html_path)}")
+                    time.sleep(0.1)
+                    with TempFilePath('png') as img_path:
+                        driver.save_full_page_screenshot(img_path)
+                        return open_image(img_path)
+            except:
+                utils_logger.print_exc(f'markdown转图片失败')
+        return await run_in_pool(draw)
 
 
 # 下载文件到本地路径

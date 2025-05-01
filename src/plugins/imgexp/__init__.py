@@ -135,47 +135,35 @@ async def _(ctx: HandlerContext):
 
 
 async def get_twitter_image_urls(url):
-    @retry(wait=wait_fixed(1), stop=stop_after_attempt(3), reraise=True)
-    def get_image_urls(url):
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.common.by import By
-        import time
-        from PIL import Image
-        import requests
-        import bs4
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        driver = webdriver.Chrome(options=options)
-        try:
+    async with WebDriver() as driver:
+        @retry(wait=wait_fixed(1), stop=stop_after_attempt(3), reraise=True)
+        def get_image_urls(url):
+            import bs4
             driver.get(url)
             time.sleep(3)
-            with open('sandbox/test.html', 'w') as f:
-                f.write(driver.page_source)
             soup = bs4.BeautifulSoup(driver.page_source, features="lxml")
+            with open('sandbox/test.html', 'w') as f:
+                f.write(soup.prettify())
             images = soup.find_all('img')
             images = [img['src'] for img in images if '/media/' in img['src']]
             images = [image[:image.rfind('&')] + "&name=large" for image in images]
             return images
-        finally:
-            driver.quit()
-    return await run_in_pool(get_image_urls, url)
+        return await run_in_pool(get_image_urls, url)
 
 
 ximg = CmdHandler(['/ximg', '/x_img', '/twimg', '/tw_img'], logger)
 ximg.check_cdrate(cd).check_wblist(gbl, allow_private=True)
 @ximg.handle()
 async def _(ctx: HandlerContext):
-        parser = ctx.get_argparser()
-        parser.add_argument('url', type=str)
-        parser.add_argument('--vertical',   '-V', action='store_true')
-        parser.add_argument('--horizontal', '-H', action='store_true')
-        parser.add_argument('--grid',       '-G', action='store_true')
-        parser.add_argument('--fold',       '-f', action='store_true')
-        args = await parser.parse_args(error_reply=(
+    raise ReplyException("由于反爬虫机制，该功能暂时不可用")
+
+    parser = ctx.get_argparser()
+    parser.add_argument('url', type=str)
+    parser.add_argument('--vertical',   '-V', action='store_true')
+    parser.add_argument('--horizontal', '-H', action='store_true')
+    parser.add_argument('--grid',       '-G', action='store_true')
+    parser.add_argument('--fold',       '-f', action='store_true')
+    args = await parser.parse_args(error_reply=(
 """
 使用方式: /ximg <url> [-V] [-H] [-G] [-f]
 -V: 垂直拼图 -H: 水平拼图 -G 网格拼图 -f 折叠回复
@@ -183,38 +171,38 @@ async def _(ctx: HandlerContext):
 示例: /ximg https://x.com/xxx/status/12345 -G                       
 """
 .strip()))
-        url = args.url
-        assert url, '请提供X文章网页链接'
-        assert [args.vertical, args.horizontal, args.grid].count(True) <= 1, '只能选择一种拼图模式'
-        concat_mode = 'v' if args.vertical else 'h' if args.horizontal else 'g' if args.grid else None
+    url = args.url
+    assert url, '请提供X文章网页链接'
+    assert [args.vertical, args.horizontal, args.grid].count(True) <= 1, '只能选择一种拼图模式'
+    concat_mode = 'v' if args.vertical else 'h' if args.horizontal else 'g' if args.grid else None
 
+    try:
+        logger.info(f'获取X图片链接: {url}')
+        image_urls = await get_twitter_image_urls(url)
+        image_urls = image_urls[:16]
+        logger.info(f'获取到图片链接: {image_urls}')
+    except Exception as e:
+        raise Exception(f'获取图片链接失败: {e}')
+    
+    if not image_urls:
+        return await ctx.asend_reply_msg('没有找到图片！可能是输入网页链接不正确')
+    
+    images = await asyncio.gather(*[download_image(u) for u in image_urls])
+
+    msg = ""
+    if concat_mode is None:
+        for i, image in enumerate(images):
+            msg += await get_image_cq(image)
+    else:
         try:
-            logger.info(f'获取X图片链接: {url}')
-            image_urls = await get_twitter_image_urls(url)
-            image_urls = image_urls[:16]
-            logger.info(f'获取到图片链接: {image_urls}')
-        except Exception as e:
-            raise Exception(f'获取图片链接失败: {e}')
-        
-        if not image_urls:
-            return await ctx.asend_reply_msg('没有找到图片！可能是输入网页链接不正确')
-        
-        images = await asyncio.gather(*[download_image(u) for u in image_urls])
+            concated_image = await run_in_pool(concat_images, images, concat_mode)
+        except Exception as e: 
+            raise Exception(f'拼图失败: {e}')
+        msg = await get_image_cq(concated_image)
 
-        msg = ""
-        if concat_mode is None:
-            for i, image in enumerate(images):
-                msg += await get_image_cq(image)
-        else:
-            try:
-                concated_image = await run_in_pool(concat_images, images, concat_mode)
-            except Exception as e: 
-                raise Exception(f'拼图失败: {e}')
-            msg = await get_image_cq(concated_image)
-
-        if args.fold:
-            return await ctx.asend_fold_msg_adaptive(msg, 0, need_reply=True)
-        else:
-            return await ctx.asend_reply_msg(msg)
+    if args.fold:
+        return await ctx.asend_fold_msg_adaptive(msg, 0, need_reply=True)
+    else:
+        return await ctx.asend_reply_msg(msg)
 
 
