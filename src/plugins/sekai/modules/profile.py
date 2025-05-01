@@ -166,7 +166,9 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
         assert_and_reply(get_profile_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         region = "" if ctx.region == "jp" else ctx.region
         raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
-    return bind_list.get(qid, None)
+    uid = bind_list.get(qid, None)
+    assert_and_reply(not check_uid_in_blacklist(uid), f"该游戏ID({uid})已被拉入黑名单，无法查询")
+    return uid
 
 # 根据游戏id获取玩家基本信息
 async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True, raise_when_no_found=True) -> dict:
@@ -450,7 +452,12 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
     scale = 1.5
     img = img.resize((int(img.size[0]*scale), int(img.size[1]*scale)))
     return img
-    
+
+# 检测游戏id是否在黑名单中
+def check_uid_in_blacklist(uid: str) -> bool:
+    blacklist = profile_db.get("blacklist", [])
+    return uid in blacklist
+
 
 # ======================= 指令处理 ======================= #
 
@@ -478,6 +485,9 @@ async def _(ctx: SekaiHandlerContext):
     
     # 检查格式
     assert_and_reply(validate_uid(ctx, args), "ID格式错误")
+
+    # 检查是否在黑名单中
+    assert_and_reply(not check_uid_in_blacklist(args), f"该游戏ID({args})已被拉入黑名单，无法绑定")
     
     # 检查有效的服务器
     checked_regions = []
@@ -736,3 +746,39 @@ async def _(ctx: SekaiHandlerContext):
     msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
 
     return await ctx.asend_reply_msg(msg)
+
+
+# 添加游戏id到黑名单
+pjsk_blacklist = CmdHandler([
+    "/pjsk blacklist add", "/pjsk_blacklist_add",
+    "/pjsk黑名单添加", "/pjsk添加黑名单",
+], logger)
+pjsk_blacklist.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_blacklist.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    assert_and_reply(args, "请提供要添加的游戏ID")
+    blacklist = profile_db.get("blacklist", [])
+    if args in blacklist:
+        return await ctx.asend_reply_msg(f"ID {args} 已在黑名单中")
+    blacklist.append(args)
+    profile_db.set("blacklist", blacklist)
+    return await ctx.asend_reply_msg(f"ID {args} 已添加到黑名单中")
+
+
+# 移除游戏id到黑名单
+pjsk_blacklist_remove = CmdHandler([
+    "/pjsk blacklist remove", "/pjsk_blacklist_remove",
+    "/pjsk黑名单移除", "/pjsk移除黑名单",
+], logger)
+pjsk_blacklist_remove.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_blacklist_remove.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    assert_and_reply(args, "请提供要移除的游戏ID")
+    blacklist = profile_db.get("blacklist", [])
+    if args not in blacklist:
+        return await ctx.asend_reply_msg(f"ID {args} 不在黑名单中")
+    blacklist.remove(args)
+    profile_db.set("blacklist", blacklist)
+    return await ctx.asend_reply_msg(f"ID {args} 已从黑名单中移除")

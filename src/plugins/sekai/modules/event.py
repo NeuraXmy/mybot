@@ -9,6 +9,7 @@ from .profile import get_card_full_thumbnail
 
 DEFAULT_EVENT_STORY_SUMMARY_MODEL = [
     'gemini-2-flash',
+    'qwen3-free',
     'gpt-4.1-mini',
 ]
 

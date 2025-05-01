@@ -155,6 +155,12 @@ class ChatSession:
         if reasoning_effort := model.data.get("reasoning_effort"):
             extra_body["reasoning_effort"] = reasoning_effort
 
+        # qwen3 推理使用/think /no_think
+        if "qwen3" in model_name:
+            if content[0]['role'] != "system":
+                content.insert(0, { "role": "system", "content": "" })
+            content[0]['content'] = "/think " if use_reasoning else "/no_think " + content[0]['content']
+
         client = provider.get_client()
         response = await client.chat.completions.create(
             model=model.get_model_id(),

@@ -23,6 +23,7 @@ from .event import (
 DEFAULT_CARD_STORY_SUMMARY_MODEL = [
     'gemini-2.5-flash',
     'gemini-2-flash',
+    'qwen3-free',
 ]
 
 SEARCH_SINGLE_CARD_HELP = """

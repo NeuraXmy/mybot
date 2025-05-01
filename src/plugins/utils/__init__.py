@@ -773,6 +773,11 @@ async def get_reply_msg_obj(bot, msg):
     return await get_msg_obj(bot, reply_id)
 
 
+# 是否在黑名单
+def check_in_blacklist(user_id):
+    blacklist = utils_file_db.get('blacklist', [])
+    return int(user_id) in blacklist
+
 
 # 检查群聊是否被全局禁用
 def check_group_disabled(group_id):
@@ -1850,9 +1855,14 @@ class CmdHandler:
                     self.logger.warning(f'取消私聊自己的指令处理')
                     return
                 
-                 # 检测群聊是否启用
+                # 检测群聊是否启用
                 if self.check_group_enabled and is_group_msg(event) and check_group_disabled(event.group_id):
                     # self.logger.warning(f'取消未启用群聊 {event.group_id} 的指令处理')
+                    return
+
+                # 检测黑名单
+                if check_in_blacklist(event.user_id):
+                    self.logger.warning(f'取消黑名单用户 {event.user_id} 的指令处理')
                     return
 
                 # 权限检查
@@ -2056,3 +2066,52 @@ async def _(ctx: HandlerContext):
         else:
             disabled_msg += f'\n{group_name} ({group_id})'
     return await ctx.asend_reply_msg(enabled_msg + '\n\n' + disabled_msg)
+
+# 添加qq号到黑名单
+blacklist_add = CmdHandler(['/blacklist_add'], utils_logger)
+blacklist_add.check_superuser()
+@blacklist_add.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try: 
+        user_ids = [int(x) for x in args.split()]
+        assert user_ids
+    except: 
+        raise ReplyException("请指定要添加到黑名单的QQ号")
+
+    msg = ""
+    blacklist = utils_file_db.get("blacklist", [])
+    for user_id in user_ids:
+        if user_id in blacklist:
+            msg += f'QQ号 {user_id} 已在黑名单中\n'
+        else:
+            blacklist.append(user_id)
+            msg += f'已将QQ号 {user_id} 添加到黑名单\n'
+    utils_file_db.set("blacklist", blacklist)
+
+    return await ctx.asend_reply_msg(msg.strip())
+
+# 删除黑名单中的qq号
+blacklist_remove = CmdHandler(['/blacklist_del'], utils_logger)
+blacklist_remove.check_superuser()
+@blacklist_remove.handle()
+async def _(ctx: HandlerContext):
+    args = ctx.get_args().strip()
+    try: 
+        user_ids = [int(x) for x in args.split()]
+        assert user_ids
+    except: 
+        raise ReplyException("请指定要删除黑名单的QQ号")
+
+    msg = ""
+    blacklist = utils_file_db.get("blacklist", [])
+    for user_id in user_ids:
+        if user_id not in blacklist:
+            msg += f'QQ号 {user_id} 不在黑名单中\n'
+        else:
+            blacklist.remove(user_id)
+            msg += f'已将QQ号 {user_id} 从黑名单中删除\n'
+    utils_file_db.set("blacklist", blacklist)
+
+    return await ctx.asend_reply_msg(msg.strip())
+
