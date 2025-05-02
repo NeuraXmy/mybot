@@ -36,6 +36,10 @@ DEFAULT_DATA_MODE = 'latest'
 def has_after_training(card):
     return card['cardRarityType'] in ["rarity_3", "rarity_4"]
 
+# 判断卡牌是否只有after_training模式
+def only_has_after_training(card):
+    return card['initialSpecialTrainingStatus'] == 'done'
+
 # 获取角色卡牌缩略图
 async def get_card_thumbnail(ctx: SekaiHandlerContext, cid: int, after_training: bool):
     image_type = "after_training" if after_training else "normal"

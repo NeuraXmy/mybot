@@ -12,7 +12,7 @@ from .music import (
     get_music_diff_info,
 )
 from .chart import generate_music_chart
-from .card import get_card_image, has_after_training, get_character_name_by_id, get_unit_by_card_id
+from .card import get_card_image, has_after_training, only_has_after_training, get_character_name_by_id, get_unit_by_card_id
 from PIL.Image import Transpose
 from PIL import ImageOps
 
@@ -233,7 +233,12 @@ async def random_card(ctx: SekaiHandlerContext) -> Tuple[Dict, Image.Image, str]
         card = random.choice(cards)
         if card['cardRarityType'] in ['rarity_3', 'rarity_4', 'rarity_birthday']:
             break
-    after_training = False if not has_after_training(card) else random.choice([True, False])
+    if not has_after_training(card):
+        after_training = False
+    elif only_has_after_training(card):
+        after_training = True
+    else:
+        after_training = random.choice([True, False])
     card_img = await get_card_image(ctx, card['id'], after_training=after_training, allow_error=False)
     card_img = resize_keep_ratio(card_img, 1024 * 512, mode='wxh')
     return card, card_img, after_training

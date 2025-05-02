@@ -9,6 +9,7 @@ from .profile import (
     get_detailed_profile_card, 
     get_player_avatar_info_by_detailed_profile,
     has_after_training,
+    only_has_after_training,
     get_card_thumbnail,
     get_card_full_thumbnail,
     get_unit_by_card_id,
@@ -125,7 +126,7 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
                 pcard = find_by(profile['userCards'], "cardId", card['id'])
                 img = await get_card_full_thumbnail(ctx, card, pcard=pcard)
                 return img, None
-            normal = await get_card_full_thumbnail(ctx, card, False)
+            normal = await get_card_full_thumbnail(ctx, card, False) if not only_has_after_training(card) else None
             after = await get_card_full_thumbnail(ctx, card, True) if has_after_training(card) else None
             return normal, after
         except: 
@@ -191,7 +192,9 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
     title = card['prefix']
     cn_title = await translate_text(title, additional_info="该文本是偶像抽卡游戏中卡牌的标题", default=title)
     
-    card_thumbs = [await get_card_full_thumbnail(ctx, card, False)]
+    card_thumbs = []
+    if not only_has_after_training(card):
+        card_thumbs.append(await get_card_full_thumbnail(ctx, card, False))
     if has_after_training(card):
         card_thumbs.append(await get_card_full_thumbnail(ctx, card, True))
     card_thumbs = await get_image_cq(resize_keep_ratio(concat_images(card_thumbs, 'h'), 80, mode='short'))
@@ -238,6 +241,8 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
             'talk_count': sorted(chara_talk_count.items(), key=lambda x: x[1], reverse=True),
         })
     
+    assert_and_reply(eps, f"ID={cid}没有剧情")
+
     ## 获取总结
     if not summary or refresh:
         for i, ep in enumerate(eps, 1):
@@ -358,7 +363,9 @@ async def compose_box_image(ctx: SekaiHandlerContext, qid: int, cards: dict, sho
         if pcard := find_by(pcards, 'cardId', card['id']):
             return await get_card_full_thumbnail(ctx, card, pcard=pcard)
         else:
-            after_training = (card['cardRarityType'] in ['rarity_3', 'rarity_4']) and use_after_training
+            after_training = has_after_training(card) and use_after_training
+            if only_has_after_training(card):
+                after_training = True
             return await get_card_full_thumbnail(ctx, card, after_training)
     card_imgs = await batch_gather(*[get_card_full_thumbnail_nothrow(card) for card in cards])
 
@@ -552,7 +559,9 @@ async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
     supply_type = CARD_SUPPLIES_SHOW_NAMES.get(await get_card_supply_type(card_id), "非限定")
 
     # 缩略图
-    thumbs = [await get_card_full_thumbnail(ctx, card_id, False)]
+    thumbs = []
+    if not only_has_after_training(card):
+        thumbs.append(await get_card_full_thumbnail(ctx, card_id, False))
     if has_after_training(card):
         thumbs.append(await get_card_full_thumbnail(ctx, card_id, True))
     
@@ -563,7 +572,9 @@ async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
     unit_logo = get_unit_logo(unit)
 
     # 卡面
-    card_images = [await get_card_image(ctx, card_id, False)]
+    card_images = []
+    if not only_has_after_training(card):
+        card_images.append(await get_card_image(ctx, card_id, False))
     if has_after_training(card):
         card_images.append(await get_card_image(ctx, card_id, True))
 
@@ -880,13 +891,15 @@ async def _(ctx: SekaiHandlerContext):
 # 卡面查询
 pjsk_card_img = SekaiCmdHandler([
     "/pjsk card img", "/pjsk_card_img", 
-    "/查卡面", "/卡面"
+    "/查卡面", "/卡面", '/卡牌',
 ])
 pjsk_card_img.check_cdrate(cd).check_wblist(gbl)
 @pjsk_card_img.handle()
 async def _(ctx: SekaiHandlerContext):
     card = await get_card_by_index(ctx, ctx.get_args().strip())
-    msg = await get_image_cq(await get_card_image(ctx, card['id'], False, False))
+    msg = ""
+    if not only_has_after_training(card):
+        msg += await get_image_cq(await get_card_image(ctx, card['id'], False, False))
     if has_after_training(card):
         msg += await get_image_cq(await get_card_image(ctx, card['id'], True, False))
     return await ctx.asend_reply_msg(msg)
