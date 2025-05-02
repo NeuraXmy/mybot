@@ -20,7 +20,7 @@ import random
 from argparse import ArgumentParser
 import colorsys
 import inspect
-from typing import Optional, List, Tuple, Dict, Union, Any, Set
+from typing import Optional, List, Tuple, Dict, Union, Any, Set, Callable
 import shutil
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re
@@ -71,6 +71,16 @@ print(f'使用日志等级: {LOG_LEVEL}')
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+from zhon.hanzi import punctuation
+_clean_name_pattern = rf"[{re.escape(punctuation)}\s]"
+# 获取用于搜索匹配的干净名称
+def clean_name(s: str) -> str:
+    s = re.sub(_clean_name_pattern, "", s).lower()
+    import zhconv
+    s = zhconv.convert(s, 'zh-cn')
+    return s
+
 
 def get_exc_desc(e: Exception) -> str:
     et = f"{type(e).__name__}" if type(e).__name__ not in ['Exception', 'AssertionError'] else ''
