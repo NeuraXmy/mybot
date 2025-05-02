@@ -1,5 +1,5 @@
 from ...utils import *
-from ...record import after_record_hook
+from ...record import before_record_hook
 from ..common import *
 from ..handler import *
 from ..asset import *
@@ -18,6 +18,8 @@ from PIL import ImageOps
 
 
 GUESS_INTERVAL = timedelta(seconds=1)
+HINT_KEYWORDS = ['提示']
+STOP_KEYWORDS = ['结束猜', '停止猜']
 
 @dataclass
 class ImageRandomCropOptions:
@@ -83,11 +85,32 @@ GUESS_CARD_DIFF_OPTIONS = {
 
 # ======================= 处理逻辑 ======================= #
 
+@dataclass
+class GuessContext:
+    ctx: SekaiHandlerContext
+    guess_type: str
+    group_id: int
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    user_id: Optional[int] = None
+    msg_id: Optional[int] = None
+    text: Optional[str] = None
+    guess_success: bool = False
+    used_hint_types: Set[str] = field(default_factory=set)
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    async def asend_msg(self, msg: str):
+        return await self.ctx.asend_msg(msg)
+    
+    async def asend_reply_msg(self, msg: str):
+        msg = f"[CQ:reply,id={self.msg_id}]{msg}"
+        return await self.ctx.asend_msg(msg)
+    
 guess_resp_queues: Dict[int, Dict[str, asyncio.Queue[GroupMessageEvent]]] = {}
 uid_last_guess_time: Dict[int, datetime] = {}
 
 # 记录当前猜x的消息事件
-@after_record_hook
+@before_record_hook
 async def get_guess_resp_event(bot: Bot, event: GroupMessageEvent):
     if not is_group_msg(event): return
     if event.user_id == int(bot.self_id): return
@@ -97,8 +120,8 @@ async def get_guess_resp_event(bot: Bot, event: GroupMessageEvent):
     for q in queues.values():
         q.put_nowait(event)
 
-# 开始猜x  start_fn接受ctx，返回本次猜x的guess_data  check_fn接受ctx, guess_data, uid, mid, text，返回是否猜对  timeout_fn接受ctx, guess_data
-async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timedelta, start_fn, check_fn, timeout_fn):
+# 开始猜x
+async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timedelta, start_fn, check_fn, stop_fn, hint_fn):
     gid = ctx.group_id
     current_guesses = list(guess_resp_queues.get(gid, {}).keys())
     current_guess = current_guesses[0] if len(current_guesses) > 0 else None
@@ -112,12 +135,19 @@ async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timede
     try:
         logger.info(f"群聊 {gid} 开始{guess_type}，timeout={timeout.total_seconds()}s")
 
-        guess_data = await start_fn(ctx)
-        end_time = datetime.now() + timeout
+        gctx = GuessContext(
+            ctx=ctx, 
+            guess_type=guess_type, 
+            group_id=gid
+        )
+        await start_fn(gctx)
+
+        gctx.start_time = datetime.now()
+        gctx.end_time = datetime.now() + timeout
     
         while True:
             try:
-                rest_time = end_time - datetime.now()
+                rest_time = gctx.end_time - datetime.now()
                 if rest_time.total_seconds() <= 0:
                     raise asyncio.TimeoutError
                 event = await asyncio.wait_for(
@@ -130,10 +160,25 @@ async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timede
                     continue
                 uid_last_guess_time[uid] = time
                 logger.info(f"群聊 {gid} 收到{guess_type}消息: uid={uid}, text={text}")
-                if await check_fn(ctx, guess_data, uid, mid, text):
+
+                gctx.user_id = uid
+                gctx.msg_id = mid
+                gctx.text = text
+
+                if any([kw in text for kw in HINT_KEYWORDS]):
+                    await hint_fn(gctx)
+                    continue
+
+                if any([kw in text for kw in STOP_KEYWORDS]):
+                    await stop_fn(gctx)
                     return
+
+                await check_fn(gctx)
+                if gctx.guess_success:
+                    break
+
             except asyncio.TimeoutError:
-                await timeout_fn(ctx, guess_data)
+                await stop_fn(gctx)
                 return
     finally:
         logger.info(f"群聊 {gid} 停止{guess_type}")
@@ -189,14 +234,19 @@ async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, I
         return music, cover_img.resize((512, 512))
 
 # 发送猜曲提示
-async def send_guess_music_hint(ctx: SekaiHandlerContext, music: Dict, msg_id: int):
-    music_diff = await get_music_diff_info(ctx, music['id'])
+async def send_guess_music_hint(gctx: GuessContext):
+    music = gctx.data['music']
+    music_diff = await get_music_diff_info(gctx.ctx, music['id'])
 
-    HINT_TYPES = ['ma_diff', 'title_first', 'title_last']
-    if music_diff.has_append: HINT_TYPES.append('apd_diff')
-    hint_type = random.choice(HINT_TYPES)
+    hint_types = ['ma_diff', 'title_first', 'title_last']
+    if music_diff.has_append: hint_types.append('apd_diff')
+    hint_types = [t for t in hint_types if t not in gctx.used_hint_types] 
+    if len(hint_types) == 0:
+        await gctx.asend_reply_msg("没有更多提示了！")
+        return
+    hint_type = random.choice(hint_types)
 
-    msg = f"[CQ:reply,id={msg_id}]提示："
+    msg = f"提示："
     if hint_type == 'title_first':
         msg += f"歌曲标题以\"{music['title'][0]}\"开头"
     elif hint_type == 'title_last':
@@ -208,7 +258,9 @@ async def send_guess_music_hint(ctx: SekaiHandlerContext, music: Dict, msg_id: i
     elif hint_type == 'month':
         time = datetime.fromtimestamp(music['publishedAt'] / 1000.)
         msg += f"发布时间为{time.year}年{time.month}月"
-    await ctx.asend_msg(msg)
+
+    gctx.used_hint_types.add(hint_type)    
+    await gctx.asend_reply_msg(msg)
 
 # 获取卡面标题
 async def get_card_title(ctx: SekaiHandlerContext, card: Dict, after_training: bool) -> str:
@@ -244,41 +296,51 @@ async def random_card(ctx: SekaiHandlerContext) -> Tuple[Dict, Image.Image, str]
     return card, card_img, after_training
 
 # 发送猜卡面提示
-async def send_guess_card_hint(ctx: SekaiHandlerContext, card: Dict, after_training: bool, msg_id: int):
-    HINT_TYPES = ['name', 'rarity', 'attr', 'unit']
-    hint = random.choice(HINT_TYPES)
-    msg = f"[CQ:reply,id={msg_id}]提示："
+async def send_guess_card_hint(gctx: GuessContext):
+    card = gctx.data['card']
+    after_training = gctx.data['after_training']
+
+    hint_types = ['name', 'rarity_and_attr', 'unit']
+    hint_types = [t for t in hint_types if t not in gctx.used_hint_types]
+    if len(hint_types) == 0:
+        await gctx.asend_reply_msg("没有更多提示了！")
+        return
+    hint = random.choice(hint_types)
+
+    msg = f"提示："
     if hint == 'name':
         msg += f"标题为\"{card['prefix']}\""
     elif hint == 'after_training':
         if after_training:  msg += "特训后"
         else:               msg += "特训前"
-    elif hint == 'rarity':
+    elif hint == 'rarity_and_attr':
         rarity = card['cardRarityType']
         if rarity == 'rarity_1': msg += "1星"
         elif rarity == 'rarity_2': msg += "2星"
         elif rarity == 'rarity_3': msg += "3星"
         elif rarity == 'rarity_4': msg += "4星"
         elif rarity == 'rarity_birthday': msg += "生日卡"
-    elif hint == 'month':
-        time = datetime.fromtimestamp(card['releaseAt'] / 1000.)
-        msg += f"发布时间为{time.year}年{time.month}月"
-    elif hint == 'attr':
+        msg += "&"
         attr = card['attr']
         if attr == 'cool': msg += "蓝星"
         elif attr == 'happy': msg += "橙心"
         elif attr == 'mysterious': msg += "紫月"
         elif attr == 'cute': msg += "粉花"
         elif attr == 'pure': msg += "绿草"
+    elif hint == 'month':
+        time = datetime.fromtimestamp(card['releaseAt'] / 1000.)
+        msg += f"发布时间为{time.year}年{time.month}月"
     elif hint == 'unit':
-        unit = await get_unit_by_card_id(ctx, card['id'])
+        unit = await get_unit_by_card_id(gctx.ctx, card['id'])
         if unit == 'light_sound': msg += "ln"
         elif unit == 'idol': msg += "mmj"
         elif unit == 'street': msg += "vbs"
         elif unit == 'theme_park': msg += "ws"
         elif unit == 'school_refusal': msg += "25时"
         elif unit == 'piapro': msg += "vs"
-    await ctx.asend_msg(msg)
+
+    gctx.used_hint_types.add(hint)
+    await gctx.asend_reply_msg(msg)
 
 
 # ======================= 指令处理 ======================= #
@@ -295,49 +357,34 @@ async def _(ctx: SekaiHandlerContext):
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_COVER_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_COVER_DIFF_OPTIONS.keys())}")
 
-    async def start_fn(ctx: SekaiHandlerContext):
-        music, cover_img = await random_music(ctx, 'cover')
-        logger.info(f"群聊 {ctx.group_id} 猜曲绘目标: {music['id']}")
+    async def start_fn(gctx: GuessContext):
+        music, cover_img = await random_music(gctx.ctx, 'cover')
+        logger.info(f"群聊 {gctx.group_id} 猜曲绘目标: {music['id']}")
         crop_img = await random_crop_image(cover_img, GUESS_COVER_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
         msg += f"{diff.upper()}模式猜曲绘{GUESS_COVER_DIFF_OPTIONS[diff].get_effect_tip_text()}"
         msg += f"，限时{int(GUESS_COVER_TIMEOUT.total_seconds())}秒"
         msg += "（无需回复，直接发送歌名/id/别名）"
-        await ctx.asend_reply_msg(msg)
-        return music, cover_img
+        await gctx.asend_msg(msg)
+        gctx.data['music'] = music
+        gctx.data['cover_img'] = cover_img
     
-    async def check_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image], uid: int, mid: int, text: str):
-        music, cover_img = guess_data
-        if '提示' in text:
-            await send_guess_music_hint(ctx, music, mid)
-            return False
-        
-        if '结束猜' in text or '停止猜' in text:
-            msg = f"猜曲绘结束，正确答案：\n"
-            msg += f"【{music['id']}】{music['title']}"
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            return True
-        
-        ret: MusicSearchResult = await search_music(ctx, text,  MusicSearchOptions(use_emb=False, raise_when_err=False))
+    async def check_fn(gctx: GuessContext):
+        music, cover_img = gctx.data['music'], gctx.data['cover_img']
+        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
         if ret.music is None:
-            return False
+            return
         if ret.music['id'] == music['id']:
-            msg = f"[CQ:reply,id={mid}]你猜对了！\n"
-            msg += f"【{music['id']}】{music['title']}"
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            return True
-        return False
+            await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']}")
+            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+            gctx.guess_success = True
 
-    async def timeout_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image]):
-        music, cover_img = guess_data
-        msg = f"猜曲绘结束，正确答案：\n"
-        msg += f"【{music['id']}】{music['title']}"
-        await ctx.asend_msg(msg)
-        await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+    async def stop_fn(gctx: GuessContext):
+        music, cover_img = gctx.data['music'], gctx.data['cover_img']
+        await gctx.asend_msg(f"猜曲绘结束，正确答案：\n【{music['id']}】{music['title']}")
+        await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
 
-    await start_guess(ctx, '猜曲绘', GUESS_COVER_TIMEOUT, start_fn, check_fn, timeout_fn)
+    await start_guess(ctx, '猜曲绘', GUESS_COVER_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)
 
 
 # 猜谱面
@@ -352,10 +399,10 @@ async def _(ctx: SekaiHandlerContext):
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_CHART_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CHART_DIFF_OPTIONS.keys())}")
 
-    async def start_fn(ctx: SekaiHandlerContext):
-        music, cover_img = await random_music(ctx, 'cover')
-        logger.info(f"群聊 {ctx.group_id} 猜谱面目标: {music['id']}")
-        diff_info = await get_music_diff_info(ctx, music['id'])
+    async def start_fn(gctx: GuessContext):
+        music, cover_img = await random_music(gctx.ctx, 'cover')
+        logger.info(f"群聊 {gctx.group_id} 猜谱面目标: {music['id']}")
+        diff_info = await get_music_diff_info(gctx.ctx, music['id'])
         chart_diff = random.choice(['master', 'append']) if diff_info.has_append else 'master'
         chart_lv = diff_info.level[chart_diff]
         rate = random.uniform(
@@ -363,7 +410,7 @@ async def _(ctx: SekaiHandlerContext):
             GUESS_CHART_DIFF_OPTIONS[diff].rate_max
         )
         clip_chart = await generate_music_chart(
-            ctx, music['id'], chart_diff, need_reply=False, 
+            gctx.ctx, music['id'], chart_diff, need_reply=False, 
             random_clip_length_rate=rate, style_sheet='guess',
             use_cache=False
         )
@@ -371,41 +418,28 @@ async def _(ctx: SekaiHandlerContext):
         msg += f"{diff.upper()}模式猜谱面{GUESS_CHART_DIFF_OPTIONS[diff].get_effect_tip_text()}"
         msg += f"（谱面难度可能为MASTER或APPEND），限时{int(GUESS_CHART_TIMEOUT.total_seconds())}秒"
         msg += "（无需回复，直接发送歌名/id/别名）"
-        await ctx.asend_reply_msg(msg)
-        return music, cover_img, chart_diff, chart_lv
+        await gctx.asend_msg(msg)
+        gctx.data['music'] = music
+        gctx.data['cover_img'] = cover_img
+        gctx.data['chart_diff'] = chart_diff
+        gctx.data['chart_lv'] = chart_lv
     
-    async def check_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image], uid: int, mid: int, text: str):
-        music, cover_img, chart_diff, chart_lv = guess_data
-        if '提示' in text:
-            await send_guess_music_hint(ctx, music, mid)
-            return False
-        
-        if '结束猜' in text or '停止猜' in text:
-            msg = f"猜谱面结束，正确答案：\n"
-            msg += f"【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}"
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            return True
-        
-        ret: MusicSearchResult = await search_music(ctx, text,  MusicSearchOptions(use_emb=False, raise_when_err=False))
+    async def check_fn(gctx: GuessContext):
+        music, cover_img, chart_diff, chart_lv = gctx.data['music'], gctx.data['cover_img'], gctx.data['chart_diff'], gctx.data['chart_lv']        
+        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
         if ret.music is None:
-            return False
+            return
         if ret.music['id'] == music['id']:
-            msg = f"[CQ:reply,id={mid}]你猜对了！\n"
-            msg += f"【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}"
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            return True
-        return False
+            await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}")
+            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+            gctx.guess_success = True
 
-    async def timeout_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image]):
-        music, cover_img, chart_diff, chart_lv = guess_data
-        msg = f"猜谱面结束，正确答案：\n"
-        msg += f"【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}"
-        await ctx.asend_msg(msg)
-        await ctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+    async def stop_fn(gctx: GuessContext):
+        music, cover_img, chart_diff, chart_lv = gctx.data['music'], gctx.data['cover_img'], gctx.data['chart_diff'], gctx.data['chart_lv']
+        await gctx.asend_msg(f"猜谱面结束，正确答案：\n【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}")
+        await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
 
-    await start_guess(ctx, '猜谱面', GUESS_CHART_TIMEOUT, start_fn, check_fn, timeout_fn)
+    await start_guess(ctx, '猜谱面', GUESS_CHART_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)
 
 
 # 猜卡面
@@ -420,44 +454,30 @@ async def _(ctx: SekaiHandlerContext):
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_CARD_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CARD_DIFF_OPTIONS.keys())}")
 
-    async def start_fn(ctx: SekaiHandlerContext):
-        card, card_img, after_training = await random_card(ctx)
-        logger.info(f"群聊 {ctx.group_id} 猜卡面目标: {card['id']}")
+    async def start_fn(gctx: GuessContext):
+        card, card_img, after_training = await random_card(gctx.ctx)
+        logger.info(f"群聊 {gctx.group_id} 猜卡面目标: {card['id']}")
         crop_img = await random_crop_image(card_img, GUESS_CARD_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
         msg += f"{diff.upper()}模式猜卡面{GUESS_CARD_DIFF_OPTIONS[diff].get_effect_tip_text()}"
         msg += f"，限时{int(GUESS_CARD_TIMEOUT.total_seconds())}秒"
         msg += "（无需回复，直接发送角色简称例如ick,saki）"
-        await ctx.asend_reply_msg(msg)
-        return card, card_img, after_training
+        await gctx.asend_msg(msg)
+        gctx.data['card'] = card
+        gctx.data['card_img'] = card_img
+        gctx.data['after_training'] = after_training
 
-    async def check_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image], uid: int, mid: int, text: str):
-        card, card_img, after_training = guess_data
-        if '提示' in text:
-            await send_guess_card_hint(ctx, card, after_training, mid)
-            return False
-        
-        if '结束猜' in text or '停止猜' in text:
-            msg = f"猜卡面结束，正确答案：\n"
-            msg += await get_card_title(ctx, card, after_training)
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(card_img, low_quality=True))
-            return True
-        
-        cid = get_cid_by_nickname(text)
+    async def check_fn(gctx: GuessContext):
+        card, card_img, after_training = gctx.data['card'], gctx.data['card_img'], gctx.data['after_training']
+        cid = get_cid_by_nickname(gctx.text)
         if cid == card["characterId"]:
-            msg = f"[CQ:reply,id={mid}]你猜对了！\n"
-            msg += await get_card_title(ctx, card, after_training)
-            await ctx.asend_msg(msg)
-            await ctx.asend_msg(await get_image_cq(card_img, low_quality=True))
-            return True
-        return False
+            await gctx.asend_reply_msg(f"你猜对了！\n{await get_card_title(gctx.ctx, card, after_training)}")
+            await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
+            gctx.guess_success = True
     
-    async def timeout_fn(ctx: SekaiHandlerContext, guess_data: Tuple[dict, Image.Image]):
-        card, card_img, after_training = guess_data
-        msg = f"猜卡面结束，正确答案：\n"
-        msg += await get_card_title(ctx, card, after_training)
-        await ctx.asend_msg(msg)
-        await ctx.asend_msg(await get_image_cq(card_img, low_quality=True))
+    async def stop_fn(gctx: GuessContext):
+        card, card_img, after_training = gctx.data['card'], gctx.data['card_img'], gctx.data['after_training']
+        await gctx.asend_msg(f"猜卡面结束，正确答案：\n{await get_card_title(ctx, card, after_training)}")
+        await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
 
-    await start_guess(ctx, '猜卡面', GUESS_CARD_TIMEOUT, start_fn, check_fn, timeout_fn)
+    await start_guess(ctx, '猜卡面', GUESS_CARD_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_card_hint)

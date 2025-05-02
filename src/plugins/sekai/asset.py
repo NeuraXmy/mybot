@@ -578,15 +578,15 @@ def ng_words_map_fn(ng_words):
 DEFAULT_RIP_ASSET_DIR = f"{SEKAI_ASSET_DIR}/rip"
 DEFAULT_GET_RIP_ASSET_TIMEOUT = 5
 
+ONDEMAND_PREFIXES = ['event', 'gacha', 'music/long', 'mysekai']
+STARTAPP_PREFIXES = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
+
 def sekai_best_url_map(url: str) -> str:
     # 移除_rip
     url = url.replace("_rip", "")
     return url
 
 def haruki_url_map(url: str) -> str:
-    STARTAPP_PREFIXS = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
-    ONDEMAND_PREFIXS = ['event', 'gacha', 'music', 'mysekai']
-
     idx = url.find("assets/")
     assert idx != -1, f"解包资源url格式错误: {url}"
     idx = idx + len("assets/")
@@ -610,10 +610,10 @@ def haruki_url_map(url: str) -> str:
         segs.pop(-2)
         part2 = '/'.join(segs)
     # 添加类别
-    if any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXS]):
-        category = 'startapp'
-    elif any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXS]):
+    if any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXES]):
         category = 'ondemand'
+    elif any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXES]):
+        category = 'startapp'
     else:
         logger.warning(f"在startapp和ondemand都找不到: {url}")
         category = 'ondemand'
@@ -626,9 +626,6 @@ def pjsekai_moe_url_map(url: str) -> str:
     return url
 
 def unipjsk_url_map(url: str) -> str:
-    STARTAPP_PREFIXS = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 'rank_live', 'stamp', 'home/banner']
-    ONDEMAND_PREFIXS = ['event', 'gacha', 'music', 'mysekai']
-
     idx = url.find("assets.unipjsk.com/")
     assert idx != -1, f"解包资源url格式错误: {url}"
     idx = idx + len("assets.unipjsk.com/")
@@ -649,10 +646,10 @@ def unipjsk_url_map(url: str) -> str:
         segs.pop(-2)
         part2 = '/'.join(segs)
     # 添加类别
-    if any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXS]):
-        category = 'startapp'
-    elif any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXS]):
+    if any([part2.startswith(prefix) for prefix in ONDEMAND_PREFIXES]):
         category = 'ondemand'
+    elif any([part2.startswith(prefix) for prefix in STARTAPP_PREFIXES]):
+        category = 'startapp'
     else:
         logger.warning(f"在startapp和ondemand都找不到: {url}")
         category = 'ondemand'
