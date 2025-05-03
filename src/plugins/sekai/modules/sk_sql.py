@@ -125,6 +125,7 @@ async def query_ranking(
 
     cursor = await conn.execute(sql, args)
     rows = await cursor.fetchall()
+    await cursor.close()
 
     return [Ranking.from_row(row) for row in rows]
 
@@ -141,6 +142,7 @@ async def query_latest_ranking(region: str, event_id: int, ranks: List[int] = No
             row = await cursor.fetchone()
             if row:
                 ret.append(Ranking.from_row(row))
+            await cursor.close()
         return ret
     else:
         # 对于表中的每一个rank，找到最新的一条记录
@@ -151,6 +153,7 @@ async def query_latest_ranking(region: str, event_id: int, ranks: List[int] = No
             ) ORDER BY rank
         """)
         rows = await cursor.fetchall()
+        await cursor.close()
         return [Ranking.from_row(row) for row in rows]
 
 
@@ -171,6 +174,7 @@ async def query_first_ranking_after(
             row = await cursor.fetchone()
             if row:
                 ret.append(Ranking.from_row(row))
+            await cursor.close()
         return ret
     else:
         # 对于表中的每一个rank，找到第一条记录
@@ -181,4 +185,5 @@ async def query_first_ranking_after(
             ) ORDER BY rank
         """, (after_time.timestamp(),))
         rows = await cursor.fetchall()
+        await cursor.close()
         return [Ranking.from_row(row) for row in rows]

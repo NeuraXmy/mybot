@@ -86,6 +86,7 @@ async def query_by_hash(group_id: int, type: str, hash: str) -> list:
         WHERE type = ? AND phash = ?
         """, (type, hash))
     rows = await cursor.fetchall()
+    await cursor.close()
     return [hash_row_to_dict(row) for row in rows]
 
 # 根据类型和msg_id查询记录
@@ -96,6 +97,7 @@ async def query_by_msg_id(group_id: int, type: str, msg_id: int) -> list:
         WHERE type = ? AND msg_id = ?
         """, (type, msg_id))
     rows = await cursor.fetchall()
+    await cursor.close()
     return [hash_row_to_dict(row) for row in rows]
 
 # 根据类型和unique_id查询记录
@@ -106,5 +108,6 @@ async def query_by_unique_id(group_id: int, type: str, unique_id: str) -> list:
         WHERE type = ? AND unique_id = ?
         """, (type, unique_id))
     rows = await cursor.fetchall()
+    await cursor.close()
     return [hash_row_to_dict(row) for row in rows]
 

@@ -70,6 +70,7 @@ async def query_all_msg(group_id: int):
     '''
     cursor = await conn.execute(query)
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的所有消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
@@ -84,6 +85,7 @@ async def query_msg_by_range(group_id: int, start_time: datetime, end_time: date
     '''
     cursor = await conn.execute(query, (start_time.timestamp(), end_time.timestamp()))
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
@@ -97,6 +99,7 @@ async def query_recent_msg(group_id: int, limit: int):
     '''
     cursor = await conn.execute(query, (limit,))
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 最近 {limit} 条消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
@@ -118,6 +121,7 @@ async def query_msg_count(group_id: int, start_time: datetime, end_time: datetim
         '''
         cursor = await conn.execute(query, (start_time.timestamp(), end_time.timestamp(), user_id))
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 从 {start_time} 到 {end_time} 的消息数")
     return rows[0][0]
 
@@ -130,6 +134,7 @@ async def query_msg_by_user_id(group_id: int, user_id: int):
     '''
     cursor = await conn.execute(query, (user_id,))
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 用户 {user_id} 的消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
@@ -144,6 +149,7 @@ async def query_msg_before(group_id: int, time: datetime, limit: int):
     '''
     cursor = await conn.execute(query, (time.timestamp(), limit))
     rows = await cursor.fetchall()
+    await cursor.close()
     logger.debug(f"获取 {MSG_TABLE_NAME.format(group_id)} 表中的 时间在 {time} 之前的 {limit} 条消息 {len(rows)} 条")
     return [msg_row_to_ret(row) for row in rows]
 
