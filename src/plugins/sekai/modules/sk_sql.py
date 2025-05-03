@@ -1,27 +1,26 @@
 from ...utils import *
 from ..common import *
 import aiosqlite
-import asyncio
 
 RANKING_NAME_LEN_LIMIT = 32
 
 DB_PATH = SEKAI_DATA_DIR + "/db/sk_{region}/{event_id}_ranking.db"
 
-conns: Dict[str, aiosqlite.Connection] = {}
-table_created: Dict[str, bool] = {}
+_conns: Dict[str, aiosqlite.Connection] = {}
+_created_table_keys: Dict[str, bool] = {}
 
 
 async def get_conn(region, event_id) -> aiosqlite.Connection:
     path = DB_PATH.format(region=region, event_id=event_id)
     create_parent_folder(path)
 
-    global conns
-    if conns.get(path) is None:
-        conns[path] = await aiosqlite.connect(path)
+    global _conns
+    if _conns.get(path) is None:
+        _conns[path] = await aiosqlite.connect(path)
         logger.info(f"连接sqlite数据库 {path} 成功")
 
-    conn = conns[path]
-    if not table_created.get(f"{region}_{event_id}"):
+    conn = _conns[path]
+    if not _created_table_keys.get(f"{region}_{event_id}"):
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS ranking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +32,7 @@ async def get_conn(region, event_id) -> aiosqlite.Connection:
             )
         """)    
         await conn.commit()
-        table_created[f"{region}_{event_id}"] = True
+        _created_table_keys[f"{region}_{event_id}"] = True
 
     return conn
 

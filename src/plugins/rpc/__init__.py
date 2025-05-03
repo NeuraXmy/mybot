@@ -5,7 +5,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
 from datetime import datetime
 from nonebot import get_bot
-from ..record.sql import msg_recent
+from ..record.sql import query_recent_msg
 from ..record import before_record_hook
 import aiohttp
 import json
@@ -132,7 +132,7 @@ async def handle_send_group_msg(cid, group_id, message):
 # 从数据库获取群聊天记录
 @rpc('get_group_history_msg')
 async def handle_get_group_msg(cid, group_id, limit):
-    msgs = msg_recent(group_id, limit)
+    msgs = await query_recent_msg(group_id, limit)
     for msg in msgs:
         process_msg(msg)
     return msgs

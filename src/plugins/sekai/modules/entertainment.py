@@ -260,7 +260,7 @@ async def send_guess_music_hint(gctx: GuessContext):
         msg += f"发布时间为{time.year}年{time.month}月"
 
     gctx.used_hint_types.add(hint_type)    
-    await gctx.asend_reply_msg(msg)
+    await gctx.asend_msg(msg)
 
 # 获取卡面标题
 async def get_card_title(ctx: SekaiHandlerContext, card: Dict, after_training: bool) -> str:
@@ -340,7 +340,7 @@ async def send_guess_card_hint(gctx: GuessContext):
         elif unit == 'piapro': msg += "vs"
 
     gctx.used_hint_types.add(hint)
-    await gctx.asend_reply_msg(msg)
+    await gctx.asend_msg(msg)
 
 
 # ======================= 指令处理 ======================= #

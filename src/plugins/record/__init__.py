@@ -89,7 +89,7 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
     else:
         logger.info(f"[{msg_id}] {group_name}({group_id}) {user_name}({user_id}): {str(msg_for_log)}")
 
-    msg_insert(
+    await insert_msg(
         group_id=group_id,
         time=time,
         msg_id=msg_id,
@@ -97,27 +97,6 @@ async def record_message(bot: Bot, event: GroupMessageEvent):
         nickname=user_name,
         msg=msg,
     )
-    text_insert(
-        group_id=group_id,
-        time=time,
-        msg_id=msg_id,
-        user_id=user_id,
-        nickname=user_name,
-        text=msg_text,
-    )
-
-    for url, img_id in zip(img_urls, img_ids):
-        img_insert(
-            group_id=group_id,
-            time=time,
-            msg_id=msg_id,
-            user_id=user_id,
-            nickname=user_name,
-            url=url,
-            img_id=img_id,
-        )
-
-    commit()
 
     for hook in after_record_hook_funcs:
         try: await hook(bot, event)
@@ -165,7 +144,7 @@ async def _(ctx: HandlerContext):
     if not user_id:
         return await ctx.asend_reply_msg("请回复用户或指定用户的QQ号")
 
-    recs = msg_user(ctx.group_id, user_id)
+    recs = await query_msg_by_user_id(ctx.group_id, user_id)
     recs = sorted(recs, key=lambda x: x['time'])
     if not recs:
         return await ctx.asend_reply_msg(f"用户{user_id}在群{ctx.group_id}中没有发过言")

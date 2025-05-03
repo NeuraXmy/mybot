@@ -94,7 +94,7 @@ async def get_hash_from_msg(group_id, msg, types=None):
             file_unique = sdata.get('file_unique', "")
             phash = None
             if file_unique:
-                if rec := query_by_unique_id(group_id, 'image', file_unique):
+                if rec := await query_by_unique_id(group_id, 'image', file_unique):
                     phash = rec[0]['hash']
             # 没有计算过则计算phash
             if not phash:
@@ -177,7 +177,7 @@ async def get_hash_from_msg(group_id, msg, types=None):
 async def get_hashes_water_info(group_id, msg_id, hashes):
     ret = []
     for h in hashes:
-        recs = query_by_hash(group_id, h['type'], h['hash'])
+        recs = await query_by_hash(group_id, h['type'], h['hash'])
         recs = [rec for rec in sorted(recs, key=lambda x: x['time']) if rec['msg_id'] != msg_id]    # 排序并去掉查询的消息本身
         fst, lst, topk_users = None, None, None
         if recs:
@@ -215,9 +215,9 @@ water.check_group().check_wblist(gbl).check_cdrate(cd)
 @water.handle()
 async def _(ctx: HandlerContext):
     reply_msg_obj = await ctx.aget_reply_msg_obj()
+    assert_and_reply(reply_msg_obj, "请回复一条消息")
     reply_msg_id = reply_msg_obj['message_id']
     reply_msg = reply_msg_obj['message']
-    assert_and_reply(reply_msg, "请回复一条消息")
     group_id = ctx.group_id
 
     hashes = await get_hash_from_msg(group_id, reply_msg)
@@ -232,10 +232,10 @@ async def _(ctx: HandlerContext):
             continue
         
         if len(recs) > 1:
-            res = f"* {hash['brief']} 水果总数：{len(recs)}\n"
-            res += f"* 最早水果\n{get_readable_datetime(fst['time'])}\nby {fst['nickname']}({fst['user_id']})\n"
-            res += f"* 上次水果\n{get_readable_datetime(lst['time'])}\nby {lst['nickname']}({lst['user_id']})\n"
-            res += f"* 水果比例\n"
+            res = f"{hash['brief']} 水果总数：{len(recs)}\n"
+            res += f"[最早水果]\n{get_readable_datetime(fst['time'])}\nby {fst['nickname']}({fst['user_id']})\n"
+            res += f"[上次水果]\n{get_readable_datetime(lst['time'])}\nby {lst['nickname']}({lst['user_id']})\n"
+            res += f"[水果比例]\n"
             for u in topk_users:
                 res += f"{u['nickname']}({u['uid']}) {u['ratio']:.2f}%\n"
         else:
@@ -361,7 +361,7 @@ async def handle_task():
         try:
             hashes = await get_hash_from_msg(task['group_id'], task['msg'])
             for hash in hashes:
-                insert_hash(
+                await insert_hash(
                     group_id=task['group_id'],
                     type=hash['type'],
                     hash=hash['hash'],

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import openai
 import copy
 from tenacity import retry, stop_after_attempt, wait_fixed
-from ..record.sql import msg_recent
+from ..record.sql import query_recent_msg
 
 config = get_config('chat')
 logger = get_logger("Chat")
@@ -904,7 +904,7 @@ async def _(ctx: HandlerContext):
 
         # 获取内容
         await asyncio.sleep(2)
-        recent_msgs = msg_recent(group_id, cfg.input_record_num)
+        recent_msgs = await query_recent_msg(group_id, cfg.input_record_num)
         # 清空不在自动回复列表的自己的消息
         recent_msgs = [msg for msg in recent_msgs if msg['user_id'] != self_id or msg['msg_id'] in autochat_msg_ids]
         if not recent_msgs: return

@@ -7,7 +7,7 @@ from PIL import Image
 import io
 from ..utils import *
 from .draw import draw_all, reset_jieba, draw_date_count_plot, draw_word_count_plot, draw_all_long
-from ..record.sql import msg_range, msg_count, text_range
+from ..record.sql import query_msg_by_range, query_msg_count
 
 
 config = get_config("statistics")
@@ -35,7 +35,7 @@ async def get_day_statistic(bot, group_id, date=None):
     if date is None: date = datetime.now().strftime("%Y-%m-%d")
     start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
     end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
-    recs = msg_range(group_id, 
+    recs = await query_msg_by_range(group_id, 
                      datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
                      datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
     logger.info(f'获取{date}的统计图: 共获取到{len(recs)}条消息')
@@ -67,7 +67,7 @@ async def get_long_statistic(bot, group_id, start_date: datetime, end_date: date
     end_time   = end_date.strftime("%Y-%m-%d 23:59:59")
     start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
     end_time   = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
-    recs = msg_range(group_id, start_time, end_time)
+    recs = await query_msg_by_range(group_id, start_time, end_time)
     logger.info(f'绘制从{start_date}到{end_date}的长时间统计图: 共获取到{len(recs)}条消息')
 
     if len(recs) == 0: return f"从{start_date}到{end_date}的消息记录为空"
@@ -103,11 +103,11 @@ async def get_date_count_statistic(bot, group_id, days, user_id=None):
         date = (t - timedelta(days=i)).strftime("%Y-%m-%d")
         start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
         end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
-        cnt = msg_count(group_id, 
+        cnt = await query_msg_count(group_id, 
                          datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
                          datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
         if user_id is not None:
-            user_cnt = msg_count(group_id,
+            user_cnt = await query_msg_count(group_id,
                                 datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
                                 datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"),
                                 user_id)
@@ -129,11 +129,12 @@ async def get_word_statistic(bot, group_id, days, word):
         date = (t - timedelta(days=i)).strftime("%Y-%m-%d")
         start_time = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 00:00:00")
         end_time   = datetime.strptime(date, "%Y-%m-%d").strftime("%Y-%m-%d 23:59:59")
-        msgs = text_range(group_id,
-                            datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
-                            datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
+        msgs = await query_msg_by_range(group_id,
+                         datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"), 
+                         datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S"))
         for msg in msgs:
-            if any([word in msg['text'] for word in words]):
+            text = extract_text(msg['msg'])
+            if any([word in text for word in words]):
                 user_counts.inc(str(msg['user_id']))
                 user_date_counts[i].inc(str(msg['user_id']))
         dates.append(datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S"))
