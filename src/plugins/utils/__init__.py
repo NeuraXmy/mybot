@@ -948,7 +948,14 @@ def is_gif(image):
     return False
 
 # 获取图片的cq码用于发送
-async def get_image_cq(image, allow_error=False, logger=None, low_quality=False, force_read=False):
+async def get_image_cq(
+    image: Union[str, Image.Image, bytes],
+    allow_error: bool = False, 
+    logger: Logger = None, 
+    low_quality: bool = False, 
+    force_read: bool = False, 
+    quality: int = 75,
+):
     try:
         if force_read and isinstance(image, str):
             with open(image, 'rb') as f:
@@ -963,7 +970,7 @@ async def get_image_cq(image, allow_error=False, logger=None, low_quality=False,
                 if low_quality:
                     image = image.convert('RGB')
                     tmp_file_path.replace('.png', '.jpg')
-                    image.save(tmp_file_path, format='JPEG', quality=95, optimize=True, subsampling=1, progressive=True)
+                    image.save(tmp_file_path, format='JPEG', quality=quality, optimize=True, subsampling=1, progressive=True)
                 else:
                     image.save(tmp_file_path)
             else:
@@ -983,8 +990,8 @@ async def get_image_cq(image, allow_error=False, logger=None, low_quality=False,
             return f'[CQ:image,file=file:///{os.path.abspath(image)}]'
     except Exception as e:
         if allow_error:
-            if logger: 
-                logger.print_exc(f'图片加载失败: {e}')
+            logger = logger or utils_logger 
+            logger.print_exc(f'图片加载失败: {e}')
             return f"[图片加载失败:{truncate(str(e), 16)}]"
         raise e
 
@@ -1781,14 +1788,16 @@ class HandlerContext:
 
     # -------------------------- 其他 -------------------------- # 
 
-    async def block(self, block_id: str = "", timeout: int = 3 * 60):
+    async def block(self, block_id: str = "", timeout: int = 3 * 60, err_msg: str = None):
         block_id = str(block_id)
         block_start_time = datetime.now()
         while True:
             if block_id not in self.handler.block_set:
                 break
             if (datetime.now() - block_start_time).seconds > timeout:
-                raise Exception(f'指令执行繁忙(block_id={block_id})，请稍后再试')
+                if err_msg is None:
+                    err_msg = f'指令执行繁忙(block_id={block_id})，请稍后再试'
+                raise ReplyException(err_msg)
             await asyncio.sleep(1)
         self.handler.block_set.add(block_id)
         self.block_ids.append(block_id)

@@ -21,6 +21,8 @@ from .music import get_music_cover_thumb
 
 msr_sub = SekaiUserSubHelper("msr", "烤森资源查询自动推送", ['jp'])
 
+MYSEKAI_HARVEST_MAP_IMAGE_SCALE = 0.8
+
 MOST_RARE_MYSEKAI_RES = [
     "mysekai_material_5", "mysekai_material_12", "mysekai_material_20", "mysekai_material_24",
     "mysekai_fixture_121", "material_17", "material_170",
@@ -238,7 +240,7 @@ async def compose_mysekai_harvest_map_image(ctx: SekaiHandlerContext, harvest_ma
     with open(f"{SEKAI_DATA_DIR}/mysekai_site_map_image_info.json", "r", encoding="utf-8") as f:
         site_image_info = json.load(f)[str(site_id)]
     site_image = ctx.static_imgs.get(site_image_info['image'])
-    scale = 0.9
+    scale = MYSEKAI_HARVEST_MAP_IMAGE_SCALE
     draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)
     mid_x, mid_z = draw_w / 2, draw_h / 2
     grid_size = site_image_info['grid_size'] * scale
@@ -613,7 +615,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
     
     add_watermark(canvas)
     add_watermark(canvas2, text=DEFAULT_WATERMARK + ", map view from MiddleRed")
-    return [await run_in_pool(canvas.get_img), await run_in_pool(canvas2.get_img)]
+    return await asyncio.gather(run_in_pool(canvas.get_img), run_in_pool(canvas2.get_img))
 
 # 获取mysekai家具类别的名称和图片
 async def get_mysekai_fixture_genre_name_and_image(ctx: SekaiHandlerContext, gid: int, is_main_genre: bool) -> Tuple[str, Image.Image]:
@@ -1387,12 +1389,13 @@ pjsk_mysekai_res = SekaiCmdHandler([
 pjsk_mysekai_res.check_cdrate(cd).check_wblist(gbl)
 @pjsk_mysekai_res.handle()
 async def _(ctx: SekaiHandlerContext):
+    await ctx.block_region(key=f"{ctx.user_id}", timeout=0, err_msg="正在处理你的msr查询，请稍候")
     args = ctx.get_args().strip()
     show_harvested = 'all' in args
     check_time = not 'force' in args
     imgs = await compose_mysekai_res_image(ctx, ctx.user_id, show_harvested, check_time)
     imgs = [await get_image_cq(img, low_quality=True) for img in imgs]
-    return await ctx.asend_multiple_fold_msg(imgs, show_cmd=True)
+    await ctx.asend_multiple_fold_msg(imgs, show_cmd=True)
 
 
 # 查询mysekai蓝图
