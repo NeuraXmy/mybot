@@ -162,11 +162,10 @@ async def compose_card_list_image(ctx: SekaiHandlerContext, bg_unit: str, cards:
                             with VSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(8):
                                 GW = 300
                                 with HSplit().set_content_align('c').set_w(GW).set_padding(8).set_sep(16):
+                                    if normal is not None:
+                                        ImageBox(normal, size=(100, 100), image_size_mode='fill')
                                     if after is not None:
-                                        ImageBox(normal, size=(100, 100), image_size_mode='fill')
                                         ImageBox(after,  size=(100, 100), image_size_mode='fill')
-                                    else:
-                                        ImageBox(normal, size=(100, 100), image_size_mode='fill')
 
                                 name_text = card['prefix']
                                 TextBox(name_text, TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=BLACK)).set_w(GW).set_content_align('c')
