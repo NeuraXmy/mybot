@@ -1186,6 +1186,8 @@ async def compose_mysekai_fixture_detail_image(ctx: SekaiHandlerContext, fids: L
 
 # 合成mysekai门升级材料图片
 async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int, spec_gate_id: int = None) -> Image.Image:
+    GATE_MAX_LV = 40
+
     profile = None
     if qid:
         uid = get_uid_from_qid(ctx, qid, check_bind=False)
@@ -1206,7 +1208,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
         mid = item['mysekaiMaterialId']
         quantity = item['quantity']
         if gid not in gate_materials:
-            gate_materials[gid] = [[] for _ in range(40)]
+            gate_materials[gid] = [[] for _ in range(GATE_MAX_LV)]
         gate_materials[gid][level - 1].append({
             'mid': mid,
             'quantity': quantity,
@@ -1225,8 +1227,10 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
         if not spec_gate_id:
             # 如果没有指定门，则使用最大等级的门
             for gid, lv in spec_lvs.items():
-                if lv > spec_lvs.get(spec_gate_id, 0) and lv != 40:
+                if lv > spec_lvs.get(spec_gate_id, 0) and lv != GATE_MAX_LV:
                     spec_gate_id = gid
+            if not spec_gate_id:
+                raise ReplyException("你的所有门已经满级")
 
     # 根据指定lv截断
     for gid, lv_materials in gate_materials.items():
@@ -1236,6 +1240,8 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
     # 指定门
     if spec_gate_id:
         gate_materials = {spec_gate_id: gate_materials[spec_gate_id]}
+        if spec_lvs.get(spec_gate_id, 0) == GATE_MAX_LV:
+            raise ReplyException("查询的门已经满级")
 
     # 统计总和
     for gid, lv_materials in gate_materials.items():
@@ -1289,7 +1295,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
                                 if any(i['color'] == red_color for i in items):
                                     lv_color = red_color
 
-                            with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
+                            with HSplit().set_content_align('l').set_item_align('l').set_sep(4).set_padding(8):
                                 TextBox(f"{level}", TextStyle(font=DEFAULT_BOLD_FONT, size=20, color=lv_color), overflow='clip').set_w(32)
                                 for item in items:
                                     mid, quantity, color, sum_quantity = item['mid'], item['quantity'], item['color'], item['sum_quantity']
