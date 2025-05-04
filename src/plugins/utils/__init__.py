@@ -816,6 +816,46 @@ def set_group_enable(group_id, enable):
     utils_logger.info(f'设置群聊 {group_id} 全局启用状态为 {enable}')
 
 
+SEND_MSG_DAILY_LIMIT = 4000
+
+# 检查是否超过全局发送消息上限
+def check_send_msg_daily_limit() -> bool:
+    date = datetime.now().strftime("%Y-%m-%d")
+    send_msg_count = utils_file_db.get('send_msg_count', {})
+    count = send_msg_count.get('count', 0)
+    if send_msg_count.get('date', '') != date:
+        send_msg_count = {'date': date, 'count': 0}
+        utils_file_db.set('send_msg_count', send_msg_count)
+        count = 0
+    return count < SEND_MSG_DAILY_LIMIT
+
+# 记录消息发送
+def record_daily_msg_send():
+    date = datetime.now().strftime("%Y-%m-%d")
+    send_msg_count = utils_file_db.get('send_msg_count', {})
+    count = send_msg_count.get('count', 0)
+    if send_msg_count.get('date', '') != date:
+        send_msg_count = {'date': date, 'count': 0}
+        utils_file_db.set('send_msg_count', send_msg_count)
+        count = 0
+    count += 1
+    send_msg_count['count'] = count
+    utils_file_db.set('send_msg_count', send_msg_count)
+    if count == SEND_MSG_DAILY_LIMIT:
+        utils_logger.warning(f'达到每日发送消息上限 {SEND_MSG_DAILY_LIMIT}')
+
+# 获取当日发送消息数量
+def get_send_msg_daily_count() -> int:
+    date = datetime.now().strftime("%Y-%m-%d")
+    send_msg_count = utils_file_db.get('send_msg_count', {})
+    count = send_msg_count.get('count', 0)
+    if send_msg_count.get('date', '') != date:
+        send_msg_count = {'date': date, 'count': 0}
+        utils_file_db.set('send_msg_count', send_msg_count)
+        count = 0
+    return count
+
+
 self_reply_msg_ids = set()
 MSG_RATE_LIMIT_PER_SECOND = get_config()['msg_rate_limit_per_second']
 current_msg_count = 0
@@ -854,6 +894,9 @@ def send_msg_func(func):
                 self_reply_msg_ids.add(int(ret["message_id"]))
         except Exception as e:
             utils_logger.print_exc(f'记录发送消息的id失败')
+
+        # 记录消息发送次数
+        record_daily_msg_send()
             
         return ret
         
@@ -1897,6 +1940,10 @@ class CmdHandler:
                     if not wblist.check(event, **kwargs):
                         return
 
+                # 每日上限检查
+                if not check_send_msg_daily_limit() and not check_superuser(event, **self.superuser_check):
+                    return
+
                 # cd检查
                 for cdrate, kwargs in self.cdrate_checks:
                     if not (await cdrate.check(event, **kwargs)):
@@ -2136,3 +2183,10 @@ async def _(ctx: HandlerContext):
 
     return await ctx.asend_reply_msg(msg.strip())
 
+# 获取当日消息发送数量
+daily_send_count = CmdHandler(['/send_count'], utils_logger)
+daily_send_count.check_superuser()
+@daily_send_count.handle()
+async def _(ctx: HandlerContext):
+    count = get_send_msg_daily_count()
+    return await ctx.asend_reply_msg(f'今日已发送消息数量: {count}')

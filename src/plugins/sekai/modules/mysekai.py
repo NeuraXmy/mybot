@@ -1589,7 +1589,7 @@ async def _(ctx: SekaiHandlerContext):
 # ======================= 定时任务 ======================= #
 
 # Mysekai资源查询自动推送
-@repeat_with_interval(10, 'Mysekai资源查询自动推送', logger)
+@repeat_with_interval(2, 'Mysekai资源查询自动推送', logger)
 async def msr_auto_push():
     bot = get_bot()
 
