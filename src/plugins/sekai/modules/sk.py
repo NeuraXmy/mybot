@@ -1,4 +1,5 @@
 from ...utils import *
+from ...llm import translate_text
 from ..common import *
 from ..handler import *
 from ..asset import *
@@ -54,6 +55,13 @@ class PredictRankings:
     ranks: List[int]
     current: Dict[int, int]
     final: Dict[int, int]
+
+@dataclass
+class PredictWinrate:
+    event_id: int
+    recruiting: Dict[int, bool]
+    predict_rates: Dict[int, float]
+    predict_time: datetime
 
 
 # ======================= 处理逻辑 ======================= #
@@ -809,6 +817,87 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 获取胜率预测数据
+async def get_winrate_predict_data(ctx: SekaiHandlerContext):
+    assert ctx.region == 'jp', "5v5胜率预测仅支持日服"
+    data = await download_json("https://sekai-data.3-3.dev/cheerful_predict.json")
+    try:
+        event_id = data['eventId']
+        predict_time = datetime.fromtimestamp(data['timestamp'] / 1000)
+        recruiting = {}
+        for team_id, status in data['status'].items():
+            recruiting[int(team_id)] = (status == "recruite")
+        predict_rates = {}
+        for team_id, rate in data['predictRates'].items():
+            predict_rates[int(team_id)] = rate
+        return PredictWinrate(
+            event_id=event_id,
+            predict_time=predict_time,
+            recruiting=recruiting,
+            predict_rates=predict_rates,
+        )
+    except Exception as e:
+        raise Exception(f"解析5v5胜率数据失败: {get_exc_desc(e)}")
+
+# 合成5v5胜率预测图片
+async def compose_winrate_predict_image(ctx: SekaiHandlerContext) -> Image.Image:
+    predict = await get_winrate_predict_data(ctx)
+
+    eid = predict.event_id
+    event = await ctx.md.events.find_by_id(eid)
+    banner_img = await get_event_banner_img(ctx, event)
+
+    event_name = event['name']
+    event_start = datetime.fromtimestamp(event['startAt'] / 1000)
+    event_end = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+
+    teams = await ctx.md.cheerful_carnival_teams.find_by('eventId', eid, mode='all')
+    assert_and_reply(len(teams) == 2, "未找到5v5活动数据")
+    teams.sort(key=lambda x: x['id'])
+    tids = [team['id'] for team in teams]
+    tnames = [team['teamName'] for team in teams]
+    for i in range(2):
+        if tname_cn := await translate_text(tnames[i]):
+            tnames[i] = f"{tnames[i]} ({tname_cn})"
+    ticons = [
+        await ctx.rip.img(f"event/{event['assetbundleName']}/team_image/{team['assetbundleName']}.png")
+        for team in teams
+    ]
+
+    with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
+            with HSplit().set_content_align('rt').set_item_align('rt').set_padding(16).set_sep(7):
+                with VSplit().set_content_align('lt').set_item_align('lt').set_sep(5):
+                    TextBox(f"【{ctx.region.upper()}-{eid}】{truncate(event_name, 20)}", TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(f"{event_start.strftime('%Y-%m-%d %H:%M')} ~ {event_end.strftime('%Y-%m-%d %H:%M')}", 
+                            TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
+                    time_to_end = event_end - datetime.now()
+                    if time_to_end.total_seconds() <= 0:
+                        time_to_end = "活动已结束"
+                    else:
+                        time_to_end = f"距离活动结束还有{get_readable_timedelta(time_to_end)}"
+                    TextBox(time_to_end, TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox(f"预测更新时间: {predict.predict_time.strftime('%m-%d %H:%M:%S')} ({get_readable_datetime(predict.predict_time, show_original_time=False)})",
+                            TextStyle(font=DEFAULT_BOLD_FONT, size=18, color=BLACK))
+                    TextBox("数据来源: 3-3.dev", TextStyle(font=DEFAULT_FONT, size=12, color=(50, 50, 50, 255)))
+                if banner_img:
+                    ImageBox(banner_img, size=(140, None))
+
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_item_bg(roundrect_bg()):
+                for i in range(2):
+                    with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(16):
+                        ImageBox(ticons[i], size=(None, 80))
+                        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8):
+                            TextBox(tnames[i], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                            with HSplit().set_content_align('lb').set_item_align('lb').set_sep(8).set_padding(0):
+                                TextBox(f"预测胜率: {predict.predict_rates.get(tids[i]) * 100.0:.1f}%",
+                                        TextStyle(font=DEFAULT_FONT, size=24, color=(50, 50, 50, 255)))
+                                TextBox("（急募中）" if predict.recruiting.get(tids[i]) else "（非急募）", 
+                                        TextStyle(font=DEFAULT_FONT, size=20, color=(75, 75, 75, 255)))
+                            
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -954,6 +1043,20 @@ async def _(ctx: SekaiHandlerContext):
 
     return await ctx.asend_msg(await get_image_cq(
         await compose_rank_trace_image(ctx, rank, event=wl_event),
+        low_quality=True,
+    ))
+
+
+# 5v5胜率预测
+pjsk_winrate = SekaiCmdHandler([
+    "/pjsk winrate predict", "/pjsk_winrate_predict", 
+    "/胜率预测", "/5v5预测", "/胜率",
+])
+pjsk_winrate.check_cdrate(cd).check_wblist(gbl)
+@pjsk_winrate.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_msg(await get_image_cq(
+        await compose_winrate_predict_image(ctx),
         low_quality=True,
     ))
 

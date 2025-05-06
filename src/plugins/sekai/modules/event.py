@@ -160,7 +160,7 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
                     if card['characterId'] == await get_event_banner_chara_id(ctx, event):
                         banner_card = card
                         break
-                if not banner_card:
+                if not banner_card and card_and_thumbs:
                     banner_card = card_and_thumbs[0][0]
 
                 card_and_thumbs = card_and_thumbs[:6]
@@ -180,18 +180,18 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
                 if event_type_name: event_type_name += "  "
 
                 attr, attr_icon = None, None
-                if event['eventType'] in ['marathon', 'cheerful_carnival']:
+                if banner_card and event['eventType'] in ['marathon', 'cheerful_carnival']:
                     attr = banner_card['attr']
                     attr_icon = get_attr_icon(attr)
 
                 unit, unit_logo = None, None
                 ban_cid, ban_chara_icon = None, None
-                if await is_ban_event(ctx, event):
+                if banner_card and await is_ban_event(ctx, event):
                     ban_cid = banner_card['characterId']
                     unit = get_unit_by_chara_id(ban_cid)
                     unit_logo = get_unit_icon(unit)
                     ban_chara_icon = get_chara_icon_by_chara_id(ban_cid)
-                elif event['eventType'] == 'world_bloom':
+                elif banner_card and event['eventType'] == 'world_bloom':
                     unit = get_unit_by_chara_id(banner_card['characterId'])
                     unit_logo = get_unit_icon(unit)
 

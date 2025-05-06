@@ -359,6 +359,10 @@ async def compose_deck_recommend_image(
         if event['eventType'] == 'cheerful_carnival':
             live_name = "5v5" 
 
+    # 团队属性组卡指定5v5
+    if recommend_type == "unit_attr" and options.event_type == "cheerful_carnival":
+        live_name = "5v5"
+        
     # 获取挑战角色名字和头像
     chara_name = None
     if recommend_type == "challenge":

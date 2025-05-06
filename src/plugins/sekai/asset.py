@@ -429,6 +429,7 @@ class RegionMasterDataCollection:
         self.mysekai_musicrecord_categories                                 = RegionMasterDataWrapper(region, "mysekaiMusicRecordCategories")
         self.music_tags                                                     = RegionMasterDataWrapper(region, "musicTags")
         self.mysekai_gate_character_lotteries                               = RegionMasterDataWrapper(region, "mysekaiGateCharacterLotteries")
+        self.cheerful_carnival_teams                                        = RegionMasterDataWrapper(region, "cheerfulCarnivalTeams")
 
     async def get(self, name: str):
         wrapper = RegionMasterDataWrapper(self._region, name)
