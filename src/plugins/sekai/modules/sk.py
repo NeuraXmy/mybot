@@ -1064,7 +1064,7 @@ async def _(ctx: SekaiHandlerContext):
 # ======================= 定时任务 ======================= #
 
 UPDATE_RANKING_LOG_INTERVAL_TIMES = 30
-RECORD_TIME_AFTER_EVENT_END = 60 * 10
+RECORD_TIME_AFTER_EVENT_END = 60 * 0
 ranking_update_times = { region: 0 for region in ALL_SERVER_REGIONS }
 ranking_update_failures = { region: 0 for region in ALL_SERVER_REGIONS }
 
