@@ -273,6 +273,7 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
 
     ## 读取数据
     story = await ctx.md.event_stories.find_by('eventId', eid)
+    assert_and_reply(story, f"找不到活动{eid}的剧情数据")
     outline = story['outline']
     asset_name = story['assetbundleName']
     eps = []

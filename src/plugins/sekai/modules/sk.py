@@ -864,6 +864,8 @@ async def compose_winrate_predict_image(ctx: SekaiHandlerContext) -> Image.Image
         for team in teams
     ]
 
+    win_tid = tids[0] if predict.predict_rates[tids[0]] >= predict.predict_rates[tids[1]] else tids[1]
+
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_item_bg(roundrect_bg()):
             with HSplit().set_content_align('rt').set_item_align('rt').set_padding(16).set_sep(7):
@@ -886,14 +888,15 @@ async def compose_winrate_predict_image(ctx: SekaiHandlerContext) -> Image.Image
             with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16).set_item_bg(roundrect_bg()):
                 for i in range(2):
                     with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(16):
-                        ImageBox(ticons[i], size=(None, 80))
+                        ImageBox(ticons[i], size=(None, 100))
                         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8):
-                            TextBox(tnames[i], TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                            TextBox(tnames[i], TextStyle(font=DEFAULT_BOLD_FONT, size=28, color=BLACK), use_real_line_count=True).set_w(400)
                             with HSplit().set_content_align('lb').set_item_align('lb').set_sep(8).set_padding(0):
-                                TextBox(f"预测胜率: {predict.predict_rates.get(tids[i]) * 100.0:.1f}%",
-                                        TextStyle(font=DEFAULT_FONT, size=24, color=(50, 50, 50, 255)))
-                                TextBox("（急募中）" if predict.recruiting.get(tids[i]) else "（非急募）", 
-                                        TextStyle(font=DEFAULT_FONT, size=20, color=(75, 75, 75, 255)))
+                                TextBox(f"预测胜率: ", TextStyle(font=DEFAULT_FONT, size=28, color=(75, 75, 75, 255)))
+                                TextBox(f"{predict.predict_rates.get(tids[i]) * 100.0:.1f}%",
+                                        TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=(25, 100, 25, 255) if win_tid == tids[i] else (100, 25, 25, 255)))
+                                TextBox("（急募中）" if predict.recruiting.get(tids[i]) else "", 
+                                        TextStyle(font=DEFAULT_FONT, size=28, color=(100, 25, 75, 255)))
                             
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
