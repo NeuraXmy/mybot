@@ -899,7 +899,7 @@ async def compose_winrate_predict_image(ctx: SekaiHandlerContext) -> Image.Image
                                         TextStyle(font=DEFAULT_FONT, size=28, color=(100, 25, 75, 255)))
                             
     add_watermark(canvas)
-    return await run_in_pool(canvas.get_img)
+    return await run_in_pool(canvas.get_img, 2.)
 
 
 # ======================= 指令处理 ======================= #
