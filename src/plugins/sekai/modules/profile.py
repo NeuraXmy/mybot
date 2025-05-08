@@ -6,11 +6,11 @@ from ..draw import *
 from .honor import compose_full_honor_image
 
 SEKAI_PROFILE_DIR = f"{SEKAI_DATA_DIR}/profile"
-PROFILE_CONFIG_PATH = f"{SEKAI_DATA_DIR}/profile_config.yaml"
+GAMEAPI_CONFIG_PATH = f"{SEKAI_DATA_DIR}/gameapi_config.yaml"
 profile_db = get_file_db(f"{SEKAI_PROFILE_DIR}/db.json", logger)
 
 @dataclass
-class RegionProfileConfig:
+class GameApiConfig:
     api_status_url: Optional[str] = None
     profile_api_url: Optional[str] = None 
     suite_api_url: Optional[str] = None
@@ -19,6 +19,8 @@ class RegionProfileConfig:
     mysekai_photo_api_url: Optional[str] = None 
     mysekai_upload_time_api_url: Optional[str] = None 
     ranking_api_url: Optional[str] = None
+    send_boost_api_url: Optional[str] = None
+
 
 @dataclass
 class PlayerAvatarInfo:
@@ -154,20 +156,20 @@ def validate_uid(ctx: SekaiHandlerContext, uid: str) -> bool:
         return False
     return True
 
-# 获取profile相关配置
-def get_profile_config(ctx: SekaiHandlerContext) -> RegionProfileConfig:
-    if not os.path.exists(PROFILE_CONFIG_PATH):
+# 获取游戏api相关配置
+def get_gameapi_config(ctx: SekaiHandlerContext) -> GameApiConfig:
+    if not os.path.exists(GAMEAPI_CONFIG_PATH):
         return {}
-    with open(PROFILE_CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(GAMEAPI_CONFIG_PATH, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    return RegionProfileConfig(**(config.get(ctx.region) or {}))
+    return GameApiConfig(**(config.get(ctx.region) or {}))
 
 # 获取qq用户绑定的游戏id
 def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str:
     qid = str(qid)
     bind_list: Dict[str, str] = profile_db.get("bind_list", {}).get(ctx.region, {})
     if check_bind and not bind_list.get(qid, None):
-        assert_and_reply(get_profile_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
+        assert_and_reply(get_gameapi_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         region = "" if ctx.region == "jp" else ctx.region
         raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
     uid = bind_list.get(qid, None)
@@ -178,7 +180,7 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
 async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True, raise_when_no_found=True) -> dict:
     cache_path = f"{SEKAI_PROFILE_DIR}/profile_cache/{ctx.region}/{uid}.json"
     try:
-        url = get_profile_config(ctx).profile_api_url
+        url = get_gameapi_config(ctx).profile_api_url
         assert_and_reply(url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         profile = await download_json(url.format(uid=uid))
         if raise_when_no_found:
@@ -243,7 +245,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             raise Exception("已隐藏抓包信息")
         
         # 服务器不支持
-        url = get_profile_config(ctx).suite_api_url
+        url = get_gameapi_config(ctx).suite_api_url
         if not url:
             raise Exception(f"暂不支持查询 {ctx.region} 服务器的玩家详细信息")
         
@@ -498,7 +500,7 @@ async def _(ctx: SekaiHandlerContext):
     async def check_bind(region: str) -> Optional[Tuple[str, str, str]]:
         try:
             region_ctx = SekaiHandlerContext.from_region(region)
-            if not get_profile_config(region_ctx).profile_api_url:
+            if not get_gameapi_config(region_ctx).profile_api_url:
                 return None
             checked_regions.append(get_region_name(region))
             profile = await get_basic_profile(region_ctx, args, use_cache=False, raise_when_no_found=False)
@@ -658,7 +660,7 @@ pjsk_check_service = SekaiCmdHandler([
 pjsk_check_service.check_cdrate(cd).check_wblist(gbl)
 @pjsk_check_service.handle()
 async def _(ctx: SekaiHandlerContext):
-    url = get_profile_config(ctx).api_status_url
+    url = get_gameapi_config(ctx).api_status_url
     assert_and_reply(url, f"暂无 {ctx.region} 的查询服务器")
     try:
         async with aiohttp.ClientSession() as session:

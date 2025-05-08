@@ -4,7 +4,7 @@ from ..common import *
 from ..handler import *
 from ..asset import *
 from ..draw import *
-from .profile import get_card_full_thumbnail
+from .profile import get_card_full_thumbnail, get_gameapi_config, get_uid_from_qid
 
 
 DEFAULT_EVENT_STORY_SUMMARY_MODEL = [
@@ -474,6 +474,27 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
         
     return msg_lists
 
+# 5v5自动送火
+async def send_boost(ctx: SekaiHandlerContext, qid: int) -> str:
+    uid = get_uid_from_qid(ctx, qid)
+    event = await get_current_event(ctx, mode='running')
+    assert_and_reply(event and event['eventType'] == 'cheerful_carnival', "当前没有进行中的5v5活动")
+    url = get_gameapi_config(ctx).send_boost_api_url
+    assert_and_reply(url, "该区服不支持自动送火")
+    url = url.format(uid=uid)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, verify_ssl=False) as resp:
+            if resp.status != 200:
+                logger.warning(f"自动送火失败，状态码: {resp.status}")
+                raise ReplyException(f"自动送火失败（内部错误）")
+            result = await resp.json()
+    ok_times = result['ok_times']
+    failed_reason = result.get('failed_reason', '未知错误')
+    ret_msg = f"成功送火{ok_times}次"
+    if ok_times < 3:
+        ret_msg += f"，失败{3-ok_times}次，错误信息: {failed_reason}"
+    return ret_msg
+
 
 # ======================= 指令处理 ======================= #
 
@@ -548,3 +569,13 @@ async def _(ctx: SekaiHandlerContext):
     await ctx.block_region(str(event['id']))
     return await ctx.asend_multiple_fold_msg(await get_event_story_summary(ctx, event, refresh, model, save))
 
+
+# 5v5自动送火
+pjsk_send_boost = SekaiCmdHandler([
+    "/pjsk send boost", "/pjsk_send_boost", "/pjsk grant boost", "/pjsk_grant_boost",
+    "/自动送火", "/送火",
+], regions=['jp'])
+pjsk_send_boost.check_cdrate(cd).check_wblist(gbl)
+@pjsk_send_boost.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await send_boost(ctx, ctx.user_id))

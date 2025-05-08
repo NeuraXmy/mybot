@@ -134,7 +134,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # ======================= 定时任务 ======================= #
 
-VLIVE_START_NOTIFY_BEFORE = timedelta(minutes=10)
+VLIVE_START_NOTIFY_BEFORE = timedelta(minutes=3)
 VLIVE_END_NOTIFY_BEFORE   = timedelta(minutes=140)
 
 # live自动提醒

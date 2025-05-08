@@ -6,7 +6,7 @@ from ..asset import *
 from ..draw import *
 from ..sub import SekaiUserSubHelper
 from .profile import (
-    get_profile_config, 
+    get_gameapi_config, 
     get_uid_from_qid, 
     SEKAI_PROFILE_DIR,
     get_basic_profile,
@@ -93,7 +93,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
             raise e
         
         # 服务器不支持
-        url = get_profile_config(ctx).mysekai_api_url
+        url = get_gameapi_config(ctx).mysekai_api_url
         assert url, f"暂不支持 {ctx.region} 的mysekai数据查询"
 
         # 获取模式
@@ -104,7 +104,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
             mysekai_info = await download_json(url.format(uid=uid) + f"?mode={mode}")
         except Exception as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
-            raise ReplyException(f"{get_exc_desc(e)}")
+            raise ReplyException(f"{str(e)}")
         if not mysekai_info:
             logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
             raise Exception(f"找不到ID为 {uid} 的玩家")
@@ -940,7 +940,7 @@ async def get_mysekai_photo_and_time(ctx: SekaiHandlerContext, qid: int, seq: in
     photo_path = photo['imagePath']
     photo_time = datetime.fromtimestamp(photo['obtainedAt'] / 1000)
 
-    url = get_profile_config(ctx).mysekai_photo_api_url
+    url = get_gameapi_config(ctx).mysekai_photo_api_url
     assert_and_reply(url, f"暂不支持查询 {ctx.region} 的MySekai照片")
     url = url.format(photo_path=photo_path)
 
@@ -1603,7 +1603,7 @@ async def msr_auto_push():
         region_name = get_region_name(region)
         ctx = SekaiHandlerContext.from_region(region)
 
-        url = get_profile_config(ctx).mysekai_upload_time_api_url
+        url = get_gameapi_config(ctx).mysekai_upload_time_api_url
         if not url: continue
 
         upload_times = await download_json(url)

@@ -5,7 +5,7 @@ from ..handler import *
 from ..asset import *
 from ..draw import *
 from .profile import (
-    get_profile_config,
+    get_gameapi_config,
     get_uid_from_qid,
 )
 from .event import get_current_event, get_event_banner_img, get_event_by_index
@@ -230,8 +230,8 @@ async def get_latest_ranking(ctx: SekaiHandlerContext, event_id: int, query_rank
         logger.info(f"从数据库获取 {ctx.region}_{event_id} 最新榜线数据")
         return rankings
     # 从API获取
-    assert_and_reply(get_profile_config(ctx).ranking_api_url, f"暂不支持获取{ctx.region}榜线数据")
-    url = get_profile_config(ctx).ranking_api_url.format(event_id=event_id % 1000)
+    assert_and_reply(get_gameapi_config(ctx).ranking_api_url, f"暂不支持获取{ctx.region}榜线数据")
+    url = get_gameapi_config(ctx).ranking_api_url.format(event_id=event_id % 1000)
     async with aiohttp.ClientSession() as session:
         async with session.get(url, verify_ssl=False) as resp:
             if resp.status != 200:
@@ -1078,7 +1078,7 @@ async def update_ranking():
     for region in ALL_SERVER_REGIONS:
         ctx = SekaiHandlerContext.from_region(region)
 
-        if not get_profile_config(ctx).ranking_api_url:
+        if not get_gameapi_config(ctx).ranking_api_url:
             continue
         
         # 获取当前运行中的活动
@@ -1091,7 +1091,7 @@ async def update_ranking():
         @retry(wait=wait_fixed(3), stop=stop_after_attempt(3), reraise=True)
         async def _get_ranking(ctx: SekaiHandlerContext, eid: int):
             try:
-                url = get_profile_config(ctx).ranking_api_url.format(event_id=eid)
+                url = get_gameapi_config(ctx).ranking_api_url.format(event_id=eid)
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, verify_ssl=False) as resp:
                         if resp.status != 200:
