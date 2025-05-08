@@ -20,7 +20,7 @@ async def get_stamp_image(ctx: SekaiHandlerContext, sid) -> Image.Image:
 async def get_stamp_image_cq(ctx: SekaiHandlerContext, sid):
     with TempFilePath("gif") as path:
         save_high_quality_static_gif(await get_stamp_image(ctx, sid), path)
-        return await get_image_cq(path, force_read=True)
+        return await get_image_cq(path)
 
 # 合成某个角色的所有表情图片
 async def compose_character_all_stamp_image(ctx: SekaiHandlerContext, cid):
@@ -140,7 +140,7 @@ async def _(ctx: SekaiHandlerContext):
         result_image = await make_stamp_image(ctx, sid, text)
         with TempFilePath("gif") as path:
             save_high_quality_static_gif(result_image, path)
-            return await ctx.asend_reply_msg(await get_image_cq(path, force_read=True))
+            return await ctx.asend_reply_msg(await get_image_cq(path))
 
 
 # 随机表情 
@@ -181,7 +181,7 @@ async def _(ctx: SekaiHandlerContext):
         img = await make_stamp_image(ctx, sid, args)
         with TempFilePath("gif") as path:
             save_high_quality_static_gif(img, path)
-            return await ctx.asend_reply_msg(await get_image_cq(path, force_read=True))
+            return await ctx.asend_reply_msg(await get_image_cq(path))
     else:
         sid = await get_rand_sid(cid, False)
         assert_and_reply(sid, f"没有符合条件的表情")

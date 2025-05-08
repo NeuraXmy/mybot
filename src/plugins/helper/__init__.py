@@ -15,6 +15,9 @@ cd = ColdDown(file_db, logger, config['cd'])
 HELP_DOCS_WEB_URL = "https://github.com/NeuraXmy/mybot/blob/master/helps/{name}.md"
 HELP_DOCS_PATH = "helps/{name}.md"
 
+HELP_IMG_SCALE = 0.8
+HELP_IMG_WIDTH = 600
+HELP_IMG_INTERSECT = 20
 
 help = CmdHandler(['/help', '/帮助', 'help', '帮助'], logger, block=True, only_to_me=True, priority=99999)
 help.check_wblist(gbl).check_cdrate(cd)
@@ -56,14 +59,19 @@ async def _(ctx: HandlerContext):
             else:
                 logger.info(f"缓存 {args} 帮助文档不存在或已过期，重新渲染")
                 doc_text = Path(doc_path).read_text()
-                image = await markdown_to_image(doc_text)
+                image = await markdown_to_image(doc_text, width=HELP_IMG_WIDTH)
+                image = image.resize((int(image.width * HELP_IMG_SCALE), int(image.height * HELP_IMG_SCALE)))
                 # 如果长度过长，截成几段再横向拼接发送
-                max_height = 600 * 5
+                max_height = HELP_IMG_WIDTH * 3
                 if image.height > max_height:
-                    height = math.ceil(image.height / math.ceil(image.height / max_height))
+                    n = math.ceil(math.sqrt(image.height * image.width) / image.width)
+                    height = math.ceil(image.height / n)
                     images = []
                     for i in range(0, image.height, height):
-                        images.append(image.crop((0, i, image.width, i + height)))
+                        bbox = [0, i, image.width, i + height]
+                        if bbox[1] > 0:
+                            bbox[1] = bbox[1] - HELP_IMG_INTERSECT
+                        images.append(image.crop(bbox))
                     image = await run_in_pool(concat_images, images, 'h')
                 # 保存缓存
                 image.save(cache_path)

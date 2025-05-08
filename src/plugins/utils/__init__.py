@@ -990,53 +990,52 @@ def is_gif(image):
         return hasattr(image, 'is_animated') and image.is_animated
     return False
 
+
 # 获取图片的cq码用于发送
 async def get_image_cq(
     image: Union[str, Image.Image, bytes],
     allow_error: bool = False, 
     logger: Logger = None, 
     low_quality: bool = False, 
-    force_read: bool = False, 
     quality: int = 75,
 ):
+    args = (allow_error, logger, low_quality, quality)
     try:
-        if force_read and isinstance(image, str):
-            with open(image, 'rb') as f:
-                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
-        if isinstance(image, Image.Image):
-            tmp_file_path = 'data/imgtool/tmp/tmp'
-            # check if image mode is P
-            is_g = (is_gif(image) or image.mode == 'P')
-            tmp_file_path += '.gif' if is_g else '.png'
-            os.makedirs(os.path.dirname(tmp_file_path), exist_ok=True)
-            if not is_g:
-                if low_quality:
-                    image = image.convert('RGB')
-                    tmp_file_path.replace('.png', '.jpg')
-                    image.save(tmp_file_path, format='JPEG', quality=quality, optimize=True, subsampling=1, progressive=True)
-                else:
-                    image.save(tmp_file_path)
-            else:
-                save_transparent_gif(get_frames_from_gif(image), get_gif_duration(image), tmp_file_path)
-            with open(tmp_file_path, 'rb') as f:
-                cq = f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
-            os.remove(tmp_file_path)
-            return cq
-        elif isinstance(image, bytes):
-            return f'[CQ:image,file=base64://{base64.b64encode(image).decode()}]'
-        elif image.startswith("http"):
+        # 如果是远程图片
+        if isinstance(image, str) and image.startswith("http"):
             image = await download_image(image)
-            return await get_image_cq(image, allow_error, logger)
-        else:
+            return await get_image_cq(image, *args)
+        # 如果是bytes
+        if isinstance(image, bytes):
+            image = Image.open(io.BytesIO(image))
+            return await get_image_cq(image, *args)
+        # 如果是本地路径
+        if isinstance(image, str):
             if not os.path.exists(image):
                 raise Exception(f'图片文件不存在: {image}')
-            return f'[CQ:image,file=file:///{os.path.abspath(image)}]'
+            image = open_image(image)
+            return await get_image_cq(image, *args)
+
+        is_gif_img = is_gif(image) or image.mode == 'P'
+        ext = 'gif' if is_gif_img else ('jpg' if low_quality else 'png')
+        with TempFilePath(ext) as tmp_path:
+            if ext == 'gif':
+                save_transparent_gif(get_frames_from_gif(image), get_gif_duration(image), tmp_path)
+            elif ext == 'jpg':
+                image = image.convert('RGB')
+                image.save(tmp_path, format='JPEG', quality=quality, optimize=True, subsampling=1, progressive=True)
+            else:
+                image.save(tmp_path)
+            
+            with open(tmp_path, 'rb') as f:
+                return f'[CQ:image,file=base64://{base64.b64encode(f.read()).decode()}]'
+
     except Exception as e:
-        if allow_error:
-            logger = logger or utils_logger 
-            logger.print_exc(f'图片加载失败: {e}')
+        if allow_error: 
+            (logger or utils_logger).print_exc(f'图片加载失败: {e}')
             return f"[图片加载失败:{truncate(str(e), 16)}]"
         raise e
+
 
 # 获取音频的cq码用于发送
 def get_audio_cq(audio_path):
