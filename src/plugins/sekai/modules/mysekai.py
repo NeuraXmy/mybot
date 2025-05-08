@@ -70,6 +70,9 @@ UNIT_GATEID_MAP = {
     "school_refusal": 5,
 }
 
+SITE_ID_ORDER = (
+    5, 7, 6, 8,
+)
 
 # ======================= 处理逻辑 ======================= #
 
@@ -485,7 +488,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
                     read_cids = set(read_info['cids'])
 
     # 计算资源数量
-    site_res_num = {}
+    site_res_num = { site_id : {} for site_id in SITE_ID_ORDER }
     harvest_maps = mysekai_info['updatedResources']['userMysekaiHarvestMaps']
     for site_map in harvest_maps:
         site_id = site_map['mysekaiSiteId']
@@ -499,8 +502,6 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
 
             if not show_harvested and res_status != "before_drop": continue
 
-            if site_id not in site_res_num:
-                site_res_num[site_id] = {}
             if res_key not in site_res_num[site_id]:
                 site_res_num[site_id][res_key] = 0
             site_res_num[site_id][res_key] += res_quantity
@@ -512,8 +513,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
     }
 
     # 排序
-    site_res_num = sorted(list(site_res_num.items()), key=lambda x: x[0])
-    site_res_num[1], site_res_num[2] = site_res_num[2], site_res_num[1]
+    site_res_num = [(site_id, site_res_num[site_id]) for site_id in SITE_ID_ORDER]
     site_harvest_map_imgs = []
     def get_res_order(item):
         key, num = item
