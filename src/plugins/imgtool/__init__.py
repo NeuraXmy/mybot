@@ -308,11 +308,11 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
 
     # 检查操作输入输出类型是否对应
     for i in range(1, len(ops)):
-        pre_name = ops[i-1][0]
-        cur_name = ops[i][0]
+        pre_name = ops[i-1][0].name
+        cur_name = ops[i][0].name
         pre_type = ops[i-1][0].output_type
         cur_type = ops[i][0].input_type
-        assert_and_reply(pre_type.check_type(cur_type), f"{i}.{pre_name} 的输出类型 {pre_type} 与 {i+1}.{cur_name} 的输入类型 {cur_type} 不匹配")
+        assert_and_reply(pre_type.check_type(cur_type), f"第{i}个操作 {pre_name} 的输出类型 {pre_type} 与 第{i+1}个操作 {cur_name} 的输入类型 {cur_type} 不匹配")
 
     # 获取图片，并检查初始输入类型是否匹配
     img = await get_multi_images(ctx)
@@ -331,8 +331,8 @@ async def operate_image(ctx: HandlerContext) -> Image.Image:
         try:
             img = await run_in_pool(op, img, args)
         except Exception as e:
-            logger.print_exc(f"执行图片操作 {i+1}.{op.name} 失败")
-            raise ReplyException(f"执行图片操作 {i+1}.{op.name} 失败: {e}")
+            logger.print_exc(f"执行第{i+1}个图片操作 {op.name} 失败")
+            raise ReplyException(f"执行第{i+1}个图片操作 {op.name} 失败: {e}")
         
     # 清空图片列表
     await clear_image_list(ctx, reply=False)    
