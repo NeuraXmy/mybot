@@ -56,6 +56,12 @@ async def send_masterdata_update_notify(
     bot = get_bot()
     region_name = get_region_name(region)
 
+    # 防止重复通知
+    last_notified_version = file_db.get(f"last_notified_md_version_{region}", None)
+    if last_notified_version == version:
+        return
+    file_db.set(f"last_notified_md_version_{region}", version)
+
     msg = f"从{source}获取{region_name}的MasterData更新: {last_version} -> {version}\n"
     if last_asset_version != asset_version:
         msg += f"解包资源版本: {last_asset_version} -> {asset_version}\n"
