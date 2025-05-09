@@ -23,13 +23,14 @@ from sekai_deck_recommend import (
 
 
 deck_recommend = SekaiDeckRecommend()
-RECOMMEND_TIMEOUT = timedelta(seconds=10)
+RECOMMEND_TIMEOUT = timedelta(seconds=5)
 NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=20)
 SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=60)
-RECOMMEND_ALGS = ['dfs', 'sa']
+RECOMMEND_ALGS = ['dfs', 'sa', 'ga']
 RECOMMEND_ALG_NAMES = {
-    'dfs': '深度优先搜索',
+    'dfs': '暴力搜索',
     'sa': '模拟退火',
+    'ga': '遗传算法',
 }
 deck_recommend_pool = ThreadPoolExecutor(max_workers=len(RECOMMEND_ALGS))
 deck_recommend_lock = asyncio.Lock()
