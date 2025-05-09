@@ -58,13 +58,14 @@ async def send_masterdata_update_notify(
 
     # 防止重复通知
     last_notified_version = file_db.get(f"last_notified_md_version_{region}", None)
-    if last_notified_version == version:
+    if last_notified_version and get_version_order(last_notified_version) >= get_version_order(version):
         return
     file_db.set(f"last_notified_md_version_{region}", version)
 
-    msg = f"从{source}获取{region_name}的MasterData更新: {last_version} -> {version}\n"
+    msg = f"从{source}获取{region_name}的MasterData版本更新: {last_version} -> {version}\n"
     if last_asset_version != asset_version:
         msg += f"解包资源版本: {last_asset_version} -> {asset_version}\n"
+    msg = msg.strip()
 
     for group_id in md_update_group_sub.get_all(region):
         if not gbl.check_id(group_id): continue
