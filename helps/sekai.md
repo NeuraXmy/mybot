@@ -813,6 +813,7 @@ Project Sekai（世界计划）游戏多区服服务
 - `live` 虚拟Live通知
 - `music` 新曲上线通知
 - `apd` 新APPEND谱面实装通知
+- `update` MasterData版本更新通知
 
 
 ### 更新数据

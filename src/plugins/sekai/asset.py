@@ -6,7 +6,7 @@ REGION_ASSET_CONFIG_PATH = f"{SEKAI_DATA_DIR}/asset_config.yaml"
 
 # ================================ MasterData资源 ================================ #
 
-DEFAULT_MASTER_VERSION = "0.0.0.0"
+DEFAULT_VERSION = "0.0.0.0"
 MASTER_DB_CACHE_DIR = f"{SEKAI_ASSET_DIR}/masterdata/"
 DEFAULT_INDEX_KEYS = ['id']
 
@@ -22,14 +22,16 @@ class RegionMasterDbSource:
     name: str
     base_url: str
     version_url: str
-    version: str = DEFAULT_MASTER_VERSION
+    version: str = DEFAULT_VERSION
+    asset_version: str = DEFAULT_VERSION
 
     async def update_version(self):
-        version = DEFAULT_MASTER_VERSION
+        version = DEFAULT_VERSION
         try:
             version_data = await download_json(self.version_url)
             version = version_data['dataVersion']
             self.version = version
+            self.asset_version = version_data['assetVersion']
             # logger.info(f"MasterDB [{self.name}] 的版本为 {version}")
         except Exception as e:
             logger.print_exc(f"获取 MasterDB [{self.name}] 的版本信息失败")
@@ -41,6 +43,7 @@ class RegionMasterDbManager:
     """
 
     _all_mgrs = {}
+    _update_hooks = []
 
     def __init__(self, region: str, sources: List[RegionMasterDbSource], version_update_interval: timedelta):
         self.region = region
@@ -54,13 +57,20 @@ class RegionMasterDbManager:
         更新所有MasterDB的版本信息
         """
         # logger.info(f"开始更新 {self.region} 的 {len(self.sources)} 个 MasterDB 的版本信息")
-        last_version = self.latest_source.version if self.latest_source else DEFAULT_MASTER_VERSION
+        last_version = self.latest_source.version if self.latest_source else DEFAULT_VERSION
+        last_asset_version = self.latest_source.asset_version if self.latest_source else DEFAULT_VERSION
         await asyncio.gather(*[source.update_version() for source in self.sources])
         self.sources.sort(key=lambda x: get_version_order(x.version), reverse=True)
         self.latest_source = self.sources[0]
         self.version_update_time = datetime.now()
         if last_version != self.latest_source.version:
             logger.info(f"获取到最新版本的 MasterDB [{self.region}.{self.latest_source.name}] 版本为 {self.latest_source.version}")
+            for hook in self._update_hooks:
+                asyncio.create_task(hook(
+                    self.region, self.latest_source.name,
+                    self.latest_source.version, last_version,
+                    self.latest_source.asset_version, last_asset_version
+                ))
     
     async def get_latest_source(self) -> RegionMasterDbSource:
         """
@@ -70,6 +80,16 @@ class RegionMasterDbManager:
             await self.update()
         return self.latest_source
 
+    @classmethod
+    def on_update(cls):
+        """
+        注册更新后回调装饰器
+        """
+        def _wrapper(func):
+            cls._update_hooks.append(func)
+            return func
+        return _wrapper
+        
     @classmethod
     def get(cls, region: str) -> "RegionMasterDbManager":
         if region not in cls._all_mgrs:
@@ -206,7 +226,7 @@ class MasterDataManager:
             # 检查是否更新
             db_mgr = RegionMasterDbManager.get(region)
             source = await db_mgr.get_latest_source()
-            if get_version_order(self.version.get(region, DEFAULT_MASTER_VERSION)) < get_version_order(source.version):
+            if get_version_order(self.version.get(region, DEFAULT_VERSION)) < get_version_order(source.version):
                 await self._download_from_db(region, source)
 
     async def get_data(self, region: str):
@@ -963,3 +983,4 @@ class WebJsonRes:
                     raise e
         return self.data
     
+
