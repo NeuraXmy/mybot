@@ -46,7 +46,9 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 import time
+import uvloop
 
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # 配置文件
 CONFIG_PATH = 'config.yaml'

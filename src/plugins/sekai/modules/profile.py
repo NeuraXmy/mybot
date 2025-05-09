@@ -529,7 +529,7 @@ async def _(ctx: SekaiHandlerContext):
 
     msg = f"{get_region_name(region)}ID绑定成功: {user_name}"
 
-    # 如果第一次绑定，设置默认服务器
+    # 如果以前没有绑定过其他区服，设置默认服务器
     bind_list: Dict[str, Dict[str, setattr]] = profile_db.get("bind_list", {})
     other_bind = None
     for r in ALL_SERVER_REGIONS:
@@ -539,6 +539,16 @@ async def _(ctx: SekaiHandlerContext):
     if not other_bind and not default_region:
         msg += f"\n已设置你的默认查询区服为{region}，如需修改可使用\"/pjsk服务器 区服\""
         set_user_default_region(ctx.user_id, region)
+
+    # 如果该区服以前没有绑定过，设置默认隐藏id
+    last_bind_id = bind_list.get(region, {}).get(str(ctx.user_id), None)
+    if not last_bind_id:
+        lst = profile_db.get("hide_id_list", {})
+        if region not in lst:
+            lst[region] = []
+        if ctx.user_id not in lst[ctx.region]:
+            lst[region].append(ctx.user_id)
+        profile_db.set("hide_id_list", lst)
 
     # 进行绑定
     if region not in bind_list:
