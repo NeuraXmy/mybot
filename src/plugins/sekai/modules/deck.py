@@ -411,7 +411,7 @@ async def compose_deck_recommend_image(
         if rarity == 'rarity_3':        force_story_read = options.rarity_3_config.episode_read
         if rarity == 'rarity_4':        force_story_read = options.rarity_4_config.episode_read
         if rarity == 'rarity_birthday': force_story_read = options.rarity_birthday_config.episode_read
-        eps = pcard['episodes']
+        eps = pcard.get('episodes', [])
         if len(eps) > 0: ep1_read = force_story_read or eps[0]['scenarioStatus'] == 'already_read'
         if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
         return ep1_read, ep2_read
@@ -529,7 +529,7 @@ async def compose_deck_recommend_image(
                             Spacer(h=6)
                             for deck in result_decks:
                                 real_bonus = await get_deck_real_bonus(deck)
-                                TextBox(f"{real_bonus:.0f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                                TextBox(f"{real_bonus:.1f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 综合力和算法
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
