@@ -399,6 +399,23 @@ async def compose_deck_recommend_image(
             card_imgs.append(_get_thumb(card, pcard))
     card_imgs = { cid: img for cid, img in await asyncio.gather(*card_imgs) }
 
+    # 获取卡的剧情阅读状态
+    async def get_card_story_status(card_id: int) -> Tuple[Optional[bool], Optional[bool]]:
+        ep1_read, ep2_read = None, None
+        pcard = find_by(profile['userCards'], "cardId", card_id)
+        card = await ctx.md.cards.find_by_id(card_id)
+        rarity = card['cardRarityType']
+        force_story_read = False
+        if rarity == 'rarity_1':        force_story_read = options.rarity_1_config.episode_read
+        if rarity == 'rarity_2':        force_story_read = options.rarity_2_config.episode_read
+        if rarity == 'rarity_3':        force_story_read = options.rarity_3_config.episode_read
+        if rarity == 'rarity_4':        force_story_read = options.rarity_4_config.episode_read
+        if rarity == 'rarity_birthday': force_story_read = options.rarity_birthday_config.episode_read
+        eps = pcard['episodes']
+        if len(eps) > 0: ep1_read = force_story_read or eps[0]['scenarioStatus'] == 'already_read'
+        if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
+        return ep1_read, ep2_read
+
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
@@ -451,41 +468,58 @@ async def compose_deck_recommend_image(
                         TextBox(f"{music_title} ({options.music_diff.upper()})", 
                                 TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                 # 表格
-                gh = 80
+                gh, vsp, voffset = 100, 12, 8
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
                     th_style = TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50))
                     tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
                     # 分数
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("分数" if recommend_type in ["challenge", "challenge_all"] else "PT", th_style).set_h(gh // 2).set_content_align('c')
                         for deck in result_decks:
-                            TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c')
+                            TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
                     # 卡片
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("卡组", th_style).set_h(gh // 2).set_content_align('c')
                         for deck in result_decks:
                             with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
                                 for card in deck.cards:
-                                    ImageBox(card_imgs[card.card_id], size=(None, gh), use_alphablend=True)
+                                    card_id = card.card_id
+                                    ep1_read, ep2_read = await get_card_story_status(card_id)
+                                    slv = card.skill_level
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0).set_h(gh):
+                                        ImageBox(card_imgs[card_id], size=(None, 80), use_alphablend=True)
+                                        with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0):
+                                            r = 2
+                                            TextBox(f"SLv.{slv}", TextStyle(font=DEFAULT_FONT, size=12, color=(50, 50, 50))).set_bg(RoundRectBg(WHITE, r))
+                                            read_fg, read_bg = (50, 150, 50, 255), (255, 255, 255, 255)
+                                            noread_fg, noread_bg = (150, 50, 50, 255), (255, 255, 255, 255)
+                                            none_fg, none_bg = (255, 255, 255, 255), (255, 255, 255, 255)
+                                            ep1_fg = none_fg if ep1_read is None else (read_fg if ep1_read else noread_fg)
+                                            ep1_bg = none_bg if ep1_read is None else (read_bg if ep1_read else noread_bg)
+                                            ep2_fg = none_fg if ep2_read is None else (read_fg if ep2_read else noread_fg)
+                                            ep2_bg = none_bg if ep2_read is None else (read_bg if ep2_read else noread_bg)
+                                            TextBox("前", TextStyle(font=DEFAULT_FONT, size=12, color=ep1_fg)).set_bg(RoundRectBg(ep1_bg, r))
+                                            TextBox("后", TextStyle(font=DEFAULT_FONT, size=12, color=ep2_fg)).set_bg(RoundRectBg(ep2_bg, r))
+
                     # 加成
                     if recommend_type not in ["challenge", "challenge_all", "no_event"]:
-                        with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                             TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
                             for deck in result_decks:
                                 if wl_chara_name:
                                     bonus = f"{deck.event_bonus_rate:.1f}+{deck.support_deck_bonus_rate:.1f}%"
                                 else:
                                     bonus = f"{deck.event_bonus_rate:.1f}%"
-                                TextBox(bonus, tb_style).set_h(gh).set_content_align('c')
+                                TextBox(bonus, tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 综合力和算法
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
+                    with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
                         for deck, alg in zip(result_decks, result_algs):
                             with Frame().set_content_align('rb'):
-                                TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -10))
+                                TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -16-voffset))
                                 with Frame().set_content_align('c'):
-                                    TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c')
+                                    TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
         
                 # 说明
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
