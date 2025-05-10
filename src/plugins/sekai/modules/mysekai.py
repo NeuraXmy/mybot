@@ -102,9 +102,13 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
         # 尝试下载
         try:
             mysekai_info = await download_json(url.format(uid=uid) + f"?mode={mode}")
+        except HttpError as e:
+            logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
+            raise ReplyException(e.message)
         except Exception as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
-            raise ReplyException(f"{str(e)}")
+            raise e
+        
         if not mysekai_info:
             logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
             raise Exception(f"找不到ID为 {uid} 的玩家")
@@ -127,7 +131,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
             logger.info(f"未找到 {qid} 的缓存mysekai抓包数据")
 
         if raise_exc:
-            raise Exception(f"获取mysekai数据失败: {e}")
+            raise e
         else:
             return None, str(e)
     return mysekai_info, ""

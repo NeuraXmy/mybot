@@ -2,7 +2,7 @@ import json
 import yaml
 from datetime import datetime, timedelta
 import traceback
-from nonebot import on_command, get_bot, on
+from nonebot import on_command, get_bot, on, get_driver
 from nonebot.matcher import Matcher
 from nonebot.rule import to_me as rule_to_me
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot, MessageSegment, MessageEvent, PrivateMessageEvent
@@ -47,6 +47,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 import time
 import uvloop
+import signal
+import sys
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -68,11 +70,20 @@ SUPERUSER = get_config()['superuser']
 BOT_NAME  = get_config()['bot_name']
 LOG_LEVEL = get_config()['log_level']
 LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
-print(f'使用日志等级: {LOG_LEVEL}')
+print(f'日志等级: {LOG_LEVEL}')
 
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+class HttpError(Exception):
+    def __init__(self, status_code: int = 500, message: str = ''):
+        self.status_code = status_code
+        self.message = message
+
+    def __str__(self):
+        return f"{self.status_code}: {self.message}"
+
 
 from zhon.hanzi import punctuation
 _clean_name_pattern = rf"[{re.escape(punctuation)}\s]"
@@ -225,7 +236,8 @@ async def download_image(image_url, force_http=True) -> Image.Image:
     async with aiohttp.ClientSession() as session:
         async with session.get(image_url, verify_ssl=False) as resp:
             if resp.status != 200:
-                raise Exception(f"下载图片 {image_url} 失败: {resp.status} {resp.reason}")
+                utils_logger.error(f"下载图片 {image_url} 失败: {resp.status} {resp.reason}")
+                raise HttpError(resp.status, f"下载图片 {image_url} 失败")
             image = await resp.read()
             return Image.open(io.BytesIO(image))
 
@@ -240,6 +252,9 @@ class WebDriver:
     async def __aenter__(self) -> webdriver.Firefox:
         global _webdrivers
         if _webdrivers is None:
+            # 清空之前的tmp文件
+            if os.system("rm -rf /tmp/rust_mozprofile*") != 0:
+                utils_logger.error("清空WebDriver临时文件失败")
             _webdrivers = asyncio.Queue()
             for _ in range(WEB_DRIVER_NUM):
                 options = Options()
@@ -1682,7 +1697,7 @@ async def asave_json(path, data):
 
 
 # 下载json文件，返回json
-async def download_json(url):
+async def download_json(url: str):
     async with aiohttp.ClientSession() as session:
         headers = {
             'Accept-Language': 'en',
@@ -1693,9 +1708,9 @@ async def download_json(url):
                     detail = await resp.text()
                     detail = json.loads(detail)['detail']
                 except:
-                    pass 
+                    pass
                 utils_logger.error(f"下载 {url} 失败: {resp.status} {detail}")
-                raise Exception(f"{resp.status}: {detail}")
+                raise HttpError(resp.status, detail)
             if "text/plain" in resp.content_type:
                 return json.loads(await resp.text())
             if "application/octet-stream" in resp.content_type:

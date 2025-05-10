@@ -255,9 +255,12 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
         # 尝试下载
         try:   
             profile = await download_json(url.format(uid=uid) + f"?mode={mode}")
+        except HttpError as e:
+            logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
+            raise ReplyException(e.message)
         except Exception as e:
             logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
-            raise ReplyException(f"{get_exc_desc(e)}")
+            raise e
             
         if not profile:
             logger.info(f"获取 {qid} 抓包数据失败: 找不到ID为 {uid} 的玩家")
@@ -281,7 +284,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             logger.info(f"未找到 {qid} 的缓存抓包数据")
 
         if raise_exc:
-            raise ReplyException(f"获取抓包数据失败: {e}")
+            raise e
         else:
             return None, str(e)
         
