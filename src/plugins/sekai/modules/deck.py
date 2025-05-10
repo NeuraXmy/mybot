@@ -26,7 +26,7 @@ deck_recommend = SekaiDeckRecommend()
 RECOMMEND_TIMEOUT = timedelta(seconds=5)
 NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=20)
 SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=60)
-RECOMMEND_ALGS = ['dfs', 'sa', 'ga']
+RECOMMEND_ALGS = ['dfs', 'ga']
 RECOMMEND_ALG_NAMES = {
     'dfs': '暴力搜索',
     'sa': '模拟退火',
@@ -416,6 +416,13 @@ async def compose_deck_recommend_image(
         if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
         return ep1_read, ep2_read
 
+    # 计算实效
+    async def get_deck_real_bonus(deck: RecommendDeck) -> float:
+        ret = deck.cards[0].skill_score_up
+        for i in range(1, len(deck.cards)):
+            ret += deck.cards[i].skill_score_up * 0.2
+        return ret
+        
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16).set_padding(16):
@@ -470,16 +477,18 @@ async def compose_deck_recommend_image(
                 # 表格
                 gh, vsp, voffset = 100, 12, 8
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
-                    th_style = TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50))
+                    th_style = TextStyle(font=DEFAULT_BOLD_FONT, size=28, color=(50, 50, 50))
                     tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
                     # 分数
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("分数" if recommend_type in ["challenge", "challenge_all"] else "PT", th_style).set_h(gh // 2).set_content_align('c')
+                        Spacer(h=6)
                         for deck in result_decks:
                             TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
                     # 卡片
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("卡组", th_style).set_h(gh // 2).set_content_align('c')
+                        Spacer(h=6)
                         for deck in result_decks:
                             with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
                                 for card in deck.cards:
@@ -505,6 +514,7 @@ async def compose_deck_recommend_image(
                     if recommend_type not in ["challenge", "challenge_all", "no_event"]:
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                             TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
+                            Spacer(h=6)
                             for deck in result_decks:
                                 if wl_chara_name:
                                     bonus = f"{deck.event_bonus_rate:.1f}+{deck.support_deck_bonus_rate:.1f}%"
@@ -512,9 +522,19 @@ async def compose_deck_recommend_image(
                                     bonus = f"{deck.event_bonus_rate:.1f}%"
                                 TextBox(bonus, tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
+                    # 实效
+                    if options.live_type in ['multi', 'cheerful']:
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
+                            TextBox("实效", th_style).set_h(gh // 2).set_content_align('c')
+                            Spacer(h=6)
+                            for deck in result_decks:
+                                real_bonus = await get_deck_real_bonus(deck)
+                                TextBox(f"{real_bonus:.0f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+
                     # 综合力和算法
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
+                        Spacer(h=6)
                         for deck, alg in zip(result_decks, result_algs):
                             with Frame().set_content_align('rb'):
                                 TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -16-voffset))
