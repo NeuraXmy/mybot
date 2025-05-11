@@ -49,11 +49,20 @@ DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL = timedelta(days=1)
 
 # ======================= 默认配置 ======================= #
 
-DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
-DEFAULT_EVENT_DECK_RECOMMEND_DIFF = "expert"
+DEFAULT_EVENT_DECK_RECOMMEND_MID = {
+    'other': 74,
+}
+DEFAULT_EVENT_DECK_RECOMMEND_DIFF = {
+    "other": "expert",
+}
 
-DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID = 104
-DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF = "master"
+DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID = {
+    "jp": 540,
+    "other": 104,
+}
+DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF = {
+    "other": "master"
+}
 
 DEFAULT_CARD_CONFIG_12 = DeckRecommendCardConfig()
 DEFAULT_CARD_CONFIG_12.disable = False
@@ -592,8 +601,8 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     if music:
         options.music_id = music['id']
 
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
@@ -640,8 +649,8 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
     if music:
         options.music_id = music['id']
 
-    options.music_id    = options.music_id   or DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID
-    options.music_diff  = options.music_diff or DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF
+    options.music_id    = options.music_id   or DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID['other'])
+    options.music_diff  = options.music_diff or DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF['other'])
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
@@ -693,8 +702,8 @@ async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckR
     if music:
         options.music_id = music['id']
 
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
@@ -755,8 +764,8 @@ async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) ->
     if music:
         options.music_id = music['id']
 
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
