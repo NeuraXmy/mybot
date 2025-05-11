@@ -66,6 +66,7 @@ class SkillInfo:
 
 # ======================= 处理逻辑 ======================= #
 
+# 获取角色名称
 async def get_character_name_by_id(ctx: SekaiHandlerContext, cid: int, space_first_last = False) -> str:
     character = await ctx.md.game_characters.find_by_id(cid)
     if space_first_last:

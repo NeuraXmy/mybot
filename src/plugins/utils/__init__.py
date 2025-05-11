@@ -608,7 +608,7 @@ def get_readable_timedelta(delta: timedelta):
         return f"{int(delta.total_seconds())}秒"
     if delta.total_seconds() < 60 * 60:
         return f"{int(delta.total_seconds() / 60)}分钟"
-    if delta.total_seconds() < 60 * 60 * 12:
+    if delta.total_seconds() < 60 * 60 * 24:
         return f"{int(delta.total_seconds() / 60 / 60)}小时{int(delta.total_seconds() / 60 % 60)}分钟"
     return f"{delta.days}天{int(delta.seconds / 60 / 60)}小时{int(delta.seconds / 60 % 60)}分钟"
 

@@ -115,7 +115,7 @@ def add_watermark(canvas: Canvas, text: str=DEFAULT_WATERMARK, size=12):
     在画布上添加水印
     """
     frame_watermark = Frame().set_content_align('rb').set_padding(0)
-    frame_canvas = Frame().set_content_align(canvas.get_content_align()).set_padding(0)
+    frame_canvas = Frame().set_content_align(canvas.get_content_align()).set_padding(0).set_size((canvas.w, canvas.h))
     s1 = TextStyle(font=DEFAULT_FONT, size=size, color=(255, 255, 255, 256))
     s2 = TextStyle(font=DEFAULT_FONT, size=size, color=(75, 75, 75, 256))
     offset1 = (int(16 - BG_PADDING * 0.5), 16)
@@ -130,7 +130,7 @@ def add_watermark(canvas: Canvas, text: str=DEFAULT_WATERMARK, size=12):
     frame_watermark.add_item(frame_canvas)
     frame_watermark.add_item(text1)
     frame_watermark.add_item(text2)
-    canvas.add_item(frame_watermark)
+    canvas.add_item(frame_watermark).set_size(None)
 
 
 DIFF_COLORS = {

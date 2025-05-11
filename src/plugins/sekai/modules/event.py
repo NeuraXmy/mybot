@@ -1,5 +1,5 @@
 from ...utils import *
-from ...llm import ChatSession
+from ...llm import ChatSession, translate_text
 from ..common import *
 from ..handler import *
 from ..asset import *
@@ -35,6 +35,115 @@ class EventListFilter:
 
 
 # ======================= 处理逻辑 ======================= #
+
+# 获取wl_id对应的角色cid，wl_id对应普通活动则返回None
+async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[int]:
+    event_id = wl_id % 1000
+    chapter_id = wl_id // 1000
+    if chapter_id == 0:
+        return None
+    chapters = await ctx.md.world_blooms.find_by('eventId', event_id, mode='all')
+    assert_and_reply(chapters, f"活动{ctx.region}_{event_id}并不是WorldLink活动")
+    chapter = find_by(chapters, "chapterNo", chapter_id)
+    assert_and_reply(chapter, f"活动{ctx.region}_{event_id}并没有章节{chapter_id}")
+    cid = chapter['gameCharacterId']
+    return cid
+
+# 获取event_id对应的所有wl_event（时间顺序），如果不是wl则返回空列表
+async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
+    event = await ctx.md.events.find_by_id(event_id)
+    chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
+    if not chapters:
+        return []
+    wl_events = []
+    for chapter in chapters:
+        wl_event = event.copy()
+        wl_event['id'] = chapter['chapterNo'] * 1000 + event['id']
+        wl_event['startAt'] = chapter['chapterStartAt']
+        wl_event['aggregateAt'] = chapter['aggregateAt']
+        wl_event['wl_cid'] = chapter['gameCharacterId']
+        wl_events.append(wl_event)
+    return sorted(wl_events, key=lambda x: x['startAt'])
+
+# 获取用于显示的活动ID-活动名称文本
+def get_event_id_and_name_text(region: str, event_id: int, event_name: str) -> str:
+    if event_id < 1000:
+        return f"【{region.upper()}-{event_id}】{event_name}"
+    else:
+        chapter_id = event_id // 1000
+        event_id = event_id % 1000
+        return f"【{region.upper()}-{event_id}-第{chapter_id}章单榜】{event_name}"
+
+# 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
+async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
+    args = args.lower()
+    if 'wl' not in args:
+        return None, args
+    else:
+        event = await get_current_event(ctx, mode="prev")
+        chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
+        assert_and_reply(chapters, f"当期活动{ctx.region}_{event['id']}并不是WorldLink活动")
+
+        # 通过"wl序号"查询章节
+        def query_by_seq() -> Tuple[Optional[int], Optional[str]]:
+            for i in range(len(chapters)):
+                carg = f"wl{i+1}"
+                if carg in args:
+                    chapter_id = i + 1
+                    return chapter_id, carg
+            return None, None
+        # 通过"wl角色昵称"查询章节
+        def query_by_nickname() -> Tuple[Optional[int], Optional[str]]:
+            for item in CHARACTER_NICKNAME_DATA:
+                nicknames = item['nicknames']
+                cid = item['id']
+                for nickname in nicknames:
+                    carg = f"wl{nickname}"
+                    if carg in args:
+                        chapter = find_by(chapters, "gameCharacterId", cid)
+                        assert_and_reply(chapter, f"当期活动{ctx.region}_{event['id']}并没有角色{nickname}的章节")
+                        chapter_id = chapter['chapterNo']
+                        return chapter_id, carg
+            return None, None
+        # 查询当前章节
+        def query_current() -> Tuple[Optional[int], Optional[str]]:
+            now = datetime.now()
+            chapters.sort(key=lambda x: x['chapterNo'], reverse=True)
+            for chapter in chapters:
+                start = datetime.fromtimestamp(chapter['chapterStartAt'] / 1000)
+                if start <= now:
+                    chapter_id = chapter['chapterNo']
+                    return chapter_id, "wl"
+            return None, None
+        
+        chapter_id, carg = query_by_seq()
+        if not chapter_id:
+            chapter_id, carg = query_by_nickname()
+        if not chapter_id:
+            chapter_id, carg = query_current()
+        assert_and_reply(chapter_id, f"""
+查询WL活动榜线需要指定章节，可用参数格式:
+1. wl: 查询当前章节
+2. wl2: 查询第二章
+3. wlmiku: 查询miku章节
+""".strip())
+
+        chapter = find_by(chapters, "chapterNo", chapter_id)
+        event = event.copy()
+        event['id'] = chapter_id * 1000 + event['id']
+        event['startAt'] = chapter['chapterStartAt']
+        event['aggregateAt'] = chapter['aggregateAt']
+        event['wl_cid'] = chapter['gameCharacterId']
+        args = args.replace(carg, "")
+
+        logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['id']}")
+        return event, args
+
+# 从cuid获取cid
+async def get_chara_id_by_cuid(ctx: SekaiHandlerContext, cuid: int) -> int:
+    unit_chara = await ctx.md.game_character_units.find_by_id(cuid)
+    assert_and_reply(unit_chara, f"找不到cuid={cuid}的角色")
+    return unit_chara['gameCharacterId']
 
 # 获取当前活动 当前无进行中活动时mode = prev:选择上一个 next:选择下一个 prev_first:优先选择上一个 next_first: 优先选择下一个
 async def get_current_event(ctx: SekaiHandlerContext, mode: str = "running") -> dict:
@@ -127,7 +236,7 @@ async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]
         e['ban'] = f"{nickname}{i}"
     return events
 
-# 获取活动列表
+# 合成活动列表图片
 async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFilter) -> Image.Image:
     events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'])    
     banner_imgs = await batch_gather(*[get_event_banner_img(ctx, event) for event in events])
@@ -252,6 +361,13 @@ async def get_event_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
     if index.removeprefix('-').isdigit():
         events = await ctx.md.events.get()
         events = sorted(events, key=lambda x: x['startAt'])
+        cur_event = await get_current_event(ctx, mode="next_first")
+        cur_idx = len(events) - 1
+        for i, event in enumerate(events):
+            if event['id'] == cur_event['id']:
+                cur_idx = i
+                break
+        events = events[:cur_idx + 1]
         index = int(index)
         if index < 0:
             if -index > len(events):
@@ -495,6 +611,139 @@ async def send_boost(ctx: SekaiHandlerContext, qid: int) -> str:
         ret_msg += f"，失败{3-ok_times}次，错误信息: {failed_reason}"
     return ret_msg
 
+# 合成活动详情图片
+async def compose_event_detail_image(ctx: SekaiHandlerContext, event: dict) -> Image.Image:
+    event_id = event['id']
+    event_type = event['eventType']
+    event_type_name = EVENT_TYPE_SHOW_NAMES.get(event_type, "") or "马拉松"
+    start_time = datetime.fromtimestamp(event['startAt'] / 1000)
+    end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+    now = datetime.now()
+    event_cards = await ctx.md.event_cards.find_by('eventId', event_id, mode="all")
+    event_card_thumbs = await batch_gather(*[get_card_full_thumbnail(ctx, card['cardId'], after_training=False) for card in event_cards])
+
+    asset_name = event['assetbundleName']
+    event_logo = await ctx.rip.img(f"event/{asset_name}/logo/logo.png")
+    event_bg = await ctx.rip.img(f"event/{asset_name}/screen/bg.png", default=None)
+
+    bonus_attr = None
+    bonus_cuids = set()
+    for deck_bonus in await ctx.md.event_deck_bonuses.find_by('eventId', event_id, mode="all"):
+        if 'cardAttr' in deck_bonus:
+            bonus_attr = deck_bonus['cardAttr']
+        if 'gameCharacterUnitId' in deck_bonus:
+            bonus_cuids.add(deck_bonus['gameCharacterUnitId'])
+    bonus_cuids = sorted(list(bonus_cuids))
+
+    label_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(50, 50, 50))
+    text_style = TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70))
+
+    wl_chapters = await get_wl_events(ctx, event_id)
+    for chapter in wl_chapters:
+        chapter['start_time'] = datetime.fromtimestamp(chapter['startAt'] / 1000)
+        chapter['end_time'] = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
+
+    bg = ImageBg(event_bg, blur=False) if event_bg else DEFAULT_BLUE_GRADIENT_BG
+
+    w = 1400
+    h = event_bg.size[1] * w // event_bg.size[0] if event_bg else None
+    
+    async def draw(w, h):
+        with Canvas(bg=bg, w=w, h=h).set_padding(BG_PADDING).set_content_align('r') as canvas:
+            with VSplit().set_padding(16).set_sep(16).set_item_align('t').set_content_align('t').set_item_bg(roundrect_bg()):
+                # logo
+                ImageBox(event_logo, size=(None, 150)).set_omit_parent_bg(True)
+
+                # 活动ID和类型
+                with VSplit().set_padding(16).set_sep(12).set_item_align('l').set_content_align('l'):
+                    with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
+                        TextBox(f"ID", label_style)
+                        TextBox(f"{event_id}", text_style)
+                        Spacer(w=8)
+                        TextBox(f"类型", label_style)
+                        TextBox(f"{event_type_name}", text_style)
+
+                # 活动时间
+                with VSplit().set_padding(16).set_sep(12).set_item_align('c').set_content_align('c'):
+                    with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
+                        TextBox("开始时间", label_style)
+                        TextBox(start_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
+                    with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
+                        TextBox("结束时间", label_style)
+                        TextBox(end_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
+
+                    with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
+                        if start_time <= now <= end_time:
+                            TextBox(f"距结束还有{get_readable_timedelta(end_time - now)}", text_style)
+                        elif now > end_time:
+                            TextBox(f"活动已结束", text_style)
+                        else:
+                            TextBox(f"距开始还有{get_readable_timedelta(start_time - now)}", text_style)
+
+                    if event_type == 'world_bloom':
+                        cur_chapter = None
+                        for chapter in wl_chapters:
+                            if chapter['start_time'] <= now <= chapter['end_time']:
+                                cur_chapter = chapter
+                                break
+                        if cur_chapter:
+                            TextBox(f"距章节结束还有{get_readable_timedelta(cur_chapter['end_time'] - now)}", text_style)
+                        
+                    # 进度条
+                    progress = (datetime.now() - start_time) / (end_time - start_time)
+                    progress = min(max(progress, 0), 1)
+                    progress_w, progress_h, border = 320, 8, 1
+                    if event_type == 'world_bloom':
+                        with Frame().set_padding(8).set_content_align('lt'):
+                            Spacer(w=progress_w+border*2, h=progress_h+border*2).set_bg(RoundRectBg((75, 75, 75, 255), 4))
+                            for i, chapter in enumerate(wl_chapters):
+                                cprogress_start = (chapter['start_time'] - start_time) / (end_time - start_time)
+                                cprogress_end = (chapter['end_time'] - start_time) / (end_time - start_time)
+                                chapter_cid = chapter['wl_cid']
+                                chara_color = color_code_to_rgb((await ctx.md.game_character_units.find_by_id(chapter_cid))['colorCode'])
+                                Spacer(w=int(progress_w * (cprogress_end - cprogress_start)), h=progress_h).set_bg(RoundRectBg(chara_color, 4)) \
+                                    .set_offset((border + int(progress_w * cprogress_start), border))
+                            Spacer(w=int(progress_w * progress), h=progress_h).set_bg(RoundRectBg((255, 255, 255, 200), 4)).set_offset((border, border))
+                    else:
+                        with Frame().set_padding(8).set_content_align('lt'):
+                            Spacer(w=progress_w+border*2, h=progress_h+border*2).set_bg(RoundRectBg((75, 75, 75, 255), 4))
+                            Spacer(w=int(progress_w * progress), h=progress_h).set_bg(RoundRectBg((255, 255, 255, 255), 4)).set_offset((border, border))
+
+                # 活动卡片
+                if event_cards:
+                    with HSplit().set_padding(16).set_sep(16).set_item_align('c').set_content_align('c'):
+                        TextBox("活动卡片", label_style)
+                        card_num = len(event_cards)
+                        if card_num <= 4: col_count = card_num
+                        elif card_num <= 6: col_count = 3
+                        else: col_count = 4
+                        with Grid(col_count=col_count).set_sep(4, 4):
+                            for card, thumb in zip(event_cards, event_card_thumbs):
+                                with VSplit().set_padding(0).set_sep(2).set_item_align('c').set_content_align('c'):
+                                    ImageBox(thumb, size=(80, 80))
+                                    TextBox(f"ID:{card['cardId']}", TextStyle(font=DEFAULT_FONT, size=16, color=(75, 75, 75)), overflow='clip')
+                
+                # 加成
+                if bonus_attr or bonus_cuids:
+                    with HSplit().set_padding(16).set_sep(8).set_item_align('c').set_content_align('c'):
+                        if bonus_attr:
+                            TextBox("加成属性", label_style)
+                            ImageBox(get_attr_icon(bonus_attr), size=(None, 40))
+                        if bonus_cuids:
+                            TextBox("加成角色", label_style)
+                            with Grid(col_count=5).set_sep(4, 4):
+                                for cuid in bonus_cuids:
+                                    cid = await get_chara_id_by_cuid(ctx, cuid)
+                                    ImageBox(get_chara_icon_by_chara_id(cid), size=(None, 40))
+
+        add_watermark(canvas)
+        return await run_in_pool(canvas.get_img)
+
+    try: 
+        return await draw(w, h)
+    except:
+        return await draw(w, None)
+    
 
 # ======================= 指令处理 ======================= #
 
@@ -534,9 +783,15 @@ pjsk_event_list = SekaiCmdHandler([
 pjsk_event_list.check_cdrate(cd).check_wblist(gbl)
 @pjsk_event_list.handle()
 async def _(ctx: SekaiHandlerContext):
-    idx = ctx.get_args().strip()
-    event = await get_event_by_index(ctx, idx)
-    return await ctx.asend_reply_msg(f"https://sekai.best/event/{event['id']}")
+    args = ctx.get_args().strip()
+    if args:
+        event = await get_event_by_index(ctx, args)
+    else:
+        event = await get_current_event(ctx, mode='next_first')
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_event_detail_image(ctx, event),
+        low_quality=True,
+    ))
 
 
 # 活动剧情总结

@@ -44,6 +44,16 @@ async def _(ctx: SekaiHandlerContext):
         await ctx.asend_reply_msg("未检测到屏蔽词")
 
 
+upload_help = SekaiCmdHandler([
+    "/抓包帮助", "/抓包", "/pjsk upload help"
+])
+upload_help.check_cdrate(cd).check_wblist(gbl)
+@upload_help.handle()
+async def _(ctx: SekaiHandlerContext):
+    text = Path(f"{SEKAI_DATA_DIR}/upload_help.txt").read_text(encoding="utf-8")
+    return await ctx.asend_msg(text.strip())
+
+
 # ======================= 定时通知 ======================= #
 
 # masterdata更新通知

@@ -8,9 +8,22 @@ from .profile import (
     get_gameapi_config,
     get_uid_from_qid,
 )
-from .event import get_current_event, get_event_banner_img, get_event_by_index
-from .sk_sql import Ranking, insert_rankings, query_ranking, query_latest_ranking, query_first_ranking_after
-
+from .event import (
+    get_current_event, 
+    get_event_banner_img, 
+    get_event_by_index,
+    get_wl_chapter_cid,
+    get_wl_events,
+    get_event_id_and_name_text,
+    extract_wl_event,
+)
+from .sk_sql import (
+    Ranking, 
+    insert_rankings, 
+    query_ranking, 
+    query_latest_ranking, 
+    query_first_ranking_after,
+)
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib
@@ -65,109 +78,6 @@ class PredictWinrate:
 
 
 # ======================= 处理逻辑 ======================= #
-
-# 获取wl_id对应的角色cid，wl_id对应普通活动则返回None
-async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[int]:
-    event_id = wl_id % 1000
-    chapter_id = wl_id // 1000
-    if chapter_id == 0:
-        return None
-    chapters = await ctx.md.world_blooms.find_by('eventId', event_id, mode='all')
-    assert_and_reply(chapters, f"活动{ctx.region}_{event_id}并不是WorldLink活动")
-    chapter = find_by(chapters, "chapterNo", chapter_id)
-    assert_and_reply(chapter, f"活动{ctx.region}_{event_id}并没有章节{chapter_id}")
-    cid = chapter['gameCharacterId']
-    return cid
-
-# 获取event_id对应的所有wl_event，如果不是wl则返回空列表
-async def get_wl_events(ctx: SekaiHandlerContext, event_id: int) -> List[dict]:
-    event = await ctx.md.events.find_by_id(event_id)
-    chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
-    if not chapters:
-        return []
-    wl_events = []
-    for chapter in chapters:
-        wl_event = event.copy()
-        wl_event['id'] = chapter['chapterNo'] * 1000 + event['id']
-        wl_event['startAt'] = chapter['chapterStartAt']
-        wl_event['aggregateAt'] = chapter['aggregateAt']
-        wl_event['wl_cid'] = chapter['gameCharacterId']
-        wl_events.append(wl_event)
-    return wl_events
-
-# 获取用于显示的活动ID-活动名称文本
-def get_event_id_and_name_text(region: str, event_id: int, event_name: str) -> str:
-    if event_id < 1000:
-        return f"【{region.upper()}-{event_id}】{event_name}"
-    else:
-        chapter_id = event_id // 1000
-        event_id = event_id % 1000
-        return f"【{region.upper()}-{event_id}-第{chapter_id}章单榜】{event_name}"
-
-# 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
-async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
-    args = args.lower()
-    if 'wl' not in args:
-        return None, args
-    else:
-        event = await get_current_event(ctx, mode="prev")
-        chapters = await ctx.md.world_blooms.find_by('eventId', event['id'], mode='all')
-        assert_and_reply(chapters, f"当期活动{ctx.region}_{event['id']}并不是WorldLink活动")
-
-        # 通过"wl序号"查询章节
-        def query_by_seq() -> Tuple[Optional[int], Optional[str]]:
-            for i in range(len(chapters)):
-                carg = f"wl{i+1}"
-                if carg in args:
-                    chapter_id = i + 1
-                    return chapter_id, carg
-            return None, None
-        # 通过"wl角色昵称"查询章节
-        def query_by_nickname() -> Tuple[Optional[int], Optional[str]]:
-            for item in CHARACTER_NICKNAME_DATA:
-                nicknames = item['nicknames']
-                cid = item['id']
-                for nickname in nicknames:
-                    carg = f"wl{nickname}"
-                    if carg in args:
-                        chapter = find_by(chapters, "gameCharacterId", cid)
-                        assert_and_reply(chapter, f"当期活动{ctx.region}_{event['id']}并没有角色{nickname}的章节")
-                        chapter_id = chapter['chapterNo']
-                        return chapter_id, carg
-            return None, None
-        # 查询当前章节
-        def query_current() -> Tuple[Optional[int], Optional[str]]:
-            now = datetime.now()
-            chapters.sort(key=lambda x: x['chapterNo'], reverse=True)
-            for chapter in chapters:
-                start = datetime.fromtimestamp(chapter['chapterStartAt'] / 1000)
-                if start <= now:
-                    chapter_id = chapter['chapterNo']
-                    return chapter_id, "wl"
-            return None, None
-        
-        chapter_id, carg = query_by_seq()
-        if not chapter_id:
-            chapter_id, carg = query_by_nickname()
-        if not chapter_id:
-            chapter_id, carg = query_current()
-        assert_and_reply(chapter_id, f"""
-查询WL活动榜线需要指定章节，可用参数格式:
-1. wl: 查询当前章节
-2. wl2: 查询第二章
-3. wlmiku: 查询miku章节
-""".strip())
-
-        chapter = find_by(chapters, "chapterNo", chapter_id)
-        event = event.copy()
-        event['id'] = chapter_id * 1000 + event['id']
-        event['startAt'] = chapter['chapterStartAt']
-        event['aggregateAt'] = chapter['aggregateAt']
-        event['wl_cid'] = chapter['gameCharacterId']
-        args = args.replace(carg, "")
-
-        logger.info(f"查询WL活动章节: chapter_arg={carg} wl_id={event['id']}")
-        return event, args
 
 # 从榜线列表中找到最近的前一个榜线
 def find_prev_ranking(ranks: List[Ranking], rank: int) -> Optional[Ranking]:

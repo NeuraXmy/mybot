@@ -317,7 +317,10 @@ class Painter:
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
         if fill[3] == 255 and not gradient:
             draw = ImageDraw.Draw(self.img)
-            draw.rectangle(pos, fill=fill)
+            if stroke:
+                draw.rectangle(pos, fill=fill, outline=stroke, width=stroke_width)
+            else:
+                draw.rectangle(pos, fill=fill)
         else:
             overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(overlay)
@@ -355,7 +358,10 @@ class Painter:
         pos = pos + (pos[0] + size[0], pos[1] + size[1])
         if fill[3] == 255 and not gradient:
             draw = ImageDraw.Draw(self.img)
-            draw.rounded_rectangle(pos, fill=fill, radius=radius)
+            if stroke:
+                draw.rounded_rectangle(pos, fill=fill, radius=radius, outline=stroke, width=stroke_width, corners=corners)
+            else:
+                draw.rounded_rectangle(pos, fill=fill, radius=radius, corners=corners)
             return self
         else:
             overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
@@ -395,7 +401,10 @@ class Painter:
 
         if fill[3] == 255 and not gradient:
             draw = ImageDraw.Draw(self.img)
-            draw.pieslice(pos, start_angle, end_angle, fill=fill, width=stroke_width, outline=stroke)
+            if stroke:
+                draw.pieslice(pos, start_angle, end_angle, fill=fill, width=stroke_width, outline=stroke)
+            else:
+                draw.pieslice(pos, start_angle, end_angle, fill=fill)
             return self
         else:
             overlay = Image.new('RGBA', self.img.size, (0, 0, 0, 0))
