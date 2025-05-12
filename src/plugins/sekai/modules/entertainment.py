@@ -364,10 +364,10 @@ async def send_guess_card_hint(gctx: GuessContext):
     await gctx.asend_msg(msg)
 
 # 随机裁剪音频+反转
-async def random_clip_audio(input_path: str, save_path: str, length: float, reverse: bool = False):
+async def random_clip_audio(input_path: str, save_path: str, length: float, reverse: bool = False, clip_start=20.0, clip_end=10.0):
     audio = pydub.AudioSegment.from_file(input_path)
     length = int(length * 1000)
-    start = random.randint(0, len(audio) - length)
+    start = random.randint(int(clip_start * 1000), len(audio) - length - int(clip_end * 1000))
     clip = audio[start:start + length]
     if reverse:
         clip = clip.reverse()
