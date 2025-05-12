@@ -4,6 +4,7 @@ from ..handler import *
 from ..asset import *
 from ..draw import *
 from .honor import compose_full_honor_image
+from .resbox import get_res_box_info, get_res_icon
 
 SEKAI_PROFILE_DIR = f"{SEKAI_DATA_DIR}/profile"
 GAMEAPI_CONFIG_PATH = f"{SEKAI_DATA_DIR}/gameapi_config.yaml"
@@ -326,6 +327,14 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                 TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(300)
     return f
        
+# 获取注册时间（通过第一张获取的卡）
+def get_register_time(detail_profile: dict) -> datetime:
+    cards = detail_profile['userCards']
+    reg_time = datetime.now()
+    for card in cards:
+        reg_time = min(reg_time, datetime.fromtimestamp(card['createdAt'] / 1000))
+    return reg_time
+
 # 合成个人信息图片
 async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -> Image.Image:
     decks = basic_profile['userDeck']
@@ -333,8 +342,9 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
     for pcard in pcards:
         pcard['after_training'] = pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done"
     avatar_info = await get_player_avatar_info_by_basic_profile(ctx, basic_profile)
-    
+
     with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
+        # 个人信息部分
         with HSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
             ## 左侧
             with VSplit().set_bg(roundrect_bg()).set_content_align('c').set_item_align('c').set_sep(32).set_padding((32, 35)):
@@ -411,8 +421,8 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                                 bg_color = (255, 255, 255, 100) if j % 2 == 0 else (255, 255, 255, 50)
                                 count = find_by(diff_count, 'musicDifficultyType', diff)[score]
                                 draw_shadowed_text(str(count), DEFAULT_FONT, 20, 
-                                                   PLAY_RESULT_COLORS['not_clear'], PLAY_RESULT_COLORS[play_result[i]], 
-                                                   offset=1, w=gw, h=gh).set_bg(RoundRectBg(fill=bg_color, radius=3))
+                                                PLAY_RESULT_COLORS['not_clear'], PLAY_RESULT_COLORS[play_result[i]], 
+                                                offset=1, w=gw, h=gh).set_bg(RoundRectBg(fill=bg_color, radius=3))
                 
                 with Frame().set_content_align('rb'):
                     hs, vs, gw, gh = 8, 7, 96, 48
@@ -441,6 +451,8 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                     # 挑战Live等级
                     if 'userChallengeLiveSoloResult' in basic_profile:
                         solo_live_result = basic_profile['userChallengeLiveSoloResult']
+                        if isinstance(solo_live_result, list):
+                            solo_live_result = sorted(solo_live_result, key=lambda x: x['highScore'], reverse=True)[0]
                         cid, score = solo_live_result['characterId'], solo_live_result['highScore']
                         stages = find_by(basic_profile['userChallengeLiveSoloStages'], 'characterId', cid, mode='all')
                         stage_rank = max([stage['rank'] for stage in stages])
@@ -457,15 +469,97 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                             t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
 
     add_watermark(canvas)
-    img = await run_in_pool(canvas.get_img)
-    scale = 1.5
-    img = img.resize((int(img.size[0]*scale), int(img.size[1]*scale)))
-    return img
+    return await run_in_pool(canvas.get_img, 1.5)
 
 # 检测游戏id是否在黑名单中
 def check_uid_in_blacklist(uid: str) -> bool:
     blacklist = profile_db.get("blacklist", [])
     return uid in blacklist
+
+# 合成挑战live详情图片
+async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
+    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
+
+    challenge_info = {}
+    challenge_results = profile['userChallengeLiveSoloResults']
+    challenge_stages = profile['userChallengeLiveSoloStages']
+    challenge_rewards = profile['userChallengeLiveSoloHighScoreRewards']
+    for cid in range(1, 27):
+        stages = find_by(challenge_stages, 'characterId', cid, mode='all')
+        rank = max([stage['rank'] for stage in stages]) if stages else 0
+        result = find_by(challenge_results, 'characterId', cid)
+        score = result['highScore'] if result else 0
+        remain_jewel, remain_fragment = 0, 0
+        completed_reward_ids = [item['challengeLiveHighScoreRewardId'] for item in find_by(challenge_rewards, 'characterId', cid, mode='all')]
+        for reward in await ctx.md.challenge_live_high_score_rewards.get():
+            if reward['id'] in completed_reward_ids or reward['characterId'] != cid:
+                continue
+            res_box = await get_res_box_info(ctx, 'challenge_live_high_score', reward['resourceBoxId'])
+            for res in res_box:
+                if res['type'] == 'jewel':
+                    remain_jewel += res['quantity']
+                if res['type'] == 'material' and res['id'] == 15:
+                    remain_fragment += res['quantity']
+        challenge_info[cid] = (rank, score, remain_jewel, remain_fragment)
+
+    header_h, row_h = 56, 48
+    header_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(25, 25, 25, 255))
+    text_style = TextStyle(font=DEFAULT_FONT, size=20, color=(50, 50, 50, 255))
+    w1, w2, w3, w4, w5, w6 = 80, 80, 150, 300, 80, 80
+
+    with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            await get_detailed_profile_card(ctx, profile, err_msg)
+            with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(16).set_bg(roundrect_bg()):
+                # 标题
+                with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_h(header_h).set_padding(4).set_bg(roundrect_bg()):
+                    TextBox("角色", header_style).set_w(w1).set_content_align('c')
+                    TextBox("等级", header_style).set_w(w2).set_content_align('c')
+                    TextBox("分数", header_style).set_w(w3).set_content_align('c')
+                    TextBox("进度(上限250w)", header_style).set_w(w4).set_content_align('c')
+                    with Frame().set_w(w5).set_content_align('c'):
+                        ImageBox(await get_res_icon(ctx, 'jewel'), size=(None, 40))
+                    with Frame().set_w(w6).set_content_align('c'):
+                        ImageBox(await get_res_icon(ctx, 'material', 15), size=(None, 40))
+
+                # 项目
+                for cid in range(1, 27):
+                    bg_color = (255, 255, 255, 150) if cid % 2 == 0 else (255, 255, 255, 100)
+                    rank = str(challenge_info[cid][0]) if challenge_info[cid][0] else "-"
+                    score = str(challenge_info[cid][1]) if challenge_info[cid][1] else "-"
+                    jewel = str(challenge_info[cid][2])
+                    fragment = str(challenge_info[cid][3])
+                    with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_h(row_h).set_padding(4).set_bg(roundrect_bg(fill=bg_color)):
+                        with Frame().set_w(w1).set_content_align('c'):
+                            ImageBox(get_chara_icon_by_chara_id(cid), size=(None, 40))
+                        TextBox(rank, text_style).set_w(w2).set_content_align('c')
+                        TextBox(score, text_style).set_w(w3).set_content_align('c')
+                        with Frame().set_w(w4).set_content_align('lt'):
+                            progress = max(min(challenge_info[cid][1] / 2500000, 1), 0)
+                            total_w, total_h, border = w4, 10, 2
+                            progress_w = int((total_w - border * 2) * progress)
+                            progress_h = total_h - border * 2
+                            color = (255, 50, 50, 255)
+                            if progress > 0.2: color = (255, 100, 100, 255)
+                            if progress > 0.4: color = (255, 150, 100, 255)
+                            if progress > 0.6: color = (255, 200, 100, 255)
+                            if progress > 0.8: color = (255, 255, 100, 255)
+                            if progress == 1: color = (100, 255, 100, 255)
+                            if progress > 0:
+                                Spacer(w=total_w, h=total_h).set_bg(RoundRectBg(fill=(100, 100, 100, 255), radius=total_h//2))
+                                Spacer(w=progress_w, h=progress_h).set_bg(RoundRectBg(fill=color, radius=(total_h-border)//2)).set_offset((border, border))
+                            else:
+                                Spacer(w=total_w, h=total_h).set_bg(RoundRectBg(fill=(100, 100, 100, 100), radius=total_h//2))
+                        TextBox(jewel, text_style).set_w(w5).set_content_align('c')
+                        TextBox(fragment, text_style).set_w(w6).set_content_align('c')
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
+# 合成加成详情图片
+async def compose_area_bonus_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    pass
 
 
 # ======================= 指令处理 ======================= #
@@ -660,7 +754,7 @@ pjsk_reg_time.check_cdrate(cd).check_wblist(gbl)
 @pjsk_reg_time.handle()
 async def _(ctx: SekaiHandlerContext):
     profile, _ = await get_detailed_profile(ctx, ctx.user_id, raise_exc=True)
-    reg_time = datetime.fromtimestamp(profile['userRegistration']['registeredAt'] / 1000).strftime('%Y-%m-%d')
+    reg_time = get_register_time(profile).strftime('%Y-%m-%d')
     user_name = profile['userGamedata']['name']
     return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time}")
 
@@ -801,3 +895,17 @@ async def _(ctx: HandlerContext):
     blacklist.remove(args)
     profile_db.set("blacklist", blacklist)
     return await ctx.asend_reply_msg(f"ID {args} 已从黑名单中移除")
+
+
+# 挑战信息
+pjsk_challenge_info = SekaiCmdHandler([
+    "/pjsk challenge info", "/pjsk_challenge_info",
+    "/挑战信息", "/挑战详情",
+])
+pjsk_challenge_info.check_cdrate(cd).check_wblist(gbl)
+@pjsk_challenge_info.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_challenge_live_detail_image(ctx, ctx.user_id),
+        low_quality=True,
+    ))

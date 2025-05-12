@@ -31,9 +31,9 @@ async def get_res_icon(ctx: SekaiHandlerContext, res_type: str, res_id: int = No
     return res_image
 
 
-async def get_res_box_info(ctx: SekaiHandlerContext, purpose: str, bid: int, image_size: int) -> list:
+async def get_res_box_info(ctx: SekaiHandlerContext, purpose: str, bid: int, image_size: int = None) -> list:
     """
-    获取资源箱信息，返回资源信息的列表，资源信息字段包括：
+    获取资源箱信息，返回资源信息字典的列表，资源信息字段包括：
     - `type`: 资源类型
     - `id`: 资源ID
     - `quantity`: 资源数量
@@ -52,10 +52,12 @@ async def get_res_box_info(ctx: SekaiHandlerContext, purpose: str, bid: int, ima
             
             try:
                 res_image = await get_res_icon(ctx, res_type, res_id)
-                res_image = resize_keep_ratio(res_image, image_size * RES_BOX_ICON_SCALE.get(res_type, 0.6), 'h')
+                if image_size:
+                    res_image = resize_keep_ratio(res_image, image_size * RES_BOX_ICON_SCALE.get(res_type, 0.6), 'h')
             except Exception as e:
                 res_image = UNKNOWN_IMG
-                res_image = resize_keep_ratio(res_image, image_size * 0.6, 'h')
+                if image_size:
+                    res_image = resize_keep_ratio(res_image, image_size * 0.6, 'h')
                 logger.warning(f"获取资源 type={res_type} id={res_id} 图片失败: {e}")
 
             ret.append({
