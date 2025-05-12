@@ -283,13 +283,15 @@ async def sync_music_alias() -> str:
                         continue
 
                     aliases = lines[2].split('，')
+                    ok_aliases = []
                     for alias in aliases:
                         if any('\uac00' <= c <= '\ud7af' for c in alias):   # 跳过韩文别名
                             continue
                         add_ret = alias_db.add(mid, alias, verbose=False)
                         if add_ret is None:
                             new_alias_num += 1
-                    logger.info(f"{progress}成功添加 {len(aliases)} 条别名 {aliases}")
+                            ok_aliases.append(alias)
+                    logger.info(f"{progress}成功添加 {len(ok_aliases)} 条别名 {ok_aliases}")
                     music_sync_ok_num += 1
 
                 except Exception as e:
