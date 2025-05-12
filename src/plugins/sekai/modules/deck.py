@@ -564,10 +564,49 @@ async def compose_deck_recommend_image(
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 从args中提取是否满技能、剧情已读、满突破
+def extract_card_config(args: str, options: DeckRecommendOptions) -> str:
+    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
+
+    for keyword in ("满技能", "满技", "skillmax", "技能满级"):
+        if keyword in args:
+            options.rarity_1_config.skill_max = True
+            options.rarity_2_config.skill_max = True
+            options.rarity_3_config.skill_max = True
+            options.rarity_4_config.skill_max = True
+            options.rarity_birthday_config.skill_max = True
+            args = args.replace(keyword, "").strip()
+            break
+    for keyword in ("满突破", "满破", "rankmax", "mastermax"):
+        if keyword in args:
+            options.rarity_1_config.master_max = True
+            options.rarity_2_config.master_max = True
+            options.rarity_3_config.master_max = True
+            options.rarity_4_config.master_max = True
+            options.rarity_birthday_config.master_max = True
+            args = args.replace(keyword, "").strip()
+            break
+    for keyword in ("剧情已读", "已读"):
+        if keyword in args:
+            options.rarity_1_config.episode_read = True
+            options.rarity_2_config.episode_read = True
+            options.rarity_3_config.episode_read = True
+            options.rarity_4_config.episode_read = True
+            options.rarity_birthday_config.episode_read = True
+            args = args.replace(keyword, "").strip()
+            break
+    return args
+
 # 从args中提取活动组卡参数
 async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
     args = ctx.get_args().strip().lower()
     options = DeckRecommendOptions()
+
+    args = extract_card_config(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -606,11 +645,6 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
-    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
 
     # 模拟退火设置
     options.sa_options = DeckRecommendSaOptions()
@@ -622,6 +656,8 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
 async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
     args = ctx.get_args().strip().lower()
     options = DeckRecommendOptions()
+
+    args = extract_card_config(args, options)
 
     options.live_type = "challenge"
 
@@ -654,11 +690,6 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
-    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
 
     # 模拟退火设置
     options.sa_options = DeckRecommendSaOptions()
@@ -671,6 +702,8 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
 async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
     args = ctx.get_args().strip().lower()
     options = DeckRecommendOptions()
+
+    args = extract_card_config(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -707,11 +740,6 @@ async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckR
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
-    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
 
     # 模拟退火设置
     options.sa_options = DeckRecommendSaOptions()
@@ -723,6 +751,8 @@ async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckR
 async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
     args = ctx.get_args().strip().lower()
     options = DeckRecommendOptions()
+
+    args = extract_card_config(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -769,11 +799,6 @@ async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) ->
 
     # 组卡限制
     options.limit = DEFAULT_LIMIT
-    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
 
     # 模拟退火设置
     options.sa_options = DeckRecommendSaOptions()

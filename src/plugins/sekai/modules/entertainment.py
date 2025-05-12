@@ -261,7 +261,7 @@ async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, I
     assert datetime.now() > datetime.fromtimestamp(music['publishedAt'] / 1000)
     asset_name = music['assetbundleName']
     cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
-    cover_thumb_cq = await get_image_cq(cover_img.resize((128, 128)), low_quality=True)
+    cover_thumb_cq = await get_image_cq(cover_img.resize((200, 200)), low_quality=True)
     if res_type == 'cover':
         return music, cover_thumb_cq, cover_img.resize((512, 512))
     elif res_type == 'audio':
@@ -417,7 +417,7 @@ def get_guess_music_stop_fn(guess_type: str):
 # 设置娱乐功能次数限制
 pjsk_entertainment_limit = SekaiCmdHandler([
     "/pjsk entertainment limit", "/pjsk_entertainment_limit", 
-    "/pjsk娱乐功能限制", "/pel",
+    "/pjsk娱乐功能上限", "/pel",
 ], regions=['jp'])
 pjsk_entertainment_limit.check_cdrate(cd).check_wblist(gbl).check_superuser()
 @pjsk_entertainment_limit.handle()
@@ -429,6 +429,27 @@ async def _(ctx: SekaiHandlerContext):
     daily_limits[group_id] = limit
     file_db.set(f"entertainment_daily_limits", daily_limits)
     await ctx.asend_reply_msg(f"已设置本群娱乐功能次数限制为每日{limit}次")
+
+
+# 查看娱乐功能次数
+pjsk_entertainment_limit_check = SekaiCmdHandler([
+    "/pjsk entertainment count", "/pjsk_entertainment_count",
+    "/pjsk娱乐功能次数", "/pec",
+], regions=['jp'])
+pjsk_entertainment_limit_check.check_cdrate(cd).check_wblist(gbl)
+@pjsk_entertainment_limit_check.handle()
+async def _(ctx: SekaiHandlerContext):
+    group_id = str(ctx.group_id)
+    daily_limits = file_db.get(f"entertainment_daily_limits", {})
+    daily_usages = file_db.get(f"entertainment_daily_usages", {})
+    usage_date = file_db.get(f"entertainment_usage_date", None)
+    date = datetime.now().strftime("%Y-%m-%d")
+    if usage_date != date:
+        daily_usages = {}
+        usage_date = date
+    limit = daily_limits.get(group_id, DEFAULT_ENTERTAINMENT_DAILY_LIMIT)
+    usage = daily_usages.get(group_id, 0)
+    await ctx.asend_reply_msg(f"本群今日娱乐功能使用次数：{usage}/{limit}次")
 
 
 # 猜曲封
