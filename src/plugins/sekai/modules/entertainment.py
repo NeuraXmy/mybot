@@ -17,6 +17,7 @@ from PIL.Image import Transpose
 from PIL import ImageOps
 import pydub
 
+DEFAULT_ENTERTAINMENT_DAILY_LIMIT = 200
 
 GUESS_INTERVAL = timedelta(seconds=1)
 HINT_KEYWORDS = ['提示']
@@ -95,6 +96,24 @@ GUESS_MUSIC_DIFF_OPTIONS = {
 
 
 # ======================= 处理逻辑 ======================= #
+
+# 检查次数限制
+def check_daily_entertainment_limit(ctx: SekaiHandlerContext):
+    group_id = str(ctx.group_id)
+    daily_limits = file_db.get(f"entertainment_daily_limits", {})
+    daily_usages = file_db.get(f"entertainment_daily_usages", {})
+    usage_date = file_db.get(f"entertainment_usage_date", None)
+    date = datetime.now().strftime("%Y-%m-%d")
+    if usage_date != date:
+        daily_usages = {}
+        usage_date = date
+    limit = daily_limits.get(group_id, DEFAULT_ENTERTAINMENT_DAILY_LIMIT)
+    usage = daily_usages.get(group_id, 0)
+    if usage >= limit:
+        raise ReplyException(f"本群今日娱乐功能使用次数已达上限{limit}次")
+    daily_usages[group_id] = usage + 1
+    file_db.set(f"entertainment_daily_usages", daily_usages)
+    file_db.set(f"entertainment_usage_date", usage_date)
 
 @dataclass
 class GuessContext:
@@ -233,24 +252,24 @@ async def random_crop_image(image: Image.Image, options: ImageRandomCropOptions)
         ret = Image.merge("RGB", (ret[channels[0]], ret[channels[1]], ret[channels[2]]))
     return ret
 
-# 随机歌曲，返回歌曲数据和指定资源类型
+# 随机歌曲，返回（歌曲数据，封面缩略图cq码，资源类型）
 @retry(stop=stop_after_attempt(3), reraise=True)
-async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, Image.Image]:
-    assert res_type in ['cover', 'cover_and_audio']
+async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, Image.Image, Any]:
+    assert res_type in ['cover', 'audio']
     musics = await ctx.md.musics.get()
     music = random.choice(musics)
     assert datetime.now() > datetime.fromtimestamp(music['publishedAt'] / 1000)
     asset_name = music['assetbundleName']
+    cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
+    cover_thumb_cq = await get_image_cq(cover_img.resize((128, 128)), low_quality=True)
     if res_type == 'cover':
-        cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
-        return music, cover_img.resize((512, 512))
-    elif res_type == 'cover_and_audio':
-        cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
+        return music, cover_thumb_cq, cover_img.resize((512, 512))
+    elif res_type == 'audio':
         # 随机一个版本音频
         vocals = await ctx.md.music_vocals.find_by('musicId', music['id'], mode='all')
         vocal_assetname = random.choice(vocals)['assetbundleName']
         audio_path = await ctx.rip.get_asset_cache_path(f"music/long/{vocal_assetname}/{vocal_assetname}.mp3")
-        return music, cover_img.resize((512, 512)), audio_path
+        return music, cover_thumb_cq, audio_path
 
 # 发送猜曲提示
 async def send_guess_music_hint(gctx: GuessContext):
@@ -373,8 +392,44 @@ async def random_clip_audio(input_path: str, save_path: str, length: float, reve
         clip = clip.reverse()
     clip.export(save_path, format='mp3')
 
+# 获取猜曲检查函数
+def get_guess_music_check_fn(guess_type: str):
+    async def check_fn(gctx: GuessContext):
+        music, cover_thumb = gctx.data['music'], gctx.data['cover_thumb']
+        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
+        if ret.music is None:
+            return
+        if ret.music['id'] == music['id']:
+            await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']}{cover_thumb}")
+            gctx.guess_success = True
+    return check_fn
+
+# 获取猜曲停止函数
+def get_guess_music_stop_fn(guess_type: str):
+    async def stop_fn(gctx: GuessContext):
+        music, cover_thumb = gctx.data['music'], gctx.data['cover_thumb']
+        await gctx.asend_msg(f"{guess_type}结束，正确答案：\n【{music['id']}】{music['title']}{cover_thumb}")
+    return stop_fn
+
 
 # ======================= 指令处理 ======================= #
+
+# 设置娱乐功能次数限制
+pjsk_entertainment_limit = SekaiCmdHandler([
+    "/pjsk entertainment limit", "/pjsk_entertainment_limit", 
+    "/pjsk娱乐功能限制", "/pel",
+], regions=['jp'])
+pjsk_entertainment_limit.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_entertainment_limit.handle()
+async def _(ctx: SekaiHandlerContext):
+    limit = int(ctx.get_args().strip())
+    assert_and_reply(limit >= 0, "次数限制必须大于等于0")
+    group_id = str(ctx.group_id)
+    daily_limits = file_db.get(f"entertainment_daily_limits", {})
+    daily_limits[group_id] = limit
+    file_db.set(f"entertainment_daily_limits", daily_limits)
+    await ctx.asend_reply_msg(f"已设置本群娱乐功能次数限制为每日{limit}次")
+
 
 # 猜曲封
 pjsk_guess_cover = SekaiCmdHandler([
@@ -384,12 +439,14 @@ pjsk_guess_cover = SekaiCmdHandler([
 pjsk_guess_cover.check_cdrate(cd).check_wblist(gbl)
 @pjsk_guess_cover.handle()
 async def _(ctx: SekaiHandlerContext):
+    check_daily_entertainment_limit(ctx)
+
     args = ctx.get_args().strip()
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_COVER_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_COVER_DIFF_OPTIONS.keys())}")
 
     async def start_fn(gctx: GuessContext):
-        music, cover_img = await random_music(gctx.ctx, 'cover')
+        music, cover_thumb, cover_img = await random_music(gctx.ctx, 'cover')
         logger.info(f"群聊 {gctx.group_id} 猜曲绘目标: {music['id']}")
         crop_img = await random_crop_image(cover_img, GUESS_COVER_DIFF_OPTIONS[diff])
         msg = await get_image_cq(crop_img)
@@ -398,24 +455,13 @@ async def _(ctx: SekaiHandlerContext):
         msg += "（无需回复，直接发送歌名/id/别名）"
         await gctx.asend_msg(msg)
         gctx.data['music'] = music
-        gctx.data['cover_img'] = cover_img
-    
-    async def check_fn(gctx: GuessContext):
-        music, cover_img = gctx.data['music'], gctx.data['cover_img']
-        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
-        if ret.music is None:
-            return
-        if ret.music['id'] == music['id']:
-            await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']}")
-            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            gctx.guess_success = True
+        gctx.data['cover_thumb'] = cover_thumb
 
-    async def stop_fn(gctx: GuessContext):
-        music, cover_img = gctx.data['music'], gctx.data['cover_img']
-        await gctx.asend_msg(f"猜曲绘结束，正确答案：\n【{music['id']}】{music['title']}")
-        await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-
-    await start_guess(ctx, '猜曲绘', GUESS_COVER_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)
+    await start_guess(
+        ctx, '猜曲绘', GUESS_COVER_TIMEOUT, start_fn, 
+        get_guess_music_check_fn('猜曲绘'), get_guess_music_stop_fn('猜曲绘'),
+        send_guess_music_hint
+    )
 
 
 # 猜谱面
@@ -426,12 +472,14 @@ pjsk_guess_chart = SekaiCmdHandler([
 pjsk_guess_chart.check_cdrate(cd).check_wblist(gbl)
 @pjsk_guess_chart.handle()
 async def _(ctx: SekaiHandlerContext):
+    check_daily_entertainment_limit(ctx)
+
     args = ctx.get_args().strip()
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_CHART_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CHART_DIFF_OPTIONS.keys())}")
 
     async def start_fn(gctx: GuessContext):
-        music, cover_img = await random_music(gctx.ctx, 'cover')
+        music, cover_thumb, _ = await random_music(gctx.ctx, 'cover')
         logger.info(f"群聊 {gctx.group_id} 猜谱面目标: {music['id']}")
         diff_info = await get_music_diff_info(gctx.ctx, music['id'])
         chart_diff = random.choice(['master', 'append']) if diff_info.has_append else 'master'
@@ -451,26 +499,15 @@ async def _(ctx: SekaiHandlerContext):
         msg += "（无需回复，直接发送歌名/id/别名）"
         await gctx.asend_msg(msg)
         gctx.data['music'] = music
-        gctx.data['cover_img'] = cover_img
+        gctx.data['cover_thumb'] = cover_thumb
         gctx.data['chart_diff'] = chart_diff
         gctx.data['chart_lv'] = chart_lv
-    
-    async def check_fn(gctx: GuessContext):
-        music, cover_img, chart_diff, chart_lv = gctx.data['music'], gctx.data['cover_img'], gctx.data['chart_diff'], gctx.data['chart_lv']        
-        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
-        if ret.music is None:
-            return
-        if ret.music['id'] == music['id']:
-            await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}")
-            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-            gctx.guess_success = True
 
-    async def stop_fn(gctx: GuessContext):
-        music, cover_img, chart_diff, chart_lv = gctx.data['music'], gctx.data['cover_img'], gctx.data['chart_diff'], gctx.data['chart_lv']
-        await gctx.asend_msg(f"猜谱面结束，正确答案：\n【{music['id']}】{music['title']} - {chart_diff.upper()} {chart_lv}")
-        await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-
-    await start_guess(ctx, '猜谱面', GUESS_CHART_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)
+    await start_guess(
+        ctx, '猜谱面', GUESS_CHART_TIMEOUT, start_fn, 
+        get_guess_music_check_fn('猜谱面'), get_guess_music_stop_fn('猜谱面'),
+        send_guess_music_hint
+    )
 
 
 # 猜卡面
@@ -481,6 +518,8 @@ pjsk_guess_card = SekaiCmdHandler([
 pjsk_guess_card.check_cdrate(cd).check_wblist(gbl)
 @pjsk_guess_card.handle()
 async def _(ctx: SekaiHandlerContext):
+    check_daily_entertainment_limit(ctx)
+
     args = ctx.get_args().strip()
     diff, args = extract_diff(args, default='expert')
     assert_and_reply(diff in GUESS_CARD_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_CARD_DIFF_OPTIONS.keys())}")
@@ -522,13 +561,15 @@ pjsk_guess_music = SekaiCmdHandler([
 pjsk_guess_music.check_cdrate(cd).check_wblist(gbl)
 @pjsk_guess_music.handle()
 async def _(ctx: SekaiHandlerContext):
+    check_daily_entertainment_limit(ctx)
+
     with TempFilePath('mp3') as clipped_audio_path:
         args = ctx.get_args().strip()
         diff, args = extract_diff(args, default='expert')
         assert_and_reply(diff in GUESS_MUSIC_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_MUSIC_DIFF_OPTIONS.keys())}")
 
         async def start_fn(gctx: GuessContext):
-            music, cover_img, audio_path = await random_music(gctx.ctx, 'cover_and_audio')
+            music, cover_thumb, audio_path = await random_music(gctx.ctx, 'audio')
             logger.info(f"群聊 {gctx.group_id} 听歌识曲目标: {music['id']}")
             await random_clip_audio(
                 audio_path, clipped_audio_path, 
@@ -542,21 +583,10 @@ async def _(ctx: SekaiHandlerContext):
             await gctx.asend_msg(msg)
             await gctx.asend_msg(f"[CQ:record,file=file://{os.path.abspath(clipped_audio_path)}]")
             gctx.data['music'] = music
-            gctx.data['cover_img'] = cover_img
-        
-        async def check_fn(gctx: GuessContext):
-            music, cover_img = gctx.data['music'], gctx.data['cover_img']
-            ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
-            if ret.music is None:
-                return
-            if ret.music['id'] == music['id']:
-                await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']}")
-                await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-                gctx.guess_success = True
+            gctx.data['cover_thumb'] = cover_thumb
 
-        async def stop_fn(gctx: GuessContext):
-            music, cover_img = gctx.data['music'], gctx.data['cover_img']
-            await gctx.asend_msg(f"听歌识曲结束，正确答案：\n【{music['id']}】{music['title']}")
-            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
-
-        await start_guess(ctx, '听歌识曲', GUESS_MUSIC_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)
+        await start_guess(
+            ctx, '听歌识曲', GUESS_MUSIC_TIMEOUT, start_fn, 
+            get_guess_music_check_fn('听歌识曲'), get_guess_music_stop_fn('听歌识曲'),
+            send_guess_music_hint
+        )
