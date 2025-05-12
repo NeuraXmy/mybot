@@ -251,19 +251,18 @@ class Painter:
         fill: Color = BLACK,
         align: str = "left"
     ):
+        std_size = get_text_size(font, "哇")
         has_emoji = emoji.emoji_count(text) > 0
         if not has_emoji:
             draw = ImageDraw.Draw(self.img)
-            text_offset = get_text_offset(font, text)
-            text_offset = (text_offset[0] // 2, text_offset[1] // 2)
+            text_offset = (0, -std_size[1])
             pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
-            draw.text(pos, text, font=font, fill=fill, align=align)
+            draw.text(pos, text, font=font, fill=fill, align=align, anchor='ls')
         else:
             with Pilmoji(self.img, source=GoogleEmojiSource) as pilmoji:
-                text_offset = get_text_offset(font, text)
-                text_offset = (text_offset[0] // 2, text_offset[1] // 2)
+                text_offset = (0, -std_size[1])
                 pos = (pos[0] - text_offset[0] + self.offset[0], pos[1] - text_offset[1] + self.offset[1])
-                pilmoji.text(pos, text, font=font, fill=fill, align=align, emoji_position_offset=(0, font.size // 3))
+                pilmoji.text(pos, text, font=font, fill=fill, align=align, emoji_position_offset=(0, -std_size[1]), anchor='ls')
         return self
         
     def paste(
@@ -1225,7 +1224,7 @@ class TextBox(Widget):
             start_y = (p.h - text_h) // 2
 
         for i, line in enumerate(lines):
-            lw, lh = get_text_size(font, line)
+            lw, _ = get_text_size(font, line)
             x, y = 0, start_y + i * (self.style.size + self.line_sep)
             if self.content_halign == 'l':
                 x += 0
@@ -1233,7 +1232,7 @@ class TextBox(Widget):
                 x += p.w - lw
             elif self.content_halign == 'c':
                 x += (p.w - lw) // 2
-            p.move_region((x, y), (lw, lh))
+            p.move_region((x, y), (lw, self.style.size))
             p.text(line, (0, 0), font=font, fill=self.style.color)
             p.restore_region()
     
