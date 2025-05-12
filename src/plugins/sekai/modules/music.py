@@ -8,6 +8,7 @@ from ..sub import SekaiUserSubHelper, SekaiGroupSubHelper
 from .profile import get_detailed_profile, get_detailed_profile_card, get_player_avatar_info_by_detailed_profile
 from .event import extract_ban_event
 import rapidfuzz
+import websockets
 
 
 music_group_sub = SekaiGroupSubHelper("music", "新曲通知", ALL_SERVER_REGIONS)
@@ -121,16 +122,18 @@ class MusicAliasDB:
             except: logger.print_exc(f"删除歌曲别名 {alias} of {mid} 时回调失败")
         return mid
 
-    def add(self, mid: int, alias: str) -> Optional[int]:
+    def add(self, mid: int, alias: str, verbose=True) -> Optional[int]:
         """
         为mid添加别名，添加失败返回冲突的mid，否则返回None
         """
         ret = self._add(mid, alias)
         if ret is None:
-            logger.info(f"添加歌曲别名: \"{alias}\" -> {mid}")
+            if verbose:
+                logger.info(f"添加歌曲别名: \"{alias}\" -> {mid}")
             self._save()
         else:
-            logger.info(f"添加歌曲别名: \"{alias}\" -> {mid} 失败: 已经是 {ret} 的别名")
+            if verbose:
+                logger.info(f"添加歌曲别名: \"{alias}\" -> {mid} 失败: 已经是 {ret} 的别名")
         return ret
 
     def remove(self, alias: str) -> Optional[int]:
@@ -177,6 +180,137 @@ class MusicAliasDB:
         获取别名的mid
         """
         return self.alias_mid.get(alias)
+
+
+MUSIC_ALIAS_SYNC_DB_PATH = f"{SEKAI_DATA_DIR}/music_alias/sync.json"
+MUSIC_ALIAS_SYNC_CONFIG_PATH = f"{SEKAI_DATA_DIR}/music_alias/sync_config.yaml"
+with open(MUSIC_ALIAS_SYNC_CONFIG_PATH, 'r', encoding='utf-8') as f:
+    MUSIC_ALIAS_SYNC_CONFIG = yaml.safe_load(f)
+
+stop_alias_sync_signal = 0
+
+# 同步歌曲别名，返回同步结果日志
+async def sync_music_alias() -> str:
+    global stop_alias_sync_signal
+    music_to_sync_num, music_sync_ok_num, music_sync_failed_num, new_alias_num = None, None, None, None
+    try:
+        start_time = datetime.now()
+        logger.info(f"开始同步歌曲别名 config={MUSIC_ALIAS_SYNC_CONFIG}")
+
+        self_id = MUSIC_ALIAS_SYNC_CONFIG['self_id']
+        group_id = MUSIC_ALIAS_SYNC_CONFIG['group_id']
+        user_id = MUSIC_ALIAS_SYNC_CONFIG['user_id']
+        ws_url = MUSIC_ALIAS_SYNC_CONFIG['ws_url']
+        interval = MUSIC_ALIAS_SYNC_CONFIG['interval']
+        regions = MUSIC_ALIAS_SYNC_CONFIG['regions']
+        timeout = MUSIC_ALIAS_SYNC_CONFIG['timeout']
+        threshold = MUSIC_ALIAS_SYNC_CONFIG['threshold']
+        max_failed = MUSIC_ALIAS_SYNC_CONFIG['max_failed']
+
+        alias_db = MusicAliasDB.get_instance()
+        sync_db = get_file_db(MUSIC_ALIAS_SYNC_DB_PATH, logger)
+        banned_ids = set(sync_db.get('banned_ids', []))
+
+        # 连接ws
+        async with websockets.connect(ws_url, additional_headers={'X-Self-ID': self_id, 'X-Client-Role': 'Universal'}) as websocket:
+            # 获取所有需要同步的歌曲
+            logger.info("成功连接Haruki")
+            mid_musicname = {}
+            for region in regions:
+                ctx = SekaiHandlerContext.from_region(region)
+                for music in await ctx.md.musics.get():
+                    mid = music['id']
+                    if mid in banned_ids:
+                        continue
+                    alias_num = len(alias_db.get_aliases(mid))
+                    if alias_num <= threshold and mid not in mid_musicname:
+                        mid_musicname[mid] = music['title']
+            music_to_sync_num, music_sync_ok_num, music_sync_failed_num, new_alias_num = len(mid_musicname), 0, 0, 0
+            logger.info(f"获取需要同步的歌曲数量: {music_to_sync_num}")
+             
+            # 同步函数
+            async def do_sync(mid: int, name: str) -> Dict:
+                data = {
+                    "time": datetime.now().timestamp(),
+                    "self_id": self_id,
+                    "post_type": "message",
+                    "message_type": "group",
+                    "sub_type": "normal",
+                    "message_id": random.randint(1, 10000000000),
+                    "group_id": group_id,
+                    "user_id": user_id,
+                    "message": [{"type": "text", "data": {"text": f"musicalias {name}"}}],
+                    "raw_message": f"musicalias {name}",
+                    "sender": {"user_id": user_id, "nickname": BOT_NAME},
+                }
+                await websocket.send(json.dumps(data))
+                return json.loads(await websocket.recv())
+            
+            # 开始同步
+            for i, (mid, name) in enumerate(mid_musicname.items()):
+                progress = f"同步歌曲别名 {i+1}/{music_to_sync_num} {mid}-{name}: "
+                if stop_alias_sync_signal:
+                    stop_alias_sync_signal = 0
+                    raise Exception("同步中断")
+
+                try:
+                    try:
+                        ret = await asyncio.wait_for(do_sync(mid, name), timeout=timeout)
+                    except asyncio.TimeoutError:
+                        raise Exception("同步超时")
+
+                    assert ret['action'] == 'send_msg', "返回的action不是send_msg"
+                    assert ret['params']['message'], "返回的message为空"
+                    seg = ret['params']['message'][0]
+                    # 图片返回
+                    if seg['type'] == 'image':
+                        banned_ids.add(mid)
+                        sync_db.set('banned_ids', list(banned_ids))
+                        logger.info(f"{progress}获取到图片返回，加入banned_ids")
+                        continue
+                    
+                    assert seg['type'] == 'text'
+                    lines = seg['data']['text'].splitlines()
+
+                    if '找不到你所查询的歌曲哦' in lines[0]:
+                        logger.warning(f"{progress}找不到该曲目")
+                        continue
+                    if name not in lines[0]:
+                        logger.warning(f"{progress}返回的曲目名称不匹配")
+                        continue
+                    if len(lines) < 4:
+                        logger.info(f"{progress}该曲还没有别名")
+                        continue
+
+                    aliases = lines[2].split('，')
+                    for alias in aliases:
+                        if any('\uac00' <= c <= '\ud7af' for c in alias):   # 跳过韩文别名
+                            continue
+                        add_ret = alias_db.add(mid, alias, verbose=False)
+                        if add_ret is None:
+                            new_alias_num += 1
+                    logger.info(f"{progress}成功添加 {len(aliases)} 条别名 {aliases}")
+                    music_sync_ok_num += 1
+
+                except Exception as e:
+                    logger.print_exc(f"{progress}{get_exc_desc(e)}")
+                    music_sync_failed_num += 1
+                    if music_sync_failed_num >= max_failed:
+                        raise Exception(f"同步失败次数超过上限，最后一次错误: {get_exc_desc(e)}")
+                    
+                await asyncio.sleep(interval)
+
+            elapsed = get_readable_timedelta(datetime.now() - start_time)
+            return f"成功从Haruki同步{music_to_sync_num}首歌曲的别名，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}"
+            
+    except Exception as e:
+        if music_to_sync_num is not None:
+            elapsed = get_readable_timedelta(datetime.now() - start_time)
+            ret_msg = f"尝试从Haruki同步{music_to_sync_num}首歌曲的别名失败，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}，错误信息:\n{get_exc_desc(e)}"
+        else:
+            ret_msg = f"同步歌曲别名失败: {get_exc_desc(e)}"
+        logger.print_exc(ret_msg)
+        return ret_msg
 
 
 # ======================= 搜索歌曲 ======================= #
@@ -1162,6 +1296,32 @@ async def _(ctx: SekaiHandlerContext):
     ))
 
 
+# 同步歌曲别名
+pjsk_sync_music_alias = CmdHandler([
+    "/sync music alias", "/sync_music_alias", 
+    "/同步歌曲别名", "/sma",
+], logger)
+pjsk_sync_music_alias.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_sync_music_alias.handle()
+async def _(ctx: HandlerContext):
+    await ctx.block(timeout=0)
+    await ctx.asend_reply_msg("开始同步歌曲别名")
+    ret = await sync_music_alias()
+    await ctx.asend_reply_msg(ret)
+
+
+# 停止同步歌曲别名
+pjsk_stop_sync_music_alias = CmdHandler([
+    "/stop sync music alias", "/stop_sync_music_alias", 
+    "/停止同步歌曲别名", "/ssma",
+], logger)
+pjsk_stop_sync_music_alias.check_cdrate(cd).check_wblist(gbl).check_superuser()
+@pjsk_stop_sync_music_alias.handle()
+async def _(ctx: HandlerContext):
+    global stop_alias_sync_signal
+    stop_alias_sync_signal = True
+    return await ctx.asend_reply_msg("停止同步信号已发送")
+
 
 # ======================= 定时任务 ======================= #
 
@@ -1293,3 +1453,22 @@ async def new_apd_notify():
         file_db.set("no_apd_musics", no_apd_musics)
         file_db.set("notified_new_apd", notified_new_apd)
 
+
+# 自动同步歌曲别名
+for hour, minute, second in MUSIC_ALIAS_SYNC_CONFIG['cron']:
+    @scheduler.scheduled_job("cron", hour=hour, minute=minute, second=second)
+    async def cron_statistic():
+        logger.info("开始自动同步歌曲别名")
+        log_groups = MUSIC_ALIAS_SYNC_CONFIG['log_groups']
+
+        for group_id in log_groups:
+            if not gbl.check_id(group_id): continue
+            try: await send_group_msg_by_bot(get_bot(), group_id, "开始自动同步歌曲别名...")
+            except: pass
+
+        msg_ret = await sync_music_alias()
+
+        for group_id in log_groups:
+            if not gbl.check_id(group_id): continue
+            try: await send_group_msg_by_bot(get_bot(), group_id, msg_ret)
+            except: logger.print_exc(f"发送自动同步歌曲别名日志信息到群 {group_id} 失败")
