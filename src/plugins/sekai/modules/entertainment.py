@@ -15,6 +15,7 @@ from .chart import generate_music_chart
 from .card import get_card_image, has_after_training, only_has_after_training, get_character_name_by_id, get_unit_by_card_id
 from PIL.Image import Transpose
 from PIL import ImageOps
+import pydub
 
 
 GUESS_INTERVAL = timedelta(seconds=1)
@@ -80,6 +81,16 @@ GUESS_CARD_DIFF_OPTIONS = {
     'expert':   ImageRandomCropOptions(0.2, 0.3),
     'master':   ImageRandomCropOptions(0.1, 0.2),
     'append':   ImageRandomCropOptions(0.2, 0.3, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
+}
+
+GUESS_MUSIC_TIMEOUT = timedelta(seconds=60)
+GUESS_MUSIC_DIFF_OPTIONS = {
+    'easy':     (15.0, False),
+    'normal':   (10.0, False),
+    'hard':     (7.5, False),
+    'expert':   (5.0, False),
+    'master':   (2.0, False),
+    'append':   (10.0, True),
 }
 
 
@@ -225,13 +236,21 @@ async def random_crop_image(image: Image.Image, options: ImageRandomCropOptions)
 # 随机歌曲，返回歌曲数据和指定资源类型
 @retry(stop=stop_after_attempt(3), reraise=True)
 async def random_music(ctx: SekaiHandlerContext, res_type: str) -> Tuple[Dict, Image.Image]:
-    assert res_type in ['cover']
+    assert res_type in ['cover', 'cover_and_audio']
+    musics = await ctx.md.musics.get()
+    music = random.choice(musics)
+    assert datetime.now() > datetime.fromtimestamp(music['publishedAt'] / 1000)
+    asset_name = music['assetbundleName']
     if res_type == 'cover':
-        musics = await ctx.md.musics.get()
-        music = random.choice(musics)
-        asset_name = music['assetbundleName']
         cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
         return music, cover_img.resize((512, 512))
+    elif res_type == 'cover_and_audio':
+        cover_img = await ctx.rip.img(f"music/jacket/{asset_name}_rip/{asset_name}.png", allow_error=False)
+        # 随机一个版本音频
+        vocals = await ctx.md.music_vocals.find_by('musicId', music['id'], mode='all')
+        vocal_assetname = random.choice(vocals)['assetbundleName']
+        audio_path = await ctx.rip.get_asset_cache_path(f"music/long/{vocal_assetname}/{vocal_assetname}.mp3")
+        return music, cover_img.resize((512, 512)), audio_path
 
 # 发送猜曲提示
 async def send_guess_music_hint(gctx: GuessContext):
@@ -283,6 +302,8 @@ async def random_card(ctx: SekaiHandlerContext) -> Tuple[Dict, Image.Image, str]
     cards = await ctx.md.cards.get()
     while True:
         card = random.choice(cards)
+        if datetime.fromtimestamp(card['releaseAt'] / 1000) > datetime.now():
+            continue
         if card['cardRarityType'] in ['rarity_3', 'rarity_4', 'rarity_birthday']:
             break
     if not has_after_training(card):
@@ -341,6 +362,16 @@ async def send_guess_card_hint(gctx: GuessContext):
 
     gctx.used_hint_types.add(hint)
     await gctx.asend_msg(msg)
+
+# 随机裁剪音频+反转
+async def random_clip_audio(input_path: str, save_path: str, length: float, reverse: bool = False):
+    audio = pydub.AudioSegment.from_file(input_path)
+    length = int(length * 1000)
+    start = random.randint(0, len(audio) - length)
+    clip = audio[start:start + length]
+    if reverse:
+        clip = clip.reverse()
+    clip.export(save_path, format='mp3')
 
 
 # ======================= 指令处理 ======================= #
@@ -481,3 +512,51 @@ async def _(ctx: SekaiHandlerContext):
         await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
 
     await start_guess(ctx, '猜卡面', GUESS_CARD_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_card_hint)
+
+
+# 听歌识曲
+pjsk_guess_music = SekaiCmdHandler([
+    "/pjsk guess music", "/pjsk_guess_music", 
+    "/听歌识曲", "/pjsk听歌识曲", "/猜歌", "/pjsk猜歌", "/猜曲", "/pjsk猜曲",
+], regions=['jp'])
+pjsk_guess_music.check_cdrate(cd).check_wblist(gbl)
+@pjsk_guess_music.handle()
+async def _(ctx: SekaiHandlerContext):
+    with TempFilePath('mp3') as clipped_audio_path:
+        args = ctx.get_args().strip()
+        diff, args = extract_diff(args, default='expert')
+        assert_and_reply(diff in GUESS_MUSIC_DIFF_OPTIONS, f"可选难度：{', '.join(GUESS_MUSIC_DIFF_OPTIONS.keys())}")
+
+        async def start_fn(gctx: GuessContext):
+            music, cover_img, audio_path = await random_music(gctx.ctx, 'cover_and_audio')
+            logger.info(f"群聊 {gctx.group_id} 听歌识曲目标: {music['id']}")
+            await random_clip_audio(
+                audio_path, clipped_audio_path, 
+                length=GUESS_MUSIC_DIFF_OPTIONS[diff][0], 
+                reverse=GUESS_MUSIC_DIFF_OPTIONS[diff][1],
+            )
+            tip_text = "（音频已反转）" if GUESS_MUSIC_DIFF_OPTIONS[diff][1] else ""
+            msg = f"{diff.upper()}模式听歌识曲{tip_text}"
+            msg += f"，限时{int(GUESS_MUSIC_TIMEOUT.total_seconds())}秒"
+            msg += "（无需回复，直接发送歌名/id/别名）"
+            await gctx.asend_msg(msg)
+            await gctx.asend_msg(f"[CQ:record,file=file://{os.path.abspath(clipped_audio_path)}]")
+            gctx.data['music'] = music
+            gctx.data['cover_img'] = cover_img
+        
+        async def check_fn(gctx: GuessContext):
+            music, cover_img = gctx.data['music'], gctx.data['cover_img']
+            ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
+            if ret.music is None:
+                return
+            if ret.music['id'] == music['id']:
+                await gctx.asend_reply_msg(f"你猜对了！\n【{music['id']}】{music['title']}")
+                await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+                gctx.guess_success = True
+
+        async def stop_fn(gctx: GuessContext):
+            music, cover_img = gctx.data['music'], gctx.data['cover_img']
+            await gctx.asend_msg(f"听歌识曲结束，正确答案：\n【{music['id']}】{music['title']}")
+            await gctx.asend_msg(await get_image_cq(cover_img, low_quality=True))
+
+        await start_guess(ctx, '听歌识曲', GUESS_MUSIC_TIMEOUT, start_fn, check_fn, stop_fn, send_guess_music_hint)

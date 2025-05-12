@@ -1011,7 +1011,7 @@ async def compose_play_progress_image(ctx: SekaiHandlerContext, diff: str, qid: 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
-# 获取歌曲音频mp3地址
+# 获取任意一个歌曲音频mp3地址
 async def get_music_audio_mp3_path(ctx: SekaiHandlerContext, mid: int) -> Optional[str]:
     vocal = await ctx.md.music_vocals.find_by('musicId', mid)
     if not vocal:

@@ -422,14 +422,14 @@ Project Sekai（世界计划）游戏多区服服务
 
 
 ### 同步歌曲别名
-`/同步歌曲别名` `/sync music alias` `/sma`
+🛠️ `/同步歌曲别名` `/sync music alias` `/sma`
 > 开始从haruki同步歌曲别名
 
 - `/sma`
 
 
 ### 停止同步歌曲别名
-`/停止同步歌曲别名` `/stop sync music alias` `/ssma`
+🛠️ `/停止同步歌曲别名` `/stop sync music alias` `/ssma`
 > 停止从haruki同步歌曲别名
 
 - `/ssma`
@@ -804,6 +804,16 @@ Project Sekai（世界计划）游戏多区服服务
 
 - `/猜卡面` 开始默认expert模式猜卡面
 - `/猜卡面 master` 开始master模式猜卡面
+
+### 听歌识曲
+`/听歌识曲` `/pjsk听歌识曲` `/pjsk guess song` `/pjsk猜曲`
+> 听歌识曲，包含easy~append模式  
+发送`提示`获取提示  
+append模式下音频会反转  
+支持服务器: `jp`
+
+- `/听歌识曲` 开始默认expert模式听歌识曲
+- `/听歌识曲 master` 开始master模式听歌识曲
 
 ---
 
