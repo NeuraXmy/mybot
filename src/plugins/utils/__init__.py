@@ -987,6 +987,22 @@ async def send_group_msg_by_bot(bot, group_id, message):
 async def send_private_msg_by_bot(bot, user_id, message):
     return await bot.send_private_msg(user_id=int(user_id), message=message)
 
+# 在event外发送多条消息折叠消息
+@send_msg_func
+async def send_multiple_fold_msg_by_bot(bot, group_id, contents):
+    if check_group_disabled(group_id):
+        utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
+        return
+    msg_list = [{
+        "type": "node",
+        "data": {
+            "user_id": bot.self_id,
+            "nickname": BOT_NAME,
+            "content": content
+        }
+    } for content in contents if content]
+    return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
+
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
 async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None):

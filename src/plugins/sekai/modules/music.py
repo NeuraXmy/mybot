@@ -62,6 +62,7 @@ class PlayProgressCount:
 # ======================= 别名处理 ======================= #
 
 MUSIC_ALIAS_DB_PATH = f"{SEKAI_DATA_DIR}/music_alias/local.json"
+MUSIC_ALIAS_DB_BACKUP_PATH = f"{SEKAI_DATA_DIR}/music_alias/local.backup.json"
 USER_MUSIC_ALIAS_LOG_PATH = f"{SEKAI_DATA_DIR}/music_alias/history.log"
 
 class MusicAliasDB:
@@ -148,6 +149,12 @@ class MusicAliasDB:
             logger.info(f"删除歌曲别名: \"{alias}\" 失败: 别名不存在")
         return ret
     
+    def backup(self):
+        """
+        备份别名库
+        """
+        shutil.copyfile(MUSIC_ALIAS_DB_PATH, MUSIC_ALIAS_DB_BACKUP_PATH)
+
     @classmethod
     def on_add(cls):
         """
@@ -189,8 +196,8 @@ with open(MUSIC_ALIAS_SYNC_CONFIG_PATH, 'r', encoding='utf-8') as f:
 
 stop_alias_sync_signal = 0
 
-# 同步歌曲别名，返回同步结果日志
-async def sync_music_alias() -> str:
+# 同步歌曲别名，返回同步结果日志（消息的list）
+async def sync_music_alias() -> List[str]:
     global stop_alias_sync_signal
     music_to_sync_num, music_sync_ok_num, music_sync_failed_num, new_alias_num = None, None, None, None
     try:
@@ -208,6 +215,7 @@ async def sync_music_alias() -> str:
         max_failed = MUSIC_ALIAS_SYNC_CONFIG['max_failed']
 
         alias_db = MusicAliasDB.get_instance()
+        alias_db.backup()
         sync_db = get_file_db(MUSIC_ALIAS_SYNC_DB_PATH, logger)
         banned_ids = set(sync_db.get('banned_ids', []))
 
@@ -247,6 +255,8 @@ async def sync_music_alias() -> str:
                 return json.loads(await websocket.recv())
             
             # 开始同步
+            added_aliases = {}
+            failed_musics = {}
             for i, (mid, name) in enumerate(mid_musicname.items()):
                 progress = f"同步歌曲别名 {i+1}/{music_to_sync_num} {mid}-{name}: "
                 if stop_alias_sync_signal:
@@ -293,9 +303,12 @@ async def sync_music_alias() -> str:
                             ok_aliases.append(alias)
                     logger.info(f"{progress}成功添加 {len(ok_aliases)} 条别名 {ok_aliases}")
                     music_sync_ok_num += 1
+                    if len(ok_aliases) > 0:
+                        added_aliases[mid] = ok_aliases
 
                 except Exception as e:
                     logger.print_exc(f"{progress}{get_exc_desc(e)}")
+                    failed_musics[mid] = get_exc_desc(e)
                     music_sync_failed_num += 1
                     if music_sync_failed_num >= max_failed:
                         raise Exception(f"同步失败次数超过上限，最后一次错误: {get_exc_desc(e)}")
@@ -303,16 +316,29 @@ async def sync_music_alias() -> str:
                 await asyncio.sleep(interval)
 
             elapsed = get_readable_timedelta(datetime.now() - start_time)
-            return f"成功从Haruki同步{music_to_sync_num}首歌曲的别名，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}"
+            ret_msgs = [f"成功从Haruki同步{music_to_sync_num}首歌曲的别名，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}"]
+            for mid, err in failed_musics.items():
+                name = mid_musicname[mid]
+                ret_msgs.append(f"【{mid}】{name} 同步失败: {err}")
+            for mid, aliases in added_aliases.items():
+                name = mid_musicname[mid]
+                ret_msgs.append(f"【{mid}】{name} 新增 {len(aliases)} 条别名:\n{', '.join(aliases)}")
+            return ret_msgs
             
     except Exception as e:
         if music_to_sync_num is not None:
             elapsed = get_readable_timedelta(datetime.now() - start_time)
-            ret_msg = f"尝试从Haruki同步{music_to_sync_num}首歌曲的别名失败，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}，错误信息:\n{get_exc_desc(e)}"
+            ret_msgs = [f"尝试从Haruki同步{music_to_sync_num}首歌曲的别名失败，成功{music_sync_ok_num}失败{music_sync_failed_num}，新增{new_alias_num}条，耗时{elapsed}，错误信息:\n{get_exc_desc(e)}"]
+            for mid, err in failed_musics.items():
+                name = mid_musicname[mid]
+                ret_msgs.append(f"【{mid}】{name} 同步失败: {err}")
+            for mid, aliases in added_aliases.items():
+                name = mid_musicname[mid]
+                ret_msgs.append(f"【{mid}】{name} 新增 {len(aliases)} 条别名:\n{', '.join(aliases)}")
         else:
-            ret_msg = f"同步歌曲别名失败: {get_exc_desc(e)}"
-        logger.print_exc(ret_msg)
-        return ret_msg
+            ret_msgs = [f"同步歌曲别名失败: {get_exc_desc(e)}"]
+        logger.print_exc(ret_msgs[0])
+        return ret_msgs
 
 
 # ======================= 搜索歌曲 ======================= #
@@ -1309,7 +1335,10 @@ async def _(ctx: HandlerContext):
     await ctx.block(timeout=0)
     await ctx.asend_reply_msg("开始同步歌曲别名")
     ret = await sync_music_alias()
-    await ctx.asend_reply_msg(ret)
+    if len(ret) == 1:
+        await ctx.asend_reply_msg(ret[0])
+    else:
+        await ctx.asend_multiple_fold_msg(ret, show_cmd=True)
 
 
 # 停止同步歌曲别名
@@ -1472,5 +1501,10 @@ for hour, minute, second in MUSIC_ALIAS_SYNC_CONFIG['cron']:
 
         for group_id in log_groups:
             if not gbl.check_id(group_id): continue
-            try: await send_group_msg_by_bot(get_bot(), group_id, msg_ret)
-            except: logger.print_exc(f"发送自动同步歌曲别名日志信息到群 {group_id} 失败")
+            try: 
+                if len(msg_ret) == 1:
+                    await send_group_msg_by_bot(get_bot(), group_id, msg_ret[0])
+                else:
+                    await send_multiple_fold_msg_by_bot(get_bot(), group_id, msg_ret)
+            except: 
+                logger.print_exc(f"发送自动同步歌曲别名日志信息到群 {group_id} 失败")

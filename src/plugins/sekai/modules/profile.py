@@ -584,7 +584,7 @@ async def get_user_power_bonus(ctx: SekaiHandlerContext, profile: dict) -> Dict[
     for chara in profile['userCharacters']:
         rank = find_by(await ctx.md.character_ranks.find_by('characterId', chara['characterId'], mode='all'), 'characterRank', chara['characterRank'])
         chara_bonus[chara['characterId']]['rank'] += rank['power1BonusRate']
-    for fb in profile['userMysekaiFixtureGameCharacterPerformanceBonuses']:
+    for fb in profile.get('userMysekaiFixtureGameCharacterPerformanceBonuses', []):
         chara_bonus[fb['gameCharacterId']]['fixture'] += fb['totalBonusRate'] * 0.1
     
     # 组合加成 = 区域道具 + 烤森门
@@ -596,7 +596,7 @@ async def get_user_power_bonus(ctx: SekaiHandlerContext, profile: dict) -> Dict[
         if item.get('targetUnit', "any") != "any":
             unit_bonus[item['targetUnit']]['area_item'] += item['power1BonusRate']
     max_bonus = 0
-    for gate in profile['userMysekaiGates']:
+    for gate in profile.get('userMysekaiGates', []):
         gate_id = gate['mysekaiGateId']
         bonus = find_by(await ctx.md.mysekai_gate_levels.find_by('mysekaiGateId', gate_id, mode='all'), 'level', gate['mysekaiGateLevel'])
         unit_bonus[UNITS[gate_id - 1]]['gate'] += bonus['powerBonusRate']
