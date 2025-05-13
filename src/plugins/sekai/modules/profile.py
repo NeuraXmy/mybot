@@ -562,9 +562,117 @@ async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
+# 获取玩家加成信息
+async def get_user_power_bonus(ctx: SekaiHandlerContext, profile: dict) -> Dict[str, int]:
+    # 获取区域道具
+    area_items: List[dict] = []
+    for user_area in profile['userAreas']:
+        for user_area_item in user_area.get('areaItems', []):
+            item_id = user_area_item['areaItemId']
+            lv = user_area_item['level']
+            area_items.append(find_by(find_by(await ctx.md.area_item_levels.get(), 'areaItemId', item_id, mode='all'), 'level', lv))
+
+    # 角色加成 = 区域道具 + 角色等级 + 烤森家具
+    chara_bonus = { i : {
+        'area_item': 0,
+        'rank': 0,
+        'fixture': 0,
+    } for i in range(1, 27) }
+    for item in area_items:
+        if item.get('targetGameCharacterId', "any") != "any":
+            chara_bonus[item['targetGameCharacterId']]['area_item'] += item['power1BonusRate']
+    for chara in profile['userCharacters']:
+        rank = find_by(await ctx.md.character_ranks.find_by('characterId', chara['characterId'], mode='all'), 'characterRank', chara['characterRank'])
+        chara_bonus[chara['characterId']]['rank'] += rank['power1BonusRate']
+    for fb in profile['userMysekaiFixtureGameCharacterPerformanceBonuses']:
+        chara_bonus[fb['gameCharacterId']]['fixture'] += fb['totalBonusRate'] * 0.1
+    
+    # 组合加成 = 区域道具 + 烤森门
+    unit_bonus = { unit : {
+        'area_item': 0,
+        'gate': 0,
+    } for unit in UNITS }
+    for item in area_items:
+        if item.get('targetUnit', "any") != "any":
+            unit_bonus[item['targetUnit']]['area_item'] += item['power1BonusRate']
+    max_bonus = 0
+    for gate in profile['userMysekaiGates']:
+        gate_id = gate['mysekaiGateId']
+        bonus = find_by(await ctx.md.mysekai_gate_levels.find_by('mysekaiGateId', gate_id, mode='all'), 'level', gate['mysekaiGateLevel'])
+        unit_bonus[UNITS[gate_id - 1]]['gate'] += bonus['powerBonusRate']
+        max_bonus = max(max_bonus, bonus['powerBonusRate'])
+    unit_bonus[UNIT_VS]['gate'] += max_bonus
+
+    # 属性加成 = 区域道具
+    attr_bouns = { attr : {
+        'area_item': 0,
+    } for attr in CARD_ATTRS }
+    for item in area_items:
+        if item.get('targetCardAttr', "any") != "any":
+            attr_bouns[item['targetCardAttr']]['area_item'] += item['power1BonusRate']
+
+    for _, bonus in chara_bonus.items():
+        bonus['total'] = sum(bonus.values())
+    for _, bonus in unit_bonus.items():
+        bonus['total'] = sum(bonus.values())
+    for _, bonus in attr_bouns.items():
+        bonus['total'] = sum(bonus.values())
+    
+    return {
+        "chara": chara_bonus,
+        "unit": unit_bonus,
+        "attr": attr_bouns
+    }
+
 # 合成加成详情图片
-async def compose_area_bonus_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
-    pass
+async def compose_power_bonus_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
+    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
+
+    bonus = await get_user_power_bonus(ctx, profile)
+    chara_bonus = bonus['chara']
+    unit_bonus = bonus['unit']
+    attr_bonus = bonus['attr']
+
+    header_h, row_h = 56, 48
+    header_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(25, 25, 25, 255))
+    text_style = TextStyle(font=DEFAULT_FONT, size=16, color=(100, 100, 100, 255))
+
+    with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            await get_detailed_profile_card(ctx, profile, err_msg)
+            with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()).set_bg(roundrect_bg()).set_padding(16):
+                # 角色加成
+                cid_parts = [range(1, 5), range(5, 9), range(9, 13), range(13, 17), range(17, 21), range(21, 27)]
+                for cids in cid_parts:
+                    with Grid(col_count=2).set_content_align('l').set_item_align('l').set_sep(20, 4).set_padding(16):
+                        for cid in cids:
+                            with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
+                                ImageBox(get_chara_icon_by_chara_id(cid), size=(None, 40))
+                                TextBox(f"{chara_bonus[cid]['total']:.1f}%", header_style).set_w(100).set_content_align('r').set_overflow('clip')
+                                detail = f"区域道具{chara_bonus[cid]['area_item']:.1f}% + 角色等级{chara_bonus[cid]['rank']:.1f}% + 烤森玩偶{chara_bonus[cid]['fixture']:.1f}%"
+                                TextBox(detail, text_style)
+                        
+                # 组合加成
+                with Grid(col_count=3).set_content_align('l').set_item_align('l').set_sep(20, 4).set_padding(16):
+                    for unit in UNITS:
+                        with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
+                            ImageBox(get_unit_icon(unit), size=(None, 40))
+                            TextBox(f"{unit_bonus[unit]['total']:.1f}%", header_style).set_w(100).set_content_align('r').set_overflow('clip')
+                            detail = f"区域道具{unit_bonus[unit]['area_item']:.1f}% + 烤森门{unit_bonus[unit]['gate']:.1f}%"
+                            TextBox(detail, text_style)
+
+                # 属性加成
+                with Grid(col_count=5).set_content_align('l').set_item_align('l').set_sep(20, 4).set_padding(16):
+                    for attr in CARD_ATTRS:
+                        with HSplit().set_content_align('l').set_item_align('l').set_sep(4):
+                            ImageBox(get_attr_icon(attr), size=(None, 40))
+                            TextBox(f"{attr_bonus[attr]['total']:.1f}%", header_style).set_w(100).set_content_align('r').set_overflow('clip')
+                            # detail = f"区域道具{attr_bonus[attr]['area_item']:.1f}%"
+                            # TextBox(detail, text_style)
+
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
 
 
 # ======================= 指令处理 ======================= #
@@ -912,5 +1020,19 @@ pjsk_challenge_info.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     return await ctx.asend_reply_msg(await get_image_cq(
         await compose_challenge_live_detail_image(ctx, ctx.user_id),
+        low_quality=True,
+    ))
+
+
+# 加成信息
+pjsk_power_bonus_info = SekaiCmdHandler([
+    "/pjsk power bonus info", "/pjsk_power_bonus_info",
+    "/加成信息", "/加成详情",
+])
+pjsk_power_bonus_info.check_cdrate(cd).check_wblist(gbl)
+@pjsk_power_bonus_info.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_power_bonus_detail_image(ctx, ctx.user_id),
         low_quality=True,
     ))

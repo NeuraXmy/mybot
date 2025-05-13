@@ -22,6 +22,14 @@ gbl = get_group_black_list(file_db, logger, 'sekai')
 ALL_SERVER_REGIONS = ['jp', 'en', 'tw', 'kr', 'cn']
 ALL_SERVER_REGION_NAMES = ['日服', '国际服', '台服', '韩服', '国服']
 
+UNITS = [
+    "light_sound",
+    "idol",
+    "street",
+    "theme_park",
+    "school_refusal",
+    "piapro",
+]
 UNIT_LN = "light_sound"
 UNIT_MMJ = "idol"
 UNIT_VBS = "street"
@@ -59,6 +67,13 @@ UNIT_COLORS = [
     (136,68,153,255),
 ]
 
+CARD_ATTRS = [
+    "cool",
+    "happy",
+    "mysterious",
+    "cute",
+    "pure",
+]
 CARD_ATTR_NAMES = [
     ("cool", "COOL", "Cool", "帅气", "蓝星", "蓝", "星", "八芒星", "爆炸"),
     ("happy", "HAPPY", "Happy", "快乐", "橙心", "橙", "心", "爱心"),
