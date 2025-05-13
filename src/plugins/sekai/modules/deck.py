@@ -9,7 +9,7 @@ from .profile import (
     get_detailed_profile, 
     get_detailed_profile_card, 
     get_card_full_thumbnail,
-    is_user_hide_suite,
+    get_user_challenge_live_info,
 )
 from .music import DIFF_NAMES, search_music, MusicSearchOptions, extract_diff
 from sekai_deck_recommend import (
@@ -408,6 +408,16 @@ async def compose_deck_recommend_image(
             card_imgs.append(_get_thumb(card, pcard))
     card_imgs = { cid: img for cid, img in await asyncio.gather(*card_imgs) }
 
+    # 获取挑战live额外分数信息
+    challenge_score_dlt = []
+    if recommend_type in ["challenge", "challenge_all"]:
+        challenge_live_info = await get_user_challenge_live_info(ctx, profile)
+        for deck in result_decks:
+            card_id = deck.cards[0].card_id
+            chara_id = (await ctx.md.cards.find_by_id(card_id))['characterId']
+            _, high_score, _, _ = challenge_live_info.get(chara_id, (None, 0, None, None))
+            challenge_score_dlt.append(deck.score - high_score)
+
     # 获取卡的剧情阅读状态
     async def get_card_story_status(card_id: int) -> Tuple[Optional[bool], Optional[bool]]:
         ep1_read, ep2_read = None, None
@@ -492,8 +502,15 @@ async def compose_deck_recommend_image(
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("分数" if recommend_type in ["challenge", "challenge_all"] else "PT", th_style).set_h(gh // 2).set_content_align('c')
                         Spacer(h=6)
-                        for deck in result_decks:
-                            TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                        for i, deck in enumerate(result_decks):
+                            with Frame().set_content_align('rb'):
+                                if recommend_type in ['challenge', 'challenge_all']:
+                                    dlt = challenge_score_dlt[i]
+                                    color = (50, 150, 50) if dlt > 0 else (150, 50, 50)
+                                    TextBox(f"{dlt:+d}", TextStyle(font=DEFAULT_FONT, size=12, color=color)).set_offset((0, -16-voffset))
+                                with Frame().set_content_align('c'):
+                                    TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+
                     # 卡片
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
                         TextBox("卡组", th_style).set_h(gh // 2).set_content_align('c')

@@ -476,11 +476,8 @@ def check_uid_in_blacklist(uid: str) -> bool:
     blacklist = profile_db.get("blacklist", [])
     return uid in blacklist
 
-# 合成挑战live详情图片
-async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
-    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
-    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
-
+# 获取玩家挑战live信息，返回（rank, score, remain_jewel, remain_fragment）
+async def get_user_challenge_live_info(ctx: SekaiHandlerContext, profile: dict) -> Dict[int, Tuple[int, int, int, int]]:
     challenge_info = {}
     challenge_results = profile['userChallengeLiveSoloResults']
     challenge_stages = profile['userChallengeLiveSoloStages']
@@ -502,6 +499,14 @@ async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int
                 if res['type'] == 'material' and res['id'] == 15:
                     remain_fragment += res['quantity']
         challenge_info[cid] = (rank, score, remain_jewel, remain_fragment)
+    return challenge_info
+
+# 合成挑战live详情图片
+async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
+    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
+
+    challenge_info = await get_user_challenge_live_info(ctx, profile)
 
     header_h, row_h = 56, 48
     header_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(25, 25, 25, 255))
