@@ -1369,7 +1369,7 @@ def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> H
     except Exception as e:
         segs = [{ 'text': s, 'color': None }]
 
-    with HSplit().set_padding(padding) as hs:
+    with HSplit().set_padding(padding).set_sep(0) as hs:
         for seg in segs:
             text, color = seg['text'], seg['color']
             if text:

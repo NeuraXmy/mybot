@@ -235,6 +235,26 @@ async def sync_music_alias() -> List[str]:
                         mid_musicname[mid] = music['title']
             music_to_sync_num, music_sync_ok_num, music_sync_failed_num, new_alias_num = len(mid_musicname), 0, 0, 0
             logger.info(f"获取需要同步的歌曲数量: {music_to_sync_num}")
+
+            # 唤醒
+            async def do_wake_up():
+                data = {
+                    "time": datetime.now().timestamp(),
+                    "self_id": self_id,
+                    "post_type": "message",
+                    "message_type": "group",
+                    "sub_type": "normal",
+                    "message_id": random.randint(1, 10000000000),
+                    "group_id": group_id,
+                    "user_id": user_id,
+                    "message": [{"type": "text", "data": {"text": f"/haruki_info"}}],
+                    "raw_message": f"/haruki_info",
+                    "sender": {"user_id": user_id, "nickname": BOT_NAME},
+                }
+                await websocket.send(json.dumps(data))
+                return json.loads(await websocket.recv())
+            
+            await asyncio.wait_for(do_wake_up(), timeout=5)
              
             # 同步函数
             async def do_sync(mid: int, name: str) -> Dict:
