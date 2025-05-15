@@ -317,9 +317,12 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                     mode = mode or get_user_data_mode(ctx, ctx.user_id)
                     update_time = datetime.fromtimestamp(profile['upload_time'] / 1000)
                     update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
-                    name = game_data['name']
                     user_id = process_hide_uid(ctx, game_data['userId'])
-                    colored_text_box(truncate(name, 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                    colored_text_box(
+                        truncate(game_data['name'], 64),
+                        TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK),
+                        use_shadow=True,
+                    )
                     TextBox(f"{ctx.region.upper()}: {user_id} Suite数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"数据来源: {source}  获取模式: {mode}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
@@ -353,7 +356,11 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                     ImageBox(avatar_info.img, size=(128, 128), image_size_mode='fill')
                     with VSplit().set_content_align('c').set_item_align('l').set_sep(16):
                         game_data = basic_profile['user']
-                        colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK))
+                        colored_text_box(
+                            truncate(game_data['name'], 64),
+                            TextStyle(font=DEFAULT_BOLD_FONT, size=32, color=BLACK),
+                            use_shadow=True,
+                        )
                         TextBox(f"{ctx.region.upper()}: {process_hide_uid(ctx, game_data['userId'])}", TextStyle(font=DEFAULT_FONT, size=20, color=BLACK))
                         with Frame():
                             ImageBox(ctx.static_imgs.get("lv_rank_bg.png"), size=(180, None))
@@ -369,6 +376,7 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
 
                 # 留言
                 user_word = basic_profile['userProfile']['word']
+                user_word = re.sub(r'<#.*?>', '', user_word)
                 user_word_box = TextBox(user_word, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=3)
                 user_word_box.set_wrap(True).set_bg(roundrect_bg()).set_line_sep(2).set_padding((18, 16)).set_w(450)
 

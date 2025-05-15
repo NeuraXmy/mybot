@@ -8,6 +8,7 @@ from .profile import get_card_full_thumbnail, get_gameapi_config, get_uid_from_q
 
 
 DEFAULT_EVENT_STORY_SUMMARY_MODEL = [
+    # 'gemini-2.5-flash',
     'gemini-2-flash',
     'qwen3-free',
     'gpt-4.1-mini',

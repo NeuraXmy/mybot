@@ -1347,7 +1347,7 @@ class Canvas(Frame):
 # =========================== 控件函数 =========================== #
 
 # 由带颜色代码的字符串获取彩色文本组件
-def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> HSplit:
+def colored_text_box(s: str, style: TextStyle, padding=2, use_shadow=False, shadow_color=(100, 100, 100, 255), **text_box_kargs) -> HSplit:
     try:
         segs = [{ 'text': None, 'color': None }]
         while True:
@@ -1373,9 +1373,20 @@ def colored_text_box(s: str, style: TextStyle, padding=2, **text_box_kargs) -> H
         for seg in segs:
             text, color = seg['text'], seg['color']
             if text:
-                color_style = deepcopy(style)
-                if color is not None: color_style.color = color
-                TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
+                if not use_shadow:
+                    color_style = deepcopy(style)
+                    if color is not None: color_style.color = color
+                    TextBox(text, style=color_style, **text_box_kargs).set_padding(0)
+                else:
+                    font = style.font
+                    font_size = style.size
+                    c1 = color if color else style.color
+                    c2 = shadow_color
+                    draw_shadowed_text(
+                        text, font, font_size, c1, c2,
+                        content_align='l', padding=0,
+                        **text_box_kargs
+                    )
     return hs
 
 # 绘制带阴影的文本
@@ -1389,12 +1400,13 @@ def draw_shadowed_text(
     w: int = None, 
     h: int = None,
     content_align: str = 'c',
+    padding: int = 2,
     **textbox_kargs,
 ) -> Frame:
     if isinstance(offset, int):
         offset = (offset, offset)
     with Frame().set_size((w, h)).set_content_align(content_align) as frame:
         if c2:
-            TextBox(text, TextStyle(font=font, size=font_size, color=c2), **textbox_kargs).set_offset(offset)
-        TextBox(text, TextStyle(font=font, size=font_size, color=c1), **textbox_kargs)
+            TextBox(text, TextStyle(font=font, size=font_size, color=c2), **textbox_kargs).set_offset(offset).set_padding(padding)
+        TextBox(text, TextStyle(font=font, size=font_size, color=c1), **textbox_kargs).set_padding(padding)
     return frame

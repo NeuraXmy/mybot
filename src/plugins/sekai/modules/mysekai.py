@@ -151,7 +151,11 @@ async def get_mysekai_info_card(ctx: SekaiHandlerContext, mysekai_info: dict, ba
                     update_time = datetime.fromtimestamp(mysekai_info['upload_time'] / 1000)
                     update_time_text = update_time.strftime('%m-%d %H:%M:%S') + f" ({get_readable_datetime(update_time, show_original_time=False)})"
                     with HSplit().set_content_align('lb').set_item_align('lb').set_sep(5):
-                        colored_text_box(truncate(game_data['name'], 64), TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK))
+                        colored_text_box(
+                            truncate(game_data['name'], 64),
+                            TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK),
+                            use_shadow=True,
+                        )
                         TextBox(f"MySekai Lv.{mysekai_game_data['mysekaiRank']}", TextStyle(font=DEFAULT_FONT, size=18, color=BLACK))
                     TextBox(f"{ctx.region.upper()}: {process_hide_uid(ctx, game_data['userId'])} Mysekai数据", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))
                     TextBox(f"更新时间: {update_time_text}", TextStyle(font=DEFAULT_FONT, size=16, color=BLACK))

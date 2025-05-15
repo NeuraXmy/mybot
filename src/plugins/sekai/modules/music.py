@@ -247,14 +247,14 @@ async def sync_music_alias() -> List[str]:
                     "message_id": random.randint(1, 10000000000),
                     "group_id": group_id,
                     "user_id": user_id,
-                    "message": [{"type": "text", "data": {"text": f"/haruki_info"}}],
-                    "raw_message": f"/haruki_info",
+                    "message": [{"type": "text", "data": {"text": f"musicalias 123"}}],
+                    "raw_message": f"musicalias 123",
                     "sender": {"user_id": user_id, "nickname": BOT_NAME},
                 }
                 await websocket.send(json.dumps(data))
                 return json.loads(await websocket.recv())
             
-            await asyncio.wait_for(do_wake_up(), timeout=5)
+            await asyncio.wait_for(do_wake_up(), timeout=timeout)
              
             # 同步函数
             async def do_sync(mid: int, name: str) -> Dict:
