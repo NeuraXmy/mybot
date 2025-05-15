@@ -1347,7 +1347,7 @@ class Canvas(Frame):
 # =========================== 控件函数 =========================== #
 
 # 由带颜色代码的字符串获取彩色文本组件
-def colored_text_box(s: str, style: TextStyle, padding=2, use_shadow=False, shadow_color=(100, 100, 100, 255), **text_box_kargs) -> HSplit:
+def colored_text_box(s: str, style: TextStyle, padding=2, use_shadow=False, shadow_color=(150, 150, 150, 255), **text_box_kargs) -> HSplit:
     try:
         segs = [{ 'text': None, 'color': None }]
         while True:

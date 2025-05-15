@@ -12,7 +12,7 @@ gbl = get_group_black_list(file_db, logger, 'helper')
 cd = ColdDown(file_db, logger, config['cd'])
 
 
-HELP_DOCS_WEB_URL = "https://github.com/NeuraXmy/mybot/blob/master/helps/{name}.md"
+HELP_DOCS_WEB_URL = "https://github.com/NeuraXmy/lunabot/blob/master/helps/{name}.md"
 HELP_DOCS_PATH = "helps/{name}.md"
 
 HELP_IMG_SCALE = 0.8
