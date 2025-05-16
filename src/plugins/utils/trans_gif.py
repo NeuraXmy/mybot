@@ -183,7 +183,7 @@ def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: fl
         img.putdata(trans_data)
         img: Image = img.convert("RGB")
         pal_img = img.quantize(256)
-        img = img.quantize(palette=pal_img, method=Quantize.MEDIANCUT, dither=0)
+        img = img.quantize(palette=pal_img, method=Quantize.MAXCOVERAGE, dither=0)
         palette = img.getpalette()[:768]
         transparent_color_index, min_dist = None, float("inf")
         for i in range(256):

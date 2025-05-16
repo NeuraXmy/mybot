@@ -254,7 +254,10 @@ async def sync_music_alias() -> List[str]:
                 await websocket.send(json.dumps(data))
                 return json.loads(await websocket.recv())
             
-            await asyncio.wait_for(do_wake_up(), timeout=timeout)
+            try:
+                await asyncio.wait_for(do_wake_up(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass
              
             # 同步函数
             async def do_sync(mid: int, name: str) -> Dict:

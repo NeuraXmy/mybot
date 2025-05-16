@@ -50,8 +50,8 @@ async def compose_character_all_stamp_image(ctx: SekaiHandlerContext, cid):
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
-# 制作表情
-async def make_stamp_image(ctx: SekaiHandlerContext, sid: int, text: str) -> Image.Image:
+# 制作表情并返回cq码
+async def make_stamp_image_cq(ctx: SekaiHandlerContext, sid: int, text: str, format: str) -> str:
     stamp = await ctx.md.stamps.find_by_id(sid)
     assert_and_reply(stamp, f"表情 {sid} 不存在")
     cid = stamp.get('characterId1')
@@ -65,7 +65,7 @@ async def make_stamp_image(ctx: SekaiHandlerContext, sid: int, text: str) -> Ima
         text_zoom_ratio = min(text_zoom_ratio, 0.3 + dst_len * 0.04)
         line_count += 1
     text_y_offset = int(15 - 30 * (1.0 - text_zoom_ratio))
-    result_image = make_stamp(
+    img = make_stamp(
         id = sid,
         character = nickname, 
         text = text,
@@ -77,8 +77,14 @@ async def make_stamp_image(ctx: SekaiHandlerContext, sid: int, text: str) -> Ima
         text_y_offset = text_y_offset,
         disable_different_font_size = False
     )
-    assert_and_reply(result_image, f"该表情ID不支持制作\n使用/pjsk stamp 角色简称 查询哪些表情支持制作")
-    return result_image
+    assert_and_reply(img, f"该表情ID不支持制作\n使用/pjsk stamp 角色简称 查询哪些表情支持制作")
+    if format == 'gif':
+        img = img.resize((int(img.width * GIF_STAMP_SCALE), int(img.height * GIF_STAMP_SCALE)), Image.Resampling.LANCZOS)
+        with TempFilePath("gif") as path:
+            save_high_quality_static_gif(img, path)
+            return await get_image_cq(path)
+    else:
+        return await get_image_cq(img)
 
 
 # ======================= 指令处理 ======================= #
@@ -149,13 +155,7 @@ async def _(ctx: SekaiHandlerContext):
     # 制作表情
     if qtype == "id_text":
         logger.info(f"制作表情: sid={sid} text={text}")
-        result_image = await make_stamp_image(ctx, sid, text)
-        if format == 'gif':
-            with TempFilePath("gif") as path:
-                save_high_quality_static_gif(result_image, path)
-                return await ctx.asend_reply_msg(await get_image_cq(path))
-        else:
-            return await ctx.asend_reply_msg(await get_image_cq(result_image))
+        return await ctx.asend_reply_msg(await make_stamp_image_cq(ctx, sid, text, format))
 
 
 # 随机表情 
@@ -197,13 +197,7 @@ async def _(ctx: SekaiHandlerContext):
         # 表情制作模式
         sid = await get_rand_sid(cid, True)
         assert_and_reply(sid, f"没有符合条件的表情")
-        img = await make_stamp_image(ctx, sid, args)
-        if format == 'gif':
-            with TempFilePath("gif") as path:
-                save_high_quality_static_gif(img, path)
-                return await ctx.asend_reply_msg(await get_image_cq(path))
-        else:
-            return await ctx.asend_reply_msg(await get_image_cq(img))
+        return await ctx.asend_reply_msg(await make_stamp_image_cq(ctx, sid, args, format))
     else:
         sid = await get_rand_sid(cid, False)
         assert_and_reply(sid, f"没有符合条件的表情")
