@@ -80,6 +80,268 @@ DEFAULT_CARD_CONFIG_34bd.skill_max = False
 
 DEFAULT_LIMIT = 8
 
+# ======================= 参数获取 ======================= #
+
+# 从args中提取固定卡牌
+def extract_fixed_cards(args: str, options: DeckRecommendOptions) -> str:
+    if '#' in args:
+        args, fixed_cards = args.split('#', 1)
+        try:
+            fixed_cards = list(map(int, fixed_cards.strip().split()))
+        except:
+            raise ReplyException("固定卡牌格式错误，正确格式为 /组卡指令 其他参数 #123 456 789...")
+        assert_and_reply(len(fixed_cards) <= 5, f"固定卡牌数量不能超过5张")
+        assert_and_reply(len(set(fixed_cards)) == len(fixed_cards), "固定卡牌不能重复")
+        options.fixed_cards = fixed_cards
+    return args.strip()
+
+# 从args中提取是否满技能、剧情已读、满突破
+def extract_card_config(args: str, options: DeckRecommendOptions) -> str:
+    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
+    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
+    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
+
+    for keyword in ("满技能", "满技", "skillmax", "技能满级"):
+        if keyword in args:
+            options.rarity_1_config.skill_max = True
+            options.rarity_2_config.skill_max = True
+            options.rarity_3_config.skill_max = True
+            options.rarity_4_config.skill_max = True
+            options.rarity_birthday_config.skill_max = True
+            args = args.replace(keyword, "").strip()
+            break
+    for keyword in ("满突破", "满破", "rankmax", "mastermax"):
+        if keyword in args:
+            options.rarity_1_config.master_max = True
+            options.rarity_2_config.master_max = True
+            options.rarity_3_config.master_max = True
+            options.rarity_4_config.master_max = True
+            options.rarity_birthday_config.master_max = True
+            args = args.replace(keyword, "").strip()
+            break
+    for keyword in ("剧情已读", "已读"):
+        if keyword in args:
+            options.rarity_1_config.episode_read = True
+            options.rarity_2_config.episode_read = True
+            options.rarity_3_config.episode_read = True
+            options.rarity_4_config.episode_read = True
+            options.rarity_birthday_config.episode_read = True
+            args = args.replace(keyword, "").strip()
+            break
+    return args
+
+
+# 从args中提取活动组卡参数
+async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    args = extract_fixed_cards(args, options)
+    args = extract_card_config(args, options)
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+    # live类型
+    if "多人" in args or '协力' in args: 
+        options.live_type = "multi"
+        args = args.replace("多人", "").replace("协力", "").strip()
+    elif "单人" in args: 
+        options.live_type = "solo"
+        args = args.replace("单人", "").strip()
+    elif "自动" in args or "auto" in args: 
+        options.live_type = "auto"
+        args = args.replace("自动", "").replace("auto", "").strip()
+    else:
+        options.live_type = "multi"
+
+    # 活动id
+    event, wl_cid, args = await extract_target_event(ctx, args)
+    options.event_id = event['id']
+    options.world_bloom_character_id = wl_cid
+        
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 10000
+
+    return options
+
+# 从args中提取挑战组卡参数
+async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    args = extract_fixed_cards(args, options)
+    args = extract_card_config(args, options)
+
+    options.live_type = "challenge"
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    
+    # 指定角色
+    options.challenge_live_character_id = None
+    for item in CHARACTER_NICKNAME_DATA:
+        for nickname in item['nicknames']:
+            if nickname in args:
+                options.challenge_live_character_id = item['id']
+                args = args.replace(nickname, "").strip()
+                break
+    # 不指定角色情况下每个角色都组1个最强卡
+
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_id    = options.music_id   or DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID['other'])
+    options.music_diff  = options.music_diff or DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF['other'])
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    if options.challenge_live_character_id is None:
+        options.sa_options.run_num = 5  # 不指定角色情况下适当减少模拟退火次数
+
+    return options
+
+# 从args中提取长草组卡参数
+async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    args = extract_fixed_cards(args, options)
+    args = extract_card_config(args, options)
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(NO_EVENT_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+    # live类型
+    if "多人" in args or '协力' in args: 
+        options.live_type = "multi"
+        args = args.replace("多人", "").replace("协力", "").strip()
+    elif "单人" in args: 
+        options.live_type = "solo"
+        args = args.replace("单人", "").strip()
+    elif "自动" in args or "auto" in args: 
+        options.live_type = "auto"
+        args = args.replace("自动", "").replace("auto", "").strip()
+    else:
+        options.live_type = "multi"
+
+    # 活动id
+    options.event_id = None
+        
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 50000
+
+    return options
+
+# 从args中提取组卡参数
+async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    args = extract_fixed_cards(args, options)
+    args = extract_card_config(args, options)
+
+    # 算法
+    options.algorithm = "all"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    if "dfs" in args:
+        options.algorithm = "dfs"
+        args = args.replace("dfs", "").strip()
+        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
+
+    # live类型
+    if "多人" in args or '协力' in args: 
+        options.live_type = "multi"
+        args = args.replace("多人", "").replace("协力", "").strip()
+    elif "单人" in args: 
+        options.live_type = "solo"
+        args = args.replace("单人", "").strip()
+    elif "自动" in args or "auto" in args: 
+        options.live_type = "auto"
+        args = args.replace("自动", "").replace("auto", "").strip()
+    else:
+        options.live_type = "multi"
+
+    # 5v5
+    if "5v5" in args or "5V5" in args:
+        options.live_type = "multi"
+        args = args.replace("5v5", "").replace("5V5", "").strip()
+        options.event_type = "cheerful_carnival"
+
+    # 活动id
+    options.event_id = None
+    options.event_unit, args = extract_unit(args, default=None)
+    options.event_attr, args = extract_card_attr(args, default=None)
+    assert_and_reply(options.event_unit, "请指定组卡的团（ln/mmj/vbs/ws/25/vs）")
+    assert_and_reply(options.event_attr, "请指定活动组卡的属性（例如: 紫/紫月/月亮）")
+        
+    # 歌曲id和难度
+    options.music_diff, args = extract_diff(args, default=None)
+    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
+    if music:
+        options.music_id = music['id']
+
+    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
+
+    # 组卡限制
+    options.limit = DEFAULT_LIMIT
+
+    # 模拟退火设置
+    options.sa_options = DeckRecommendSaOptions()
+    options.sa_options.max_no_improve_iter = 10000
+
+    return options
+
 
 # ======================= 处理逻辑 ======================= #
 
@@ -402,7 +664,10 @@ async def compose_deck_recommend_image(
     for deck in result_decks:
         for deckcard in deck.cards:
             card = await ctx.md.cards.find_by_id(deckcard.card_id)
-            pcard = deepcopy(find_by(profile['userCards'], "cardId", deckcard.card_id))
+            pcard = find_by(profile['userCards'], "cardId", deckcard.card_id)
+            if pcard: pcard = deepcopy(pcard)
+            else: 
+                pcard = {'defaultImage': 'special_training', 'specialTrainingStatus': 'done'}
             pcard['level'] = deckcard.level
             pcard['masterRank'] = deckcard.master_rank
             card_imgs.append(_get_thumb(card, pcard))
@@ -420,8 +685,7 @@ async def compose_deck_recommend_image(
 
     # 获取卡的剧情阅读状态
     async def get_card_story_status(card_id: int) -> Tuple[Optional[bool], Optional[bool]]:
-        ep1_read, ep2_read = None, None
-        pcard = find_by(profile['userCards'], "cardId", card_id)
+        ep1_read, ep2_read = False, False
         card = await ctx.md.cards.find_by_id(card_id)
         rarity = card['cardRarityType']
         force_story_read = False
@@ -430,9 +694,10 @@ async def compose_deck_recommend_image(
         if rarity == 'rarity_3':        force_story_read = options.rarity_3_config.episode_read
         if rarity == 'rarity_4':        force_story_read = options.rarity_4_config.episode_read
         if rarity == 'rarity_birthday': force_story_read = options.rarity_birthday_config.episode_read
-        eps = pcard.get('episodes', [])
-        if len(eps) > 0: ep1_read = force_story_read or eps[0]['scenarioStatus'] == 'already_read'
-        if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
+        if pcard := find_by(profile['userCards'], "cardId", card_id):
+            eps = pcard.get('episodes', [])
+            if len(eps) > 0: ep1_read = force_story_read or eps[0]['scenarioStatus'] == 'already_read'
+            if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
         return ep1_read, ep2_read
 
     # 计算实效
@@ -522,7 +787,15 @@ async def compose_deck_recommend_image(
                                     ep1_read, ep2_read = await get_card_story_status(card_id)
                                     slv = card.skill_level
                                     with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0).set_h(gh):
-                                        ImageBox(card_imgs[card_id], size=(None, 80), use_alphablend=True)
+                                        with Frame().set_content_align('rt'):
+                                            ImageBox(card_imgs[card_id], size=(None, 80), use_alphablend=True)
+                                            if options.fixed_cards and card_id in options.fixed_cards:
+                                                TextBox(str(card_id), TextStyle(font=DEFAULT_FONT, size=10, color=WHITE)) \
+                                                    .set_bg(RoundRectBg((200, 50, 50, 200), 2)).set_offset((-2, 2))
+                                            else:
+                                                TextBox(str(card_id), TextStyle(font=DEFAULT_FONT, size=10, color=(75, 75, 75))) \
+                                                    .set_bg(roundrect_bg(radius=2)).set_offset((-2, 2))
+
                                         with HSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0):
                                             r = 2
                                             TextBox(f"SLv.{slv}", TextStyle(font=DEFAULT_FONT, size=12, color=(50, 50, 50))).set_bg(RoundRectBg(WHITE, r))
@@ -580,248 +853,6 @@ async def compose_deck_recommend_image(
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
-
-# 从args中提取是否满技能、剧情已读、满突破
-def extract_card_config(args: str, options: DeckRecommendOptions) -> str:
-    options.rarity_1_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_2_config = DEFAULT_CARD_CONFIG_12
-    options.rarity_3_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_4_config = DEFAULT_CARD_CONFIG_34bd
-    options.rarity_birthday_config = DEFAULT_CARD_CONFIG_34bd
-
-    for keyword in ("满技能", "满技", "skillmax", "技能满级"):
-        if keyword in args:
-            options.rarity_1_config.skill_max = True
-            options.rarity_2_config.skill_max = True
-            options.rarity_3_config.skill_max = True
-            options.rarity_4_config.skill_max = True
-            options.rarity_birthday_config.skill_max = True
-            args = args.replace(keyword, "").strip()
-            break
-    for keyword in ("满突破", "满破", "rankmax", "mastermax"):
-        if keyword in args:
-            options.rarity_1_config.master_max = True
-            options.rarity_2_config.master_max = True
-            options.rarity_3_config.master_max = True
-            options.rarity_4_config.master_max = True
-            options.rarity_birthday_config.master_max = True
-            args = args.replace(keyword, "").strip()
-            break
-    for keyword in ("剧情已读", "已读"):
-        if keyword in args:
-            options.rarity_1_config.episode_read = True
-            options.rarity_2_config.episode_read = True
-            options.rarity_3_config.episode_read = True
-            options.rarity_4_config.episode_read = True
-            options.rarity_birthday_config.episode_read = True
-            args = args.replace(keyword, "").strip()
-            break
-    return args
-
-# 从args中提取活动组卡参数
-async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
-    args = ctx.get_args().strip().lower()
-    options = DeckRecommendOptions()
-
-    args = extract_card_config(args, options)
-
-    # 算法
-    options.algorithm = "all"
-    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
-    if "dfs" in args:
-        options.algorithm = "dfs"
-        args = args.replace("dfs", "").strip()
-        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
-
-    # live类型
-    if "多人" in args or '协力' in args: 
-        options.live_type = "multi"
-        args = args.replace("多人", "").replace("协力", "").strip()
-    elif "单人" in args: 
-        options.live_type = "solo"
-        args = args.replace("单人", "").strip()
-    elif "自动" in args or "auto" in args: 
-        options.live_type = "auto"
-        args = args.replace("自动", "").replace("auto", "").strip()
-    else:
-        options.live_type = "multi"
-
-    # 活动id
-    event, wl_cid, args = await extract_target_event(ctx, args)
-    options.event_id = event['id']
-    options.world_bloom_character_id = wl_cid
-        
-    # 歌曲id和难度
-    options.music_diff, args = extract_diff(args, default=None)
-    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
-    if music:
-        options.music_id = music['id']
-
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
-
-    # 组卡限制
-    options.limit = DEFAULT_LIMIT
-
-    # 模拟退火设置
-    options.sa_options = DeckRecommendSaOptions()
-    options.sa_options.max_no_improve_iter = 10000
-
-    return options
-
-# 从args中提取挑战组卡参数
-async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
-    args = ctx.get_args().strip().lower()
-    options = DeckRecommendOptions()
-
-    args = extract_card_config(args, options)
-
-    options.live_type = "challenge"
-
-    # 算法
-    options.algorithm = "all"
-    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
-    if "dfs" in args:
-        options.algorithm = "dfs"
-        args = args.replace("dfs", "").strip()
-        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
-    
-    # 指定角色
-    options.challenge_live_character_id = None
-    for item in CHARACTER_NICKNAME_DATA:
-        for nickname in item['nicknames']:
-            if nickname in args:
-                options.challenge_live_character_id = item['id']
-                args = args.replace(nickname, "").strip()
-                break
-    # 不指定角色情况下每个角色都组1个最强卡
-
-    # 歌曲id和难度
-    options.music_diff, args = extract_diff(args, default=None)
-    music = (await search_music(ctx, args, MusicSearchOptions(raise_when_err=False))).music
-    if music:
-        options.music_id = music['id']
-
-    options.music_id    = options.music_id   or DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID['other'])
-    options.music_diff  = options.music_diff or DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF['other'])
-
-    # 组卡限制
-    options.limit = DEFAULT_LIMIT
-
-    # 模拟退火设置
-    options.sa_options = DeckRecommendSaOptions()
-    if options.challenge_live_character_id is None:
-        options.sa_options.run_num = 5  # 不指定角色情况下适当减少模拟退火次数
-
-    return options
-
-# 从args中提取长草组卡参数
-async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
-    args = ctx.get_args().strip().lower()
-    options = DeckRecommendOptions()
-
-    args = extract_card_config(args, options)
-
-    # 算法
-    options.algorithm = "all"
-    options.timeout_ms = int(NO_EVENT_RECOMMEND_TIMEOUT.total_seconds() * 1000)
-    if "dfs" in args:
-        options.algorithm = "dfs"
-        args = args.replace("dfs", "").strip()
-        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
-
-    # live类型
-    if "多人" in args or '协力' in args: 
-        options.live_type = "multi"
-        args = args.replace("多人", "").replace("协力", "").strip()
-    elif "单人" in args: 
-        options.live_type = "solo"
-        args = args.replace("单人", "").strip()
-    elif "自动" in args or "auto" in args: 
-        options.live_type = "auto"
-        args = args.replace("自动", "").replace("auto", "").strip()
-    else:
-        options.live_type = "multi"
-
-    # 活动id
-    options.event_id = None
-        
-    # 歌曲id和难度
-    options.music_diff, args = extract_diff(args, default=None)
-    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
-    if music:
-        options.music_id = music['id']
-
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
-
-    # 组卡限制
-    options.limit = DEFAULT_LIMIT
-
-    # 模拟退火设置
-    options.sa_options = DeckRecommendSaOptions()
-    options.sa_options.max_no_improve_iter = 50000
-
-    return options
-
-# 从args中提取组卡参数
-async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
-    args = ctx.get_args().strip().lower()
-    options = DeckRecommendOptions()
-
-    args = extract_card_config(args, options)
-
-    # 算法
-    options.algorithm = "all"
-    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
-    if "dfs" in args:
-        options.algorithm = "dfs"
-        args = args.replace("dfs", "").strip()
-        options.timeout_ms = int(SINGLE_ALG_RECOMMEND_TIMEOUT.total_seconds() * 1000)
-
-    # live类型
-    if "多人" in args or '协力' in args: 
-        options.live_type = "multi"
-        args = args.replace("多人", "").replace("协力", "").strip()
-    elif "单人" in args: 
-        options.live_type = "solo"
-        args = args.replace("单人", "").strip()
-    elif "自动" in args or "auto" in args: 
-        options.live_type = "auto"
-        args = args.replace("自动", "").replace("auto", "").strip()
-    else:
-        options.live_type = "multi"
-
-    # 5v5
-    if "5v5" in args or "5V5" in args:
-        options.live_type = "multi"
-        args = args.replace("5v5", "").replace("5V5", "").strip()
-        options.event_type = "cheerful_carnival"
-
-    # 活动id
-    options.event_id = None
-    options.event_unit, args = extract_unit(args, default=None)
-    options.event_attr, args = extract_card_attr(args, default=None)
-    assert_and_reply(options.event_unit, "请指定组卡的团（ln/mmj/vbs/ws/25/vs）")
-    assert_and_reply(options.event_attr, "请指定活动组卡的属性（例如: 紫/紫月/月亮）")
-        
-    # 歌曲id和难度
-    options.music_diff, args = extract_diff(args, default=None)
-    music = (await search_music(ctx, args, MusicSearchOptions(diff=options.music_diff, raise_when_err=False))).music
-    if music:
-        options.music_id = music['id']
-
-    options.music_diff = options.music_diff or DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
-    options.music_id   = options.music_id   or DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
-
-    # 组卡限制
-    options.limit = DEFAULT_LIMIT
-
-    # 模拟退火设置
-    options.sa_options = DeckRecommendSaOptions()
-    options.sa_options.max_no_improve_iter = 10000
-
-    return options
 
 
 # ======================= 指令处理 ======================= #
