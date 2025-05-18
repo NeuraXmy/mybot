@@ -69,13 +69,12 @@ async def get_card_full_thumbnail(
 
     if not pcard:
         after_training = after_training and has_after_training(card)
-        image_type = "after_training" if after_training else "normal"
     else:
         after_training = (pcard['defaultImage'] == "special_training" and pcard['specialTrainingStatus'] == "done")
-        image_type = "after_training" if pcard['specialTrainingStatus'] == "done" else "normal"
 
     # 如果没有指定pcard则尝试使用缓存
     if not pcard:
+        image_type = "after_training" if after_training else "normal"
         cache_path = f"{SEKAI_ASSET_DIR}/card_full_thumbnail/{ctx.region}/{cid}_{image_type}.png"
         try: return open_image(cache_path)
         except: pass
@@ -93,7 +92,8 @@ async def get_card_full_thumbnail(
             rare_img = ctx.static_imgs.get(f"card/rare_birthday.png")
             rare_num = 1
         else:
-            rare_img = ctx.static_imgs.get(f"card/rare_star_{image_type}.png") 
+            rare_image_type = "after_training" if after_training else "normal"
+            rare_img = ctx.static_imgs.get(f"card/rare_star_{rare_image_type}.png") 
             rare_num = int(rare.split("_")[1])
 
         img_w, img_h = img.size

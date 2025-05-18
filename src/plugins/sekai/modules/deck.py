@@ -82,6 +82,26 @@ DEFAULT_LIMIT = 8
 
 # ======================= 参数获取 ======================= #
 
+# 从args中提取组卡目标
+def extract_target(args: str, options: DeckRecommendOptions) -> str:
+    options.target = "score"
+
+    power_keywords = sorted(['综合', '综合力', '总和', '总合力', 'power'], key=len, reverse=True)
+    for keyword in power_keywords:
+        if keyword in args:
+            args = args.replace(keyword, "").strip()
+            options.target = "power"
+            break
+
+    skill_keywords = sorted(['技能', '实效', 'skill'], key=len, reverse=True)
+    for keyword in skill_keywords:
+        if keyword in args:
+            args = args.replace(keyword, "").strip()
+            options.target = "skill"
+            break
+    
+    return args.strip()
+    
 # 从args中提取固定卡牌
 def extract_fixed_cards(args: str, options: DeckRecommendOptions) -> str:
     if '#' in args:
@@ -140,6 +160,7 @@ async def extract_event_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
 
     args = extract_fixed_cards(args, options)
     args = extract_card_config(args, options)
+    args = extract_target(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -192,6 +213,7 @@ async def extract_challenge_options(ctx: SekaiHandlerContext, args: str) -> Deck
 
     args = extract_fixed_cards(args, options)
     args = extract_card_config(args, options)
+    args = extract_target(args, options)
 
     options.live_type = "challenge"
 
@@ -239,6 +261,7 @@ async def extract_no_event_options(ctx: SekaiHandlerContext, args: str) -> DeckR
 
     args = extract_fixed_cards(args, options)
     args = extract_card_config(args, options)
+    args = extract_target(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -289,6 +312,7 @@ async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) ->
 
     args = extract_fixed_cards(args, options)
     args = extract_card_config(args, options)
+    args = extract_target(args, options)
 
     # 算法
     options.algorithm = "all"
@@ -549,7 +573,14 @@ async def do_deck_recommend(
                     decks.append(deck)
                 else:
                     deck_src_alg[deck_hash] += "+" + alg
-        decks = sorted(decks, key=lambda x: x.score, reverse=True)[:options.limit]
+        def key_func(deck: RecommendDeck):
+            if options.target == "score":
+                return deck.score
+            if options.target == "power":
+                return deck.total_power
+            if options.target == "skill":
+                return deck.expect_skill_score_up
+        decks = sorted(decks, key=key_func, reverse=True)[:options.limit]
         src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
         res = DeckRecommendResult()
         res.decks = decks
@@ -581,10 +612,6 @@ async def compose_deck_recommend_image(
     # 用户信息
     profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, ignore_hide=True)
     uid = profile['userGamedata']['userId']
-
-    # 如果 userChallengeLiveSoloDecks 不存在，塞个空数组
-    if 'userChallengeLiveSoloDecks' not in profile:
-        profile['userChallengeLiveSoloDecks'] = []
 
     # 准备用户数据
     with TempFilePath("json") as userdata_path:
@@ -664,12 +691,12 @@ async def compose_deck_recommend_image(
     for deck in result_decks:
         for deckcard in deck.cards:
             card = await ctx.md.cards.find_by_id(deckcard.card_id)
-            pcard = find_by(profile['userCards'], "cardId", deckcard.card_id)
-            if pcard: pcard = deepcopy(pcard)
-            else: 
-                pcard = {'defaultImage': 'special_training', 'specialTrainingStatus': 'done'}
-            pcard['level'] = deckcard.level
-            pcard['masterRank'] = deckcard.master_rank
+            pcard = {
+                'defaultImage': deckcard.default_image,
+                'specialTrainingStatus': "done" if deckcard.after_training else "",
+                'level': deckcard.level,
+                'masterRank': deckcard.master_rank,
+            }
             card_imgs.append(_get_thumb(card, pcard))
     card_imgs = { cid: img for cid, img in await asyncio.gather(*card_imgs) }
 
@@ -682,30 +709,6 @@ async def compose_deck_recommend_image(
             chara_id = (await ctx.md.cards.find_by_id(card_id))['characterId']
             _, high_score, _, _ = challenge_live_info.get(chara_id, (None, 0, None, None))
             challenge_score_dlt.append(deck.score - high_score)
-
-    # 获取卡的剧情阅读状态
-    async def get_card_story_status(card_id: int) -> Tuple[Optional[bool], Optional[bool]]:
-        ep1_read, ep2_read = False, False
-        card = await ctx.md.cards.find_by_id(card_id)
-        rarity = card['cardRarityType']
-        force_story_read = False
-        if rarity == 'rarity_1':        force_story_read = options.rarity_1_config.episode_read
-        if rarity == 'rarity_2':        force_story_read = options.rarity_2_config.episode_read
-        if rarity == 'rarity_3':        force_story_read = options.rarity_3_config.episode_read
-        if rarity == 'rarity_4':        force_story_read = options.rarity_4_config.episode_read
-        if rarity == 'rarity_birthday': force_story_read = options.rarity_birthday_config.episode_read
-        if pcard := find_by(profile['userCards'], "cardId", card_id):
-            eps = pcard.get('episodes', [])
-            if len(eps) > 0: ep1_read = force_story_read or eps[0]['scenarioStatus'] == 'already_read'
-            if len(eps) > 1: ep2_read = force_story_read or eps[1]['scenarioStatus'] == 'already_read'
-        return ep1_read, ep2_read
-
-    # 计算实效
-    async def get_deck_real_bonus(deck: RecommendDeck) -> float:
-        ret = deck.cards[0].skill_score_up
-        for i in range(1, len(deck.cards)):
-            ret += deck.cards[i].skill_score_up * 0.2
-        return ret
         
     # 绘图
     with Canvas(bg=ImageBg(ctx.static_imgs.get("bg/bg_area_7.png"))).set_padding(BG_PADDING) as canvas:
@@ -735,7 +738,14 @@ async def compose_deck_recommend_image(
                             title += "(单人)"
                         elif options.live_type == "auto":
                             title += "(AUTO)"
-    
+                    
+                    score_name = "分数" if recommend_type in ["challenge", "challenge_all"] else "PT"
+                    target = score_name
+                    if options.target == "power":
+                        target = "综合力"
+                    elif options.target == "skill":
+                        target = "实效"
+
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         if recommend_type in ["event", "wl"]:
                             ImageBox(event_banner, size=(None, 50), use_alphablend=True)
@@ -751,6 +761,8 @@ async def compose_deck_recommend_image(
                         if recommend_type == "unit_attr":
                             ImageBox(unit_logo, size=(None, 60), use_alphablend=True)
                             ImageBox(attr_icon, size=(None, 50), use_alphablend=True)
+                        
+                        # TextBox(f"最高{target}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         with Frame().set_size((50, 50)):
@@ -761,11 +773,17 @@ async def compose_deck_recommend_image(
                 # 表格
                 gh, vsp, voffset = 100, 12, 8
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
-                    th_style = TextStyle(font=DEFAULT_BOLD_FONT, size=28, color=(50, 50, 50))
+                    th_style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=28, color=(25, 25, 25))
+                    th_style2 = TextStyle(font=DEFAULT_BOLD_FONT, size=28, color=(75, 75, 75))
+                    th_main_sign = '∇'
                     tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
+
                     # 分数
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                        TextBox("分数" if recommend_type in ["challenge", "challenge_all"] else "PT", th_style).set_h(gh // 2).set_content_align('c')
+                        target_score = options.target == "score"
+                        text = score_name + th_main_sign if target_score else score_name
+                        style = th_style1 if target_score else th_style2
+                        TextBox(text, style).set_h(gh // 2).set_content_align('c')
                         Spacer(h=6)
                         for i, deck in enumerate(result_decks):
                             with Frame().set_content_align('rb'):
@@ -778,13 +796,13 @@ async def compose_deck_recommend_image(
 
                     # 卡片
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                        TextBox("卡组", th_style).set_h(gh // 2).set_content_align('c')
+                        TextBox("卡组", th_style2).set_h(gh // 2).set_content_align('c')
                         Spacer(h=6)
                         for deck in result_decks:
                             with HSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(0):
                                 for card in deck.cards:
                                     card_id = card.card_id
-                                    ep1_read, ep2_read = await get_card_story_status(card_id)
+                                    ep1_read, ep2_read = card.episode1_read, card.episode2_read
                                     slv = card.skill_level
                                     with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0).set_h(gh):
                                         with Frame().set_content_align('rt'):
@@ -812,7 +830,7 @@ async def compose_deck_recommend_image(
                     # 加成
                     if recommend_type not in ["challenge", "challenge_all", "no_event"]:
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                            TextBox("加成", th_style).set_h(gh // 2).set_content_align('c')
+                            TextBox("加成", th_style2).set_h(gh // 2).set_content_align('c')
                             Spacer(h=6)
                             for deck in result_decks:
                                 if wl_chara_name:
@@ -824,15 +842,20 @@ async def compose_deck_recommend_image(
                     # 实效
                     if options.live_type in ['multi', 'cheerful']:
                         with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                            TextBox("实效", th_style).set_h(gh // 2).set_content_align('c')
+                            target_skill = options.target == "skill"
+                            text = "实效" + th_main_sign if target_skill else "实效"
+                            style = th_style1 if target_skill else th_style2
+                            TextBox(text, style).set_h(gh // 2).set_content_align('c')
                             Spacer(h=6)
                             for deck in result_decks:
-                                real_bonus = await get_deck_real_bonus(deck)
-                                TextBox(f"{real_bonus:.1f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                                TextBox(f"{deck.expect_skill_score_up:.1f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 综合力和算法
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                        TextBox("综合力", th_style).set_h(gh // 2).set_content_align('c')
+                        target_power = options.target == "power"
+                        text = "综合力" + th_main_sign if target_power else "综合力"
+                        style = th_style1 if target_power else th_style2
+                        TextBox(text, style).set_h(gh // 2).set_content_align('c')
                         Spacer(h=6)
                         for deck, alg in zip(result_decks, result_algs):
                             with Frame().set_content_align('rb'):
