@@ -77,7 +77,6 @@ def get_event_id_and_name_text(region: str, event_id: int, event_name: str) -> s
 
 # 从参数获取带有wl_id的wl_event，返回 (wl_event, args)，未指定章节则默认查询当前章节
 async def extract_wl_event(ctx: SekaiHandlerContext, args: str) -> Tuple[dict, str]:
-    args = args.lower()
     if 'wl' not in args:
         return None, args
     else:

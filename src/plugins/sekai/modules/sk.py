@@ -32,13 +32,7 @@ plt.switch_backend('agg')
 matplotlib.rcParams['font.family'] = [FONT_NAME]
 matplotlib.rcParams['axes.unicode_minus'] = False  
 
-
-DEFAULT_EVENT_DECK_RECOMMEND_MID = 74
-DEFAULT_EVENT_DECK_RECOMMEND_DIFF = "expert"
-
-DEFAULT_CHANLLENGE_DECK_RECOMMEND_MID = 104
-DEFAULT_CHANLLENGE_DECK_RECOMMEND_DIFF = "master"
-
+SK_RECORD_INTERVAL = 60
 
 SKL_QUERY_RANKS = [
     *range(10, 51, 10),
@@ -536,7 +530,14 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     assert_and_reply(ranks, f"找不到{format_sk_query_params(qtype, qval)}的榜线数据")
 
     pts = []
+    abnormal = False
+    abnormal_time = timedelta(seconds=SK_RECORD_INTERVAL * 1.5)
+    if ranks[0].time - cf_start_time > abnormal_time:
+        abnormal = True
     for i in range(len(ranks) - 1):
+        if ranks[i + 1].time - ranks[i].time > abnormal_time:
+            abnormal = True
+            continue
         if ranks[i].score != ranks[i + 1].score:
             pts.append(ranks[i + 1].score - ranks[i].score)
 
@@ -562,6 +563,8 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
         last_20min_speed = int((ranks[-1].score - last_20min_rank.score) / (end_time - last_20min_rank.time).total_seconds() * 3600)
         texts.append((f"20min×3时速: {get_board_score_str(last_20min_speed)}", style2))
     texts.append((f"本小时周回数: {len(pts)}", style2))
+    if abnormal:
+        texts.append((f"记录时间内有数据空缺，周回数不准确", style2))
     texts.append((f"数据开始于: {get_readable_datetime(start_time, show_original_time=False)}", style2))
     texts.append((f"数据更新于: {get_readable_datetime(end_time, show_original_time=False)}", style2))
 
@@ -623,7 +626,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         fig, ax = plt.subplots()
         fig.set_size_inches(8, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
-        ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=2, linewidth=0.5)
+        ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min(scores) * 0.95, max(scores) * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
@@ -632,7 +635,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
                      color='blue', fontsize=12, ha='right')
         ax.legend(loc='lower right')
         ax2 = ax.twinx()
-        ax2.plot(times, rs, 'o-', label='排名', color='red', markersize=2, linewidth=0.5)
+        ax2.plot(times, rs, 'o', label='排名', color='red', markersize=2, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(int(x))))
         ax2.set_ylim(max(rs) + 1, min(rs) - 1)
         ax2.legend(loc='lower right')
@@ -694,7 +697,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         fig, ax = plt.subplots()
         fig.set_size_inches(8, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
-        ax.plot(times, scores, 'o-', label='分数', color='blue', markersize=2, linewidth=0.5)
+        ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min_score * 0.95, max_score * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
         ax.legend(loc='lower right')
@@ -981,7 +984,7 @@ RECORD_TIME_AFTER_EVENT_END = 60 * 0
 ranking_update_times = { region: 0 for region in ALL_SERVER_REGIONS }
 ranking_update_failures = { region: 0 for region in ALL_SERVER_REGIONS }
 
-@repeat_with_interval(60, '更新榜线数据', logger, every_output=False, error_limit=1)
+@repeat_with_interval(SK_RECORD_INTERVAL, '更新榜线数据', logger, every_output=False, error_limit=1)
 async def update_ranking():
     tasks = []
 
