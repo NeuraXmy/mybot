@@ -9,6 +9,7 @@ from .music import *
 from .mysekai import *
 from .profile import *
 from .resbox import *
+from .score import *
 from .sk import *
 from .stamp import *
 from .stamp_maker import *

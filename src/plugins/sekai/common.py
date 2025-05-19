@@ -163,6 +163,7 @@ def get_all_nicknames() -> List[Tuple[str, int]]:
     for item in CHARACTER_NICKNAME_DATA:
         for nickname in item['nicknames']:
             all_nicknames.append((nickname, item['id']))
+    all_nicknames.sort(key=lambda x: len(x[0]), reverse=True)
     return all_nicknames
 
 # 从角色id获取角色团名

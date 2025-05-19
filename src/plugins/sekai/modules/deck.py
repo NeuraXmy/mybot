@@ -40,7 +40,7 @@ last_deck_recommend_masterdata_version: Dict[str, datetime] = {}
 musicmetas_json = WebJsonRes(
     name="MusicMeta", 
     url="https://storage.sekai.best/sekai-best-assets/music_metas.json", 
-    update_interval=None
+    update_interval=timedelta(hours=1),
 )
 MUSICMETAS_SAVE_PATH = f"{SEKAI_ASSET_DIR}/music_metas.json"
 last_deck_recommend_musicmeta_update_time: Dict[str, datetime] = {}
@@ -748,26 +748,26 @@ async def compose_deck_recommend_image(
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         if recommend_type in ["event", "wl"]:
-                            ImageBox(event_banner, size=(None, 50), use_alphablend=True)
+                            ImageBox(event_banner, size=(None, 50))
 
                         TextBox(title, TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50)), use_real_line_count=True)
 
                         if recommend_type == "challenge":
-                            ImageBox(chara_icon, size=(None, 50), use_alphablend=True)
+                            ImageBox(chara_icon, size=(None, 50))
                             TextBox(f"{chara_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                         if recommend_type == "wl":
-                            ImageBox(wl_chara_icon, size=(None, 50), use_alphablend=True)
+                            ImageBox(wl_chara_icon, size=(None, 50))
                             TextBox(f"{wl_chara_name} 章节", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                         if recommend_type == "unit_attr":
-                            ImageBox(unit_logo, size=(None, 60), use_alphablend=True)
-                            ImageBox(attr_icon, size=(None, 50), use_alphablend=True)
+                            ImageBox(unit_logo, size=(None, 60))
+                            ImageBox(attr_icon, size=(None, 50))
                         
                         # TextBox(f"最高{target}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                         with Frame().set_size((50, 50)):
                             Spacer(w=50, h=50).set_bg(FillBg(fill=DIFF_COLORS[options.music_diff])).set_offset((6, 6))
-                            ImageBox(music_cover, size=(50, 50), use_alphablend=True)
+                            ImageBox(music_cover, size=(50, 50))
                         TextBox(f"{music_title} ({options.music_diff.upper()})", 
                                 TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                 # 表格
@@ -806,7 +806,7 @@ async def compose_deck_recommend_image(
                                     slv = card.skill_level
                                     with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0).set_h(gh):
                                         with Frame().set_content_align('rt'):
-                                            ImageBox(card_imgs[card_id], size=(None, 80), use_alphablend=True)
+                                            ImageBox(card_imgs[card_id], size=(None, 80))
                                             if options.fixed_cards and card_id in options.fixed_cards:
                                                 TextBox(str(card_id), TextStyle(font=DEFAULT_FONT, size=10, color=WHITE)) \
                                                     .set_bg(RoundRectBg((200, 50, 50, 200), 2)).set_offset((-2, 2))

@@ -559,7 +559,7 @@ async def find_music_by_id_all_region(ctx: SekaiHandlerContext, mid: int) -> Opt
     return None
 
 # 根据歌曲id获取封面缩略图
-async def get_music_cover_thumb(ctx: SekaiHandlerContext, mid: int) -> str:
+async def get_music_cover_thumb(ctx: SekaiHandlerContext, mid: int) -> Image.Image:
     music = await ctx.md.musics.find_by_id(mid)
     assert_and_reply(music, f"歌曲ID={mid}不存在")
     asset_name = music['assetbundleName']
