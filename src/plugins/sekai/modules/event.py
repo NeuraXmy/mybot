@@ -335,14 +335,15 @@ async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFi
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
 
-# 根据"昵称箱数"（比如saki1）获取活动
-async def get_event_by_ban_name(ctx: SekaiHandlerContext, ban_name: str) -> dict:
-    m = re.match(r"([a-z]+)(\d+)", ban_name)
-    assert_and_reply(m, "箱活格式不正确，必须是角色昵称+数字，例如：saki1")
-    nickname, idx = m.groups()[0], int(m.groups()[1])
+# 根据"昵称箱数"（比如saki1）获取活动，不存在返回None
+async def get_event_by_ban_name(ctx: SekaiHandlerContext, ban_name: str) -> Optional[dict]:
+    idx = None
+    for nickname, cid in get_all_nicknames():
+        if nickname in ban_name:
+            idx = int(ban_name.replace(nickname, ""))
+            break
+    if not idx: return None
     assert_and_reply(idx >= 1, "箱数必须大于等于1")
-    cid = get_cid_by_nickname(nickname)
-    assert_and_reply(cid, f"无效的角色昵称：{nickname}")
     chara_ban_stories = await ctx.md.event_stories.find_by('bannerGameCharacterUnitId', cid, mode="all")
     ban_event_id_set = await get_ban_events_id_set(ctx)
     chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in ban_event_id_set]
@@ -376,8 +377,15 @@ async def get_event_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
         event = await ctx.md.events.find_by_id(index)
         assert event, f"未找到ID为{index}的活动"
         return event
+    elif event := await get_event_by_ban_name(ctx, index):
+        return event
     else:
-        return await get_event_by_ban_name(ctx, index)
+        raise ReplyException(f"""
+查活动参数错误，正确格式:
+1. 直接使用活动ID，例如{ctx.trigger_cmd} 123
+2. 使用负数索引，例如{ctx.trigger_cmd} -1
+3. 使用角色昵称+箱数，例如{ctx.trigger_cmd} mnr1
+""".strip())
 
 # 获取活动剧情总结
 async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh: bool, summary_model: List[str], save: bool) -> List[str]:

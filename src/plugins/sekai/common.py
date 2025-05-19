@@ -113,6 +113,10 @@ CARD_SKILL_NAMES = [
 UNKNOWN_IMG = Image.open(f"{SEKAI_ASSET_DIR}/static_images/unknown.png")
 
 CHARACTER_NICKNAME_DATA: List[Dict[str, Any]] = json.load(open(f"{SEKAI_DATA_DIR}/character_nicknames.json", 'r'))
+CHARACTER_FIRST_NICKNAME: Dict[int, str] = {}
+for item in CHARACTER_NICKNAME_DATA:
+    CHARACTER_FIRST_NICKNAME[item['id']] = item['nicknames'][0]
+    item['nicknames'].sort(key=len, reverse=True)
 
 MUSIC_TAG_UNIT_MAP = {
     'light_music_club': 'light_sound',
@@ -149,6 +153,17 @@ def get_cid_by_nickname(nickname: str) -> Optional[int]:
         if nickname in item['nicknames']:
             return item['id']
     return None
+
+# 获取所有(昵称, 角色ID)对
+def get_all_nicknames() -> List[Tuple[str, int]]:
+    """
+    获取所有(昵称, 角色ID)对
+    """
+    all_nicknames = []
+    for item in CHARACTER_NICKNAME_DATA:
+        for nickname in item['nicknames']:
+            all_nicknames.append((nickname, item['id']))
+    return all_nicknames
 
 # 从角色id获取角色团名
 def get_unit_by_chara_id(cid: int) -> str:

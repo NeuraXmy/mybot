@@ -8,11 +8,11 @@ def get_chara_icon_by_chara_id(cid: int, size: int = None, raise_exc=True, defau
     """
     通过角色ID获取角色头像
     """
-    nicknames = get_nicknames_by_chara_id(cid)
-    if not nicknames:
-        if raise_exc: raise Exception(f"要获取的icon的角色ID错误")
+    nickname = CHARACTER_FIRST_NICKNAME.get(cid)
+    if not nickname:
+        if raise_exc: raise Exception(f"要获取的icon的角色ID={cid}错误")
         else: return default
-    img = SekaiHandlerContext.from_region('jp').static_imgs.get(f"chara_icon/{nicknames[0]}.png")
+    img = SekaiHandlerContext.from_region('jp').static_imgs.get(f"chara_icon/{nickname}.png")
     if size is not None:
         img = img.resize((size, size))
     return img

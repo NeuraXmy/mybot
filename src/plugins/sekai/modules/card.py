@@ -94,18 +94,17 @@ async def get_cards_of_event(ctx: SekaiHandlerContext, event_id: int) -> List[di
 async def get_card_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
     index = index.strip()
     cards = await ctx.md.cards.get()
-    if m := re.match(r"([a-z]+)(-?\d+)", index):
-        nickname, seq = m.groups()
-        cid = get_cid_by_nickname(nickname)
-        assert_and_reply(cid, f"无效的角色昵称：{nickname}")
-        chara_cards = await ctx.md.cards.find_by("characterId", cid, mode="all")
-        chara_cards.sort(key=lambda x: x['releaseAt'])
-        if seq.removeprefix('-').isdigit(): 
-            seq = int(seq)
-            assert_and_reply(seq < 0, "卡牌序号只能为负数")
-            assert_and_reply(-seq <= len(chara_cards), f"角色{nickname}只有{len(chara_cards)}张卡")
-            card = chara_cards[seq]
-            return card
+    for nickname, cid in get_all_nicknames():
+        if nickname in index:
+            seq = index.replace(nickname, "").strip()
+            chara_cards = await ctx.md.cards.find_by("characterId", cid, mode="all")
+            chara_cards.sort(key=lambda x: x['releaseAt'])
+            if seq.removeprefix('-').isdigit(): 
+                seq = int(seq)
+                assert_and_reply(seq < 0, "卡牌序号只能为负数")
+                assert_and_reply(-seq <= len(chara_cards), f"角色{nickname}只有{len(chara_cards)}张卡")
+                card = chara_cards[seq]
+                return card
     assert_and_reply(index.isdigit(), SEARCH_SINGLE_CARD_HELP)
     card = await ctx.md.cards.find_by_id(int(index))
     assert_and_reply(card, f"卡牌{index}不存在")
@@ -791,9 +790,25 @@ async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
 
 # ======================= 指令处理 ======================= #
 
+# 角色别名查询
+pjsk_chara_alias = SekaiCmdHandler([
+    "/pjsk chara alias", "/pjsk_chara_alias", 
+    "/角色别名", 
+])
+pjsk_chara_alias.check_cdrate(cd).check_wblist(gbl)
+@pjsk_chara_alias.handle()
+async def _(ctx: SekaiHandlerContext):
+    args = ctx.get_args().strip()
+    assert_and_reply(args, "请输入要查询的角色名或别名")
+    cid = get_cid_by_nickname(args)
+    assert_and_reply(cid, f"没有找到角色名或别名为\"{args}\"的角色")
+    nicknames = get_nicknames_by_chara_id(cid)
+    await ctx.asend_reply_msg(f"角色ID.{cid}的别名:\n{', '.join(nicknames)}")
+    
+
 # 卡牌查询
 pjsk_card = SekaiCmdHandler([
-    "/pjsk card", "/pjsk_card", "/pjsk member", "/pjsk_member",
+    "/card", "/pjsk card", "/pjsk_card", "/pjsk member", "/pjsk_member",
     "/查卡", "/查卡牌", 
 ])
 pjsk_card.check_cdrate(cd).check_wblist(gbl)
