@@ -148,9 +148,9 @@ class MusicAliasDB:
             logger.info(f"删除歌曲别名: \"{alias}\" 失败: 别名不存在")
         return ret
     
-    def update(self, mid: int, aliases: List[str]):
+    def update(self, mid: int, aliases: List[str], verbose=True) -> Tuple[List[str], List[str]]:
         """
-        直接更新某个mid的别名
+        直接更新某个mid的别名，返回添加和删除的别名
         """
         cur_aliases = self.get_aliases(mid)
         to_add = [a for a in aliases if a not in cur_aliases]
@@ -160,14 +160,16 @@ class MusicAliasDB:
         for alias in to_remove:
             self._remove(alias)
         self._save()
-        log_msg = f"更新歌曲 {mid} 的别名"
-        if not to_add and not to_remove:
-            log_msg += "，没有更改"
-        if to_add:
-            log_msg += f"，添加 {len(to_add)} 条: {to_add}"
-        if to_remove:
-            log_msg += f"，删除 {len(to_remove)} 条: {to_remove}"
-        logger.info(log_msg)
+        if verbose:
+            log_msg = f"更新歌曲 {mid} 的别名"
+            if not to_add and not to_remove:
+                log_msg += "，没有更改"
+            if to_add:
+                log_msg += f"，添加 {len(to_add)} 条: {to_add}"
+            if to_remove:
+                log_msg += f"，删除 {len(to_remove)} 条: {to_remove}"
+            logger.info(log_msg)
+        return to_add, to_remove
 
     def backup(self):
         """
@@ -236,7 +238,7 @@ async def sync_music_alias():
     logger.info(f"开始从haruki同步 {cfg.regions} 的 {len(mids)} 首歌曲的别名")
     alias_db = MusicAliasDB.get_instance()
     alias_db.backup()
-    async def sync(mid: int):
+    async def sync(mid: int) -> bool:
         try:
             url = cfg.url.format(mid=mid)
             data = await download_json(url)
@@ -244,11 +246,18 @@ async def sync_music_alias():
             aliases = data['aliases']
             # 排除韩语别名
             aliases = [a for a in aliases if not any('\uac00' <= c <= '\ud7af' for c in a)]
-            alias_db.update(mid, aliases)
+            added, removed = alias_db.update(mid, aliases, verbose=False)
+            if added or removed:
+                log_msg = f"同步歌曲 {mid} 的别名"
+                if added: log_msg += f"，添加 {len(added)} 条: {added}"
+                if removed: log_msg += f"，删除 {len(removed)} 条: {removed}"
+                logger.info(log_msg)
+                return True
+            return False
         except Exception as e:
             logger.print_exc(f"同步歌曲 {mid} 的别名失败")
-    await batch_gather(*[sync(mid) for mid in mids])
-    logger.info(f"别名同步完成")
+    updated_num = sum(await batch_gather(*[sync(mid) for mid in mids]))
+    logger.info(f"别名同步完成，{updated_num} 首歌曲的别名发生变更")
     
 
 # ======================= 搜索歌曲 ======================= #
