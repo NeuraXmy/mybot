@@ -469,7 +469,7 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
                             t = TextBox(f"CHANLLENGE LIVE", TextStyle(font=DEFAULT_FONT, size=18, color=(50, 50, 50, 255)))
                             t.set_bg(roundrect_bg(radius=6)).set_padding((10, 7))
                             with Frame():
-                                chara_img = ctx.static_imgs.get(f'chara_rank_icon/{get_nicknames_by_chara_id(cid)[0]}.png')
+                                chara_img = ctx.static_imgs.get(f'chara_rank_icon/{CHARACTER_FIRST_NICKNAME[cid]}.png')
                                 ImageBox(chara_img, size=(100, 50), use_alphablend=True)
                                 t = TextBox(str(stage_rank), TextStyle(font=DEFAULT_FONT, size=22, color=(40, 40, 40, 255)), overflow='clip')
                                 t.set_size((50, 50)).set_content_align('c').set_offset((40, 5))
