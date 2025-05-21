@@ -94,7 +94,8 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
         
         # 服务器不支持
         url = get_gameapi_config(ctx).mysekai_api_url
-        assert url, f"暂不支持 {ctx.region} 的mysekai数据查询"
+        if not url:
+            raise ReplyException(f"暂不支持{get_region_name(ctx.region)}的Mysekai抓包数据查询")
 
         # 获取模式
         mode = mode or get_user_data_mode(ctx, qid)
@@ -111,7 +112,7 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
         
         if not mysekai_info:
             logger.info(f"获取 {qid} mysekai抓包数据失败: 找不到ID为 {uid} 的玩家")
-            raise Exception(f"找不到ID为 {uid} 的玩家")
+            raise ReplyException(f"找不到ID为 {uid} 的玩家")
         
         # 缓存数据
         cache_path = f"{SEKAI_PROFILE_DIR}/mysekai_cache/{ctx.region}/{uid}.json"

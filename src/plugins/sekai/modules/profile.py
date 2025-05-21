@@ -243,12 +243,12 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
         # 检测是否隐藏抓包信息
         if not ignore_hide and is_user_hide_suite(ctx, qid):
             logger.info(f"获取 {qid} 抓包数据失败: 用户已隐藏抓包信息")
-            raise Exception("已隐藏抓包信息")
+            raise ReplyException("已隐藏抓包信息")
         
         # 服务器不支持
         url = get_gameapi_config(ctx).suite_api_url
         if not url:
-            raise Exception(f"暂不支持查询 {ctx.region} 服务器的玩家详细信息")
+            raise ReplyException(f"暂不支持查询{get_region_name(ctx.region)}的抓包数据")
         
         # 数据获取模式
         mode = mode or get_user_data_mode(ctx, qid)
@@ -265,7 +265,7 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             
         if not profile:
             logger.info(f"获取 {qid} 抓包数据失败: 找不到ID为 {uid} 的玩家")
-            raise Exception(f"找不到ID为 {uid} 的玩家")
+            raise ReplyException(f"找不到ID为 {uid} 的玩家")
         
         # 缓存数据
         cache_path = f"{SEKAI_PROFILE_DIR}/suite_cache/{ctx.region}/{uid}.json"
