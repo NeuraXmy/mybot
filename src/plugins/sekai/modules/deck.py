@@ -884,7 +884,7 @@ async def compose_deck_recommend_image(
 pjsk_event_deck = SekaiCmdHandler([
     "/pjsk event card", "/pjsk_event_card", "/pjsk_event_deck", "/pjsk event deck",
     "/活动组卡", "/活动组队", "/活动卡组",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_event_deck.check_cdrate(cd).check_wblist(gbl)
 @pjsk_event_deck.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -901,7 +901,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_challenge_deck = SekaiCmdHandler([
     "/pjsk challenge card", "/pjsk_challenge_card", "/pjsk_challenge_deck", "/pjsk challenge deck",
     "/挑战组卡", "/挑战组队", "/挑战卡组",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_challenge_deck.check_cdrate(cd).check_wblist(gbl)
 @pjsk_challenge_deck.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -918,7 +918,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_no_event_deck = SekaiCmdHandler([
     "/pjsk_no_event_deck", "/pjsk no event deck", "/pjsk best deck", "/pjsk_best_deck",
     "/长草组卡", "/长草组队", "/长草卡组", "/最强卡组", "/最强组卡", "/最强组队",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_no_event_deck.check_cdrate(cd).check_wblist(gbl)
 @pjsk_no_event_deck.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -935,7 +935,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_deck = SekaiCmdHandler([
     "/pjsk deck", 
     "/组卡", "/组队", "/指定属性组卡", "/指定属性组队",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_deck.check_cdrate(cd).check_wblist(gbl)
 @pjsk_deck.handle()
 async def _(ctx: SekaiHandlerContext):

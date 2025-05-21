@@ -839,7 +839,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_skl = SekaiCmdHandler([
     "/pjsk sk line", "/pjsk_sk_line", "/pjsk board line", "/pjsk_board_line",
     "/sk线", "/skl",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_skl.check_cdrate(cd).check_wblist(gbl)
 @pjsk_skl.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -873,7 +873,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_sks = SekaiCmdHandler([
     "/pjsk sk speed", "/pjsk_sk_speed", "/pjsk board speed", "/pjsk_board_speed",
     "/时速", "/sks", "/skv", "/sk时速",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_sks.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sks.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -890,7 +890,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_sk = SekaiCmdHandler([
     "/pjsk sk board", "/pjsk_sk_board", "/pjsk board", "/pjsk_board",
     "/sk", 
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_sk.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sk.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -907,7 +907,7 @@ async def _(ctx: SekaiHandlerContext):
 # 查房
 pjsk_cf = SekaiCmdHandler([
     "/cf", "/查房", "/pjsk查房",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -925,7 +925,7 @@ async def _(ctx: SekaiHandlerContext):
 # 玩家追踪
 pjsk_cf = SekaiCmdHandler([
     "/skt", "/追踪", "/pjsk追踪",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -943,7 +943,7 @@ async def _(ctx: SekaiHandlerContext):
 # 分数线追踪
 pjsk_cf = SekaiCmdHandler([
     "/sklt", "/sktl", "/分数线追踪", "/pjsk分数线追踪",
-], regions=['jp', 'cn'])
+], regions=['jp', 'cn', 'tw'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
@@ -967,7 +967,7 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_winrate = SekaiCmdHandler([
     "/pjsk winrate predict", "/pjsk_winrate_predict", 
     "/胜率预测", "/5v5预测", "/胜率",
-])
+], regions=['jp'])
 pjsk_winrate.check_cdrate(cd).check_wblist(gbl)
 @pjsk_winrate.handle()
 async def _(ctx: SekaiHandlerContext):

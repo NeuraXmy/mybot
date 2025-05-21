@@ -368,7 +368,7 @@ async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -
     
                 # 推特
                 with Frame().set_content_align('l').set_w(450):
-                    tw_id = basic_profile['userProfile']['twitterId']
+                    tw_id = basic_profile['userProfile'].get('twitterId', '')
                     tw_id_box = TextBox('        @ ' + tw_id, TextStyle(font=DEFAULT_FONT, size=20, color=BLACK), line_count=1)
                     tw_id_box.set_wrap(False).set_bg(roundrect_bg()).set_line_sep(2).set_padding(10).set_w(300).set_content_align('l')
                     x_icon = ctx.static_imgs.get("x_icon.png").resize((24, 24)).convert('RGBA')
