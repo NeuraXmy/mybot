@@ -2138,7 +2138,7 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_reply_msg(f'已启用群聊 {group_name} ({group_id}) BOT服务')
  
 # 设置群聊关闭
-disable_group = CmdHandler(['/disable'], utils_logger, check_group_enabled=False, only_to_me=True)
+disable_group = CmdHandler(['/disable'], utils_logger, check_group_enabled=False)
 disable_group.check_superuser()
 @disable_group.handle()
 async def _(ctx: HandlerContext):

@@ -10,6 +10,9 @@
 - [`/{服务名}_{on|off}` 在群聊中开启/关闭服务](#服务名_onoff)
 - [`/{服务名}_status` 查看当前群聊某个服务状态](#服务名_status)
 - [`/service` 查看当前群聊所有服务状态或查询服务在哪些群聊开启](#service)
+- [`/blacklist_add` 添加黑名单](#blacklist_add)
+- [`/blacklist_del` 删除黑名单](#blacklist_del)
+- [`/send_count` 获取当日消息发送数量](#send_count)
 
 ---
 
@@ -33,9 +36,9 @@
 ```
 - **示例**
 
-    `/enable` 开启当前群聊
+    `@bot /enable` 开启当前群聊
 
-    `/enable 123456` 开启群聊123456
+    `@bot /enable 123456` 开启群聊123456
 
 
 ## `/disable`
@@ -89,6 +92,32 @@
     `/service alive` 查询alive服务在哪些群聊开启
 
 
+## `/blacklist_add`
+```
+添加黑名单，黑名单中的用户将无法使用指令
+```
+
+- **示例**
+
+    `/blacklist_add 123456` 将用户123456添加到黑名单
+
+
+## `/blacklist_del`
+```
+删除黑名单
+```
+- **示例**
+
+    `/blacklist_del 123456` 将用户123456从黑名单中删除
+
+
+## `/send_count`
+```
+获取当日消息发送数量
+```
+- **示例**
+
+    `/send_count` 获取当日消息发送数量
 
 --- 
 
