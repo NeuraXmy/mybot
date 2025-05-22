@@ -21,7 +21,7 @@ DEFAULT_ENTERTAINMENT_DAILY_LIMIT = 200
 
 GUESS_INTERVAL = timedelta(seconds=1)
 HINT_KEYWORDS = ['提示']
-STOP_KEYWORDS = ['结束猜', '停止猜']
+STOP_KEYWORDS = ['结束猜', '停止猜', '结束听', '停止听']
 
 @dataclass
 class ImageRandomCropOptions:

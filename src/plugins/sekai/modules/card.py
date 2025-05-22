@@ -185,6 +185,13 @@ async def get_card_image(ctx: SekaiHandlerContext, cid: int, after_training: boo
     if not card: raise Exception(f"找不到ID为{cid}的卡牌") 
     return await ctx.rip.img(f"character/member/{card['assetbundleName']}_rip/card_{image_type}.png", timeout=30, allow_error=allow_error)
 
+# 获取卡面立绘图片
+async def get_card_cutout_image(ctx: SekaiHandlerContext, cid: int, after_training: bool, allow_error: bool = True) -> str:
+    image_type = "after_training" if after_training else "normal"
+    card = await ctx.md.cards.find_by_id(cid)
+    if not card: raise Exception(f"找不到ID为{cid}的卡牌") 
+    return await ctx.rip.img(f"character/member_cutout_trm/{card['assetbundleName']}/{image_type}.png", timeout=30, allow_error=allow_error)
+
 # 获取卡牌剧情总结
 async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: bool, summary_model: List[str], save: bool) -> List[str]:
     cid = card['id']
