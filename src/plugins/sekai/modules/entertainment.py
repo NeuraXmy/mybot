@@ -306,15 +306,16 @@ async def send_guess_music_hint(gctx: GuessContext):
 async def get_card_title(ctx: SekaiHandlerContext, card: Dict, after_training: bool) -> str:
     title = f"【{card['id']}】"
     rarity = card['cardRarityType']
-    if rarity == 'rarity_1': title += "★"
-    elif rarity == 'rarity_2': title += "★★"
-    elif rarity == 'rarity_3': title += "★★★"
-    elif rarity == 'rarity_4': title += "★★★★"
+    if rarity == 'rarity_1': title += "⭐"
+    elif rarity == 'rarity_2': title += "⭐⭐"
+    elif rarity == 'rarity_3': title += "⭐⭐⭐"
+    elif rarity == 'rarity_4': title += "⭐⭐⭐⭐"
     elif rarity == 'rarity_birthday': title += "🎀"
     title += " " + await get_character_name_by_id(ctx, card['characterId'])
     title += f" - {card['prefix']}"
-    if after_training:  title += "（特训后）"
-    else:               title += "（特训前）"
+    if rarity in ['rarity_3', 'rarity_4']:
+        if after_training:  title += "（特训后）"
+        else:               title += "（特训前）"
     return title
 
 # 随机卡面，返回卡牌数据、卡面图片、是否特训
@@ -573,6 +574,7 @@ async def _(ctx: SekaiHandlerContext):
         if len(gctx.data['guessed']) > GUESS_CARD_CID_LIMIT:
             await gctx.asend_msg(f"猜卡面失败，正确答案：\n{await get_card_title(ctx, card, after_training)}")
             await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
+            gctx.guess_success = True
     
     async def stop_fn(gctx: GuessContext):
         card, card_img, after_training = gctx.data['card'], gctx.data['card_img'], gctx.data['after_training']
