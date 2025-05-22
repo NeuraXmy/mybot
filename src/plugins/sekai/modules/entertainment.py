@@ -83,6 +83,7 @@ GUESS_CARD_DIFF_OPTIONS = {
     'master':   ImageRandomCropOptions(0.1, 0.2),
     'append':   ImageRandomCropOptions(0.2, 0.3, flip_prob=0.4, inv_prob=0.4, gray_prob=0.4, rgb_shuffle_prob=0.4, at_least_one_effect=True),
 }
+GUESS_CARD_CID_LIMIT = 10
 
 GUESS_MUSIC_TIMEOUT = timedelta(seconds=60)
 GUESS_MUSIC_DIFF_OPTIONS = {
@@ -144,6 +145,7 @@ uid_last_guess_time: Dict[int, datetime] = {}
 async def get_guess_resp_event(bot: Bot, event: GroupMessageEvent):
     if not is_group_msg(event): return
     if event.user_id == int(bot.self_id): return
+    if check_in_blacklist(event.user_id): return
     if event.get_plaintext().startswith("/"): return
     gid = event.group_id
     queues = guess_resp_queues.get(gid, {})
@@ -557,14 +559,20 @@ async def _(ctx: SekaiHandlerContext):
         gctx.data['card'] = card
         gctx.data['card_img'] = card_img
         gctx.data['after_training'] = after_training
+        gctx.data['guessed'] = set()
 
     async def check_fn(gctx: GuessContext):
         card, card_img, after_training = gctx.data['card'], gctx.data['card_img'], gctx.data['after_training']
         cid = get_cid_by_nickname(gctx.text)
+        if cid is not None:
+            gctx.data['guessed'].add(cid)
         if cid == card["characterId"]:
             await gctx.asend_reply_msg(f"你猜对了！\n{await get_card_title(gctx.ctx, card, after_training)}")
             await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
             gctx.guess_success = True
+        if len(gctx.data['guessed']) > GUESS_CARD_CID_LIMIT:
+            await gctx.asend_msg(f"猜卡面失败，正确答案：\n{await get_card_title(ctx, card, after_training)}")
+            await gctx.asend_msg(await get_image_cq(card_img, low_quality=True))
     
     async def stop_fn(gctx: GuessContext):
         card, card_img, after_training = gctx.data['card'], gctx.data['card_img'], gctx.data['after_training']

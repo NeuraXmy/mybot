@@ -35,15 +35,26 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
     hlv = profile_honor.get('honorLevel', 0)
     ms = "main" if is_main else "sub"
 
-    def add_frame(img: Image.Image, rarity):
-        if rarity == 'low':
-            frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_1.png')
-        elif rarity == 'middle':
-            frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_2.png')
-        elif rarity == 'high':
-            frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_3.png')
+    async def add_frame(img: Image.Image, rarity, frame_name=None):
+        if not frame_name:
+            if rarity == 'low':
+                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_1.png')
+            elif rarity == 'middle':
+                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_2.png')
+            elif rarity == 'high':
+                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_3.png')
+            else:
+                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_4.png')
         else:
-            frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_4.png')
+            base_path = f'honor_frame/{frame_name}/frame_degree_{ms[0]}'
+            if rarity == 'low':
+                frame = await ctx.rip.img(f'{base_path}_1.png')
+            elif rarity == 'middle':
+                frame = await ctx.rip.img(f'{base_path}_2.png')
+            elif rarity == 'high':
+                frame = await ctx.rip.img(f'{base_path}_3.png')
+            else:
+                frame = await ctx.rip.img(f'{base_path}_4.png')
         img.paste(frame, (8, 0) if rarity == 'low' else (0, 0), frame)
     
     def add_lv_star(img: Image.Image, lv):
@@ -94,6 +105,7 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
         bg_asset_name = group.get('backgroundAssetbundleName', None)
         gtype = group['honorType']
         gname = group['name']
+        frame_name = group.get('frameName', None)
         
         if gtype == 'rank_match':
             img = (await ctx.rip.img(f"rank_live/honor/{bg_asset_name or asset_name}_rip/degree_{ms}.png")).copy()
@@ -105,7 +117,7 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
             else:
                 rank_img = None
 
-        add_frame(img, rarity)
+        await add_frame(img, rarity, frame_name)
         if rank_img:
             if gtype == 'rank_match':
                 img.paste(rank_img, (190, 0) if is_main else (17, 42), rank_img)
@@ -146,7 +158,7 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
         _, _, _, mask = ctx.static_imgs.get(f"honor/mask_degree_{ms}.png").split()
         img.putalpha(mask)
 
-        add_frame(img, rarity)
+        await add_frame(img, rarity)
 
         if is_main:
             wordbundlename = f"honorname_{cid1:02d}{cid2:02d}_{(hwid%100):02d}_01"
