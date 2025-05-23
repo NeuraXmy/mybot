@@ -36,25 +36,12 @@ async def compose_full_honor_image(ctx: SekaiHandlerContext, profile_honor: Dict
     ms = "main" if is_main else "sub"
 
     async def add_frame(img: Image.Image, rarity, frame_name=None):
-        if not frame_name:
-            if rarity == 'low':
-                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_1.png')
-            elif rarity == 'middle':
-                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_2.png')
-            elif rarity == 'high':
-                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_3.png')
-            else:
-                frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_4.png')
+        LV_MAP = {'low': 1, 'middle': 2, 'high': 3, 'highest': 4}
+        lv = LV_MAP.get(rarity, 1)
+        if not frame_name or lv < 3:
+            frame = ctx.static_imgs.get(f'honor/frame_degree_{ms[0]}_{lv}.png')
         else:
-            base_path = f'honor_frame/{frame_name}/frame_degree_{ms[0]}'
-            if rarity == 'low':
-                frame = await ctx.rip.img(f'{base_path}_1.png')
-            elif rarity == 'middle':
-                frame = await ctx.rip.img(f'{base_path}_2.png')
-            elif rarity == 'high':
-                frame = await ctx.rip.img(f'{base_path}_3.png')
-            else:
-                frame = await ctx.rip.img(f'{base_path}_4.png')
+            frame = await ctx.rip.img(f'honor_frame/{frame_name}/frame_degree_{ms[0]}_{lv}.png')
         img.paste(frame, (8, 0) if rarity == 'low' else (0, 0), frame)
     
     def add_lv_star(img: Image.Image, lv):
