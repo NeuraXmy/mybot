@@ -202,9 +202,19 @@ def extract_event_type(text: str, default: str = None) -> Tuple[str, str]:
                 return event_type[0], text
     return default, text
 
-# 获取所有箱活id集合（通过书下曲判断）
+# 获取所有箱活id集合（往期通过书下曲判断，当期书下可能还没上线通过活动加成判断）
 async def get_ban_events_id_set(ctx: SekaiHandlerContext) -> Set[int]:
-    return set([item['eventId'] for item in await ctx.md.event_musics.get()])
+    ret = set([item['eventId'] for item in await ctx.md.event_musics.get()])
+    cur_event = await get_current_event(ctx, mode="next_first")
+    if cur_event and cur_event['eventType'] in ('marathon', 'cheerful_carnival'):
+        bonus_unit = set()
+        for deck_bonus in await ctx.md.event_deck_bonuses.find_by('eventId', cur_event['id'], mode="all"):
+            cuid = deck_bonus.get('gameCharacterUnitId')
+            if cuid and cuid <= 20:
+                bonus_unit.add((await ctx.md.game_character_units.find_by_id(cuid))['unit'])
+        if len(bonus_unit) == 1:
+            ret.add(cur_event['id'])
+    return ret
 
 # 判断是否是箱活
 async def is_ban_event(ctx: SekaiHandlerContext, event: dict) -> bool:
@@ -385,6 +395,7 @@ async def get_event_by_index(ctx: SekaiHandlerContext, index: str) -> dict:
 1. 直接使用活动ID，例如{ctx.trigger_cmd} 123
 2. 使用负数索引，例如{ctx.trigger_cmd} -1
 3. 使用角色昵称+箱数，例如{ctx.trigger_cmd} mnr1
+查多个活动使用\"/活动列表\"
 """.strip())
 
 # 获取活动剧情总结
@@ -786,7 +797,7 @@ async def _(ctx: SekaiHandlerContext):
 # 单个活动
 pjsk_event_list = SekaiCmdHandler([
     "/pjsk event", "/pjsk_event", 
-    "/活动"
+    "/活动", "/查活动",
 ])
 pjsk_event_list.check_cdrate(cd).check_wblist(gbl)
 @pjsk_event_list.handle()
