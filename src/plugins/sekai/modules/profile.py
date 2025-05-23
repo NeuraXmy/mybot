@@ -876,8 +876,9 @@ pjsk_reg_time.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     profile, _ = await get_detailed_profile(ctx, ctx.user_id, raise_exc=True)
     reg_time = get_register_time(profile).strftime('%Y-%m-%d')
+    elapsed = datetime.now() - get_register_time(profile)
     user_name = profile['userGamedata']['name']
-    return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time}")
+    return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time} ({elapsed.days}天前)")
 
 
 # 检查profile服务器状态
