@@ -540,7 +540,8 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
     for i in range(len(site_res_num)):
         site_id, res_num = site_res_num[i]
         site_harvest_map = find_by(harvest_maps, "mysekaiSiteId", site_id)
-        site_harvest_map_imgs.append(compose_mysekai_harvest_map_image(ctx, site_harvest_map, show_harvested))
+        if site_harvest_map:
+            site_harvest_map_imgs.append(compose_mysekai_harvest_map_image(ctx, site_harvest_map, show_harvested))
     site_harvest_map_imgs = await asyncio.gather(*site_harvest_map_imgs)
     logger.info(f"合成资源位置图耗时: {datetime.now() - t}")
     

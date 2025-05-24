@@ -172,9 +172,9 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
     if check_bind and not bind_list.get(qid, None):
         assert_and_reply(get_gameapi_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         region = "" if ctx.region == "jp" else ctx.region
-        raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定游戏账号")
+        raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定账号")
     uid = bind_list.get(qid, None)
-    assert_and_reply(not check_uid_in_blacklist(uid), f"该游戏ID({uid})已被拉入黑名单，无法查询")
+    assert_and_reply(not check_uid_in_blacklist(uid), f"该游戏ID({uid})已被拉入黑名单")
     return uid
 
 # 根据游戏id获取玩家基本信息
