@@ -1199,9 +1199,7 @@ async def compose_mysekai_door_upgrade_image(ctx: SekaiHandlerContext, qid: int,
 
     profile = None
     if qid:
-        uid = get_uid_from_qid(ctx, qid, check_bind=False)
-        if uid:
-            profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=False, ignore_hide=True)
+        profile, pmsg = await get_detailed_profile(ctx, qid, raise_exc=True, ignore_hide=True)
 
     # 获取玩家的材料
     user_materials = {}
@@ -1560,11 +1558,11 @@ pjsk_mysekai_gate.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip()
 
-    full = False
-    if 'full' in args:
-        full = True
-        args = args.replace('full', '').strip()
-
+    qid = ctx.user_id
+    if 'all' in args:
+        qid = None
+        args = args.replace('all', '').strip()
+    
     try: 
         unit, args = extract_unit(args)
         gate_id = UNIT_GATEID_MAP[unit]
@@ -1572,7 +1570,7 @@ async def _(ctx: SekaiHandlerContext):
         gate_id = None
 
     return await ctx.asend_reply_msg(await get_image_cq(
-        await compose_mysekai_door_upgrade_image(ctx, ctx.user_id if not full else None, gate_id),
+        await compose_mysekai_door_upgrade_image(ctx, qid, gate_id),
         low_quality=True
     ))
 
