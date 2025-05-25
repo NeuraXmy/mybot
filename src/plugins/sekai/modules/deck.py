@@ -78,7 +78,15 @@ DEFAULT_CARD_CONFIG_34bd.episode_read = False
 DEFAULT_CARD_CONFIG_34bd.master_max = False
 DEFAULT_CARD_CONFIG_34bd.skill_max = False
 
+NOCHANGE_CARD_CONFIG = DeckRecommendCardConfig()
+NOCHANGE_CARD_CONFIG.disable = False
+NOCHANGE_CARD_CONFIG.level_max = False
+NOCHANGE_CARD_CONFIG.episode_read = False
+NOCHANGE_CARD_CONFIG.master_max = False
+NOCHANGE_CARD_CONFIG.skill_max = False
+
 DEFAULT_LIMIT = 8
+BONUS_TARGET_LIMIT = 1
 
 # ======================= 参数获取 ======================= #
 
@@ -366,6 +374,44 @@ async def extract_unit_attr_spec_options(ctx: SekaiHandlerContext, args: str) ->
 
     return options
 
+# 从args中提取加成组卡参数
+async def extract_bonus_options(ctx: SekaiHandlerContext, args: str) -> DeckRecommendOptions:
+    args = ctx.get_args().strip().lower()
+    options = DeckRecommendOptions()
+
+    options.algorithm = "dfs"
+    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    options.target = "bonus"
+    options.live_type = "solo"
+
+    # 卡牌设置
+    options.rarity_1_config = NOCHANGE_CARD_CONFIG
+    options.rarity_2_config = NOCHANGE_CARD_CONFIG
+    options.rarity_3_config = NOCHANGE_CARD_CONFIG
+    options.rarity_4_config = NOCHANGE_CARD_CONFIG
+    options.rarity_birthday_config = NOCHANGE_CARD_CONFIG
+
+    # 活动id
+    event, wl_cid, args = await extract_target_event(ctx, args)
+    options.event_id = event['id']
+    options.world_bloom_character_id = wl_cid
+        
+    # 歌曲id和难度
+    options.music_diff = DEFAULT_EVENT_DECK_RECOMMEND_DIFF.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_DIFF['other'])
+    options.music_id   = DEFAULT_EVENT_DECK_RECOMMEND_MID.get(ctx.region, DEFAULT_EVENT_DECK_RECOMMEND_MID['other'])
+
+    # 组卡限制
+    options.limit = BONUS_TARGET_LIMIT
+
+    # 目标加成
+    try:
+        options.target_bonus_list = list(map(int, args.split()))
+        assert options.target_bonus_list
+    except:
+        raise ReplyException("使用方式: /加成组卡 其他参数 100 200 300 ...")
+
+    return options
+
 
 # ======================= 处理逻辑 ======================= #
 
@@ -576,11 +622,14 @@ async def do_deck_recommend(
         def key_func(deck: RecommendDeck):
             if options.target == "score":
                 return deck.score
-            if options.target == "power":
+            elif options.target == "power":
                 return deck.total_power
-            if options.target == "skill":
+            elif options.target == "skill":
                 return deck.expect_skill_score_up
-        decks = sorted(decks, key=key_func, reverse=True)[:options.limit]
+            elif options.target == "bonus":
+                return (-deck.event_bonus_rate, deck.score)
+        limit = options.limit if options.target != "bonus" else options.limit * len(options.target_bonus_list)
+        decks = sorted(decks, key=key_func, reverse=True)[:limit]
         src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
         res = DeckRecommendResult()
         res.decks = decks
@@ -593,7 +642,12 @@ async def compose_deck_recommend_image(
     options: DeckRecommendOptions,
 ) -> Image.Image:
     # 是哪种组卡类型
-    if options.live_type == "challenge":
+    if options.target == "bonus":
+        if options.world_bloom_character_id:
+            recommend_type = "wl_bonus"
+        else:
+            recommend_type = "bonus"
+    elif options.live_type == "challenge":
         if options.challenge_live_character_id:
             recommend_type = "challenge"
         else:
@@ -651,7 +705,7 @@ async def compose_deck_recommend_image(
 
     # 获取活动banner和标题
     live_name = "协力"
-    if recommend_type in ["event", "wl"]:
+    if recommend_type in ["event", "wl", "bonus", "wl_bonus"]:
         event = await ctx.md.events.find_by_id(options.event_id)
         event_banner = await get_event_banner_img(ctx, event)
         event_title = event['name']
@@ -671,7 +725,7 @@ async def compose_deck_recommend_image(
 
     # 获取WL角色名字和头像
     wl_chara_name = None
-    if recommend_type == "wl":
+    if recommend_type in ["wl", "wl_bonus"]:
         wl_chara = await ctx.md.game_characters.find_by_id(options.world_bloom_character_id)
         wl_chara_name = wl_chara.get('firstName', '') + wl_chara.get('givenName', '')
         wl_chara_icon = get_chara_icon_by_chara_id(wl_chara['id'])
@@ -682,9 +736,10 @@ async def compose_deck_recommend_image(
         attr_icon = get_attr_icon(options.event_attr)
 
     # 获取缩略图
+    draw_eventbonus = recommend_type in ["bonus", "wl_bonus"]
     async def _get_thumb(card, pcard):
         try: 
-            return (card['id'], await get_card_full_thumbnail(ctx, card, pcard=pcard))
+            return (card['id'], await get_card_full_thumbnail(ctx, card, pcard=pcard, draw_eventbonus=draw_eventbonus))
         except: 
             return (card['id'], UNKNOWN_IMG)
     card_imgs = []
@@ -696,6 +751,7 @@ async def compose_deck_recommend_image(
                 'specialTrainingStatus': "done" if deckcard.after_training else "",
                 'level': deckcard.level,
                 'masterRank': deckcard.master_rank,
+                'eventBonus': deckcard.event_bonus_rate,
             }
             card_imgs.append(_get_thumb(card, pcard))
     card_imgs = { cid: img for cid, img in await asyncio.gather(*card_imgs) }
@@ -722,6 +778,11 @@ async def compose_deck_recommend_image(
 
                     if recommend_type in ['challenge', 'challenge_all']: 
                         title += "每日挑战组卡"
+                    elif recommend_type in ['bonus', 'wl_bonus']:
+                        if recommend_type == "bonus":
+                            title += f"活动加成组卡"
+                        elif recommend_type == "wl_bonus":
+                            title += f"WL活动加成组卡"
                     else:
                         if recommend_type == "event":
                             title += "活动组卡"
@@ -731,7 +792,7 @@ async def compose_deck_recommend_image(
                             title += f"指定团队&属性组卡"
                         elif recommend_type == "no_event":
                             title += f"无活动组卡"
-
+                    
                         if options.live_type == "multi":
                             title += f"({live_name})"
                         elif options.live_type == "solo":
@@ -747,7 +808,7 @@ async def compose_deck_recommend_image(
                         target = "实效"
 
                     with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
-                        if recommend_type in ["event", "wl"]:
+                        if recommend_type in ["event", "wl", "bonus", "wl_bonus"]:
                             ImageBox(event_banner, size=(None, 50))
 
                         TextBox(title, TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(50, 50, 50)), use_real_line_count=True)
@@ -755,7 +816,7 @@ async def compose_deck_recommend_image(
                         if recommend_type == "challenge":
                             ImageBox(chara_icon, size=(None, 50))
                             TextBox(f"{chara_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
-                        if recommend_type == "wl":
+                        if recommend_type in ["wl", "wl_bonus"]:
                             ImageBox(wl_chara_icon, size=(None, 50))
                             TextBox(f"{wl_chara_name} 章节", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                         if recommend_type == "unit_attr":
@@ -764,12 +825,13 @@ async def compose_deck_recommend_image(
                         
                         # TextBox(f"最高{target}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
 
-                    with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
-                        with Frame().set_size((50, 50)):
-                            Spacer(w=50, h=50).set_bg(FillBg(fill=DIFF_COLORS[options.music_diff])).set_offset((6, 6))
-                            ImageBox(music_cover, size=(50, 50))
-                        TextBox(f"{music_title} ({options.music_diff.upper()})", 
-                                TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
+                    if recommend_type not in ["bonus", "wl_bonus"]:
+                        with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
+                            with Frame().set_size((50, 50)):
+                                Spacer(w=50, h=50).set_bg(FillBg(fill=DIFF_COLORS[options.music_diff])).set_offset((6, 6))
+                                ImageBox(music_cover, size=(50, 50))
+                            TextBox(f"{music_title} ({options.music_diff.upper()})", 
+                                    TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                 # 表格
                 gh, vsp, voffset = 100, 12, 8
                 with HSplit().set_content_align('c').set_item_align('c').set_sep(16).set_padding(16).set_bg(roundrect_bg()):
@@ -779,20 +841,21 @@ async def compose_deck_recommend_image(
                     tb_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
 
                     # 分数
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                        target_score = options.target == "score"
-                        text = score_name + th_main_sign if target_score else score_name
-                        style = th_style1 if target_score else th_style2
-                        TextBox(text, style).set_h(gh // 2).set_content_align('c')
-                        Spacer(h=6)
-                        for i, deck in enumerate(result_decks):
-                            with Frame().set_content_align('rb'):
-                                if recommend_type in ['challenge', 'challenge_all']:
-                                    dlt = challenge_score_dlt[i]
-                                    color = (50, 150, 50) if dlt > 0 else (150, 50, 50)
-                                    TextBox(f"{dlt:+d}", TextStyle(font=DEFAULT_FONT, size=12, color=color)).set_offset((0, -16-voffset))
-                                with Frame().set_content_align('c'):
-                                    TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                    if recommend_type not in ["bonus", "wl_bonus"]:
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
+                            target_score = options.target == "score"
+                            text = score_name + th_main_sign if target_score else score_name
+                            style = th_style1 if target_score else th_style2
+                            TextBox(text, style).set_h(gh // 2).set_content_align('c')
+                            Spacer(h=6)
+                            for i, deck in enumerate(result_decks):
+                                with Frame().set_content_align('rb'):
+                                    if recommend_type in ['challenge', 'challenge_all']:
+                                        dlt = challenge_score_dlt[i]
+                                        color = (50, 150, 50) if dlt > 0 else (150, 50, 50)
+                                        TextBox(f"{dlt:+d}", TextStyle(font=DEFAULT_FONT, size=12, color=color)).set_offset((0, -16-voffset))
+                                    with Frame().set_content_align('c'):
+                                        TextBox(str(deck.score), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 卡片
                     with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
@@ -851,22 +914,24 @@ async def compose_deck_recommend_image(
                                 TextBox(f"{deck.expect_skill_score_up:.1f}%", tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 综合力和算法
-                    with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
-                        target_power = options.target == "power"
-                        text = "综合力" + th_main_sign if target_power else "综合力"
-                        style = th_style1 if target_power else th_style2
-                        TextBox(text, style).set_h(gh // 2).set_content_align('c')
-                        Spacer(h=6)
-                        for deck, alg in zip(result_decks, result_algs):
-                            with Frame().set_content_align('rb'):
-                                TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -16-voffset))
-                                with Frame().set_content_align('c'):
-                                    TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                    if recommend_type not in ["bonus", "wl_bonus"]:
+                        with VSplit().set_content_align('c').set_item_align('c').set_sep(vsp).set_padding(8):
+                            target_power = options.target == "power"
+                            text = "综合力" + th_main_sign if target_power else "综合力"
+                            style = th_style1 if target_power else th_style2
+                            TextBox(text, style).set_h(gh // 2).set_content_align('c')
+                            Spacer(h=6)
+                            for deck, alg in zip(result_decks, result_algs):
+                                with Frame().set_content_align('rb'):
+                                    TextBox(alg.upper(), TextStyle(font=DEFAULT_FONT, size=10, color=(150, 150, 150))).set_offset((0, -16-voffset))
+                                    with Frame().set_content_align('c'):
+                                        TextBox(str(deck.total_power), tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
         
                 # 说明
                 with VSplit().set_content_align('lt').set_item_align('lt').set_sep(4):
                     tip_style = TextStyle(font=DEFAULT_FONT, size=16, color=(20, 20, 20))
-                    TextBox(f"12星卡固定最大等级+最大突破+最大技能+剧情已读，34星及生日卡固定最大等级", tip_style)
+                    if recommend_type not in ["bonus", "wl_bonus"]:
+                        TextBox(f"12星卡固定最大等级+最大突破+最大技能+剧情已读，34星及生日卡固定最大等级", tip_style)
                     TextBox(f"组卡代码来自 https://github.com/NeuraXmy/sekai-deck-recommend-cpp", tip_style)
                     alg_and_cost_text = "本次组卡使用算法及耗时: "
                     for alg, cost in cost_times.items():
@@ -946,3 +1011,22 @@ async def _(ctx: SekaiHandlerContext):
         ),
         low_quality=True,
     ))
+
+
+# 加成组卡
+pjsk_bonus_deck = SekaiCmdHandler([
+    "/pjsk bonus deck", "/pjsk_bonus_deck", "/pjsk bonus card", "/pjsk_bonus_card",
+    "/加成组卡", "/加成组队", "/加成卡组",
+], regions=['jp', 'cn', 'tw'])
+pjsk_bonus_deck.check_cdrate(cd).check_wblist(gbl)
+@pjsk_bonus_deck.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_deck_recommend_image(
+            ctx, ctx.user_id,
+            await extract_bonus_options(ctx, ctx.get_args())
+        ),
+        low_quality=True,
+    ))
+
+
