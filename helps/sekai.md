@@ -13,19 +13,16 @@ Project Sekai（世界计划）游戏多区服服务
 
 #### 📡 抓包
 - 有一部分查询（玩家详细数据、烤森数据）需要**上传抓包数据**
-    - 日服：使用**自建抓包工具**或**Haruki工具箱**
-    - 国服：使用**自建抓包工具**
-- 自建的抓包工具教程（仅IOS）:  
-    `https://bot.teaphenby.com/public/tutorial/tutorial.html`
-
+- 发送 `/抓包帮助` 可以获取上传抓包数据的帮助
 
 #### 📊 数据来源 & 鸣谢
-- MasterData: **Sekai Viewer** & **Haruki Team**
-- 游戏资源: **Sekai Viewer** & **Haruki Team** & **pjsekai.moe**
-- 抓包数据: **自建抓包工具** & **Haruki Team**
-- 榜线预测：**33Kit**
-- Mysekai地图俯视图: **MiddleRed**
-- 部分代码参考 **Unibot**
+- MasterData: **Sekai Viewer** & **Haruki Master DB**
+- 游戏资源: **Sekai Viewer** & **Haruki Assets** & **pjsekai.moe** & **Unipjsk**
+- 抓包数据: **自建抓包工具** & **Haruki工具箱**
+- 榜线预测: **33Kit**
+- 烤森地图俯视图: **MiddleRed**
+- 烤森家具好友码: **8823**
+- 部分代码参考: **Unibot**
 
 ---
 
@@ -882,7 +879,7 @@ Project Sekai（世界计划）游戏多区服服务
 - `/pec`
 
 ### 设置娱乐功能使用上限
-🛠️ `/pel`, `/pjsk entertainment limit`, `/pjsk娱乐功能限制`
+🛠️ `/pel` `/pjsk entertainment limit` `/pjsk娱乐功能限制`
 > 设置群聊每日娱乐功能使用次数上限，默认200次  
 
 - `/pel 100`
