@@ -821,11 +821,11 @@ async def compose_winrate_predict_image(ctx: SekaiHandlerContext) -> Image.Image
 pjsk_skp = SekaiCmdHandler([
     "/pjsk sk predict", "/pjsk_sk_predict", "/pjsk board predict", "/pjsk_board_predict",
     "/sk预测", "/榜线预测", "/skp",
-], regions=['jp'])
+], regions=['jp'], prefix_args=['', 'wl'])
 pjsk_skp.check_cdrate(cd).check_wblist(gbl)
 @pjsk_skp.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
     assert_and_reply(not wl_event, "榜线预测不支持WL单榜")
 
@@ -839,11 +839,11 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_skl = SekaiCmdHandler([
     "/pjsk sk line", "/pjsk_sk_line", "/pjsk board line", "/pjsk_board_line",
     "/sk线", "/skl",
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_skl.check_cdrate(cd).check_wblist(gbl)
 @pjsk_skl.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     full = False
@@ -873,11 +873,11 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_sks = SekaiCmdHandler([
     "/pjsk sk speed", "/pjsk_sk_speed", "/pjsk board speed", "/pjsk_board_speed",
     "/时速", "/sks", "/skv", "/sk时速",
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_sks.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sks.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     return await ctx.asend_msg(await get_image_cq(
@@ -890,11 +890,11 @@ async def _(ctx: SekaiHandlerContext):
 pjsk_sk = SekaiCmdHandler([
     "/pjsk sk board", "/pjsk_sk_board", "/pjsk board", "/pjsk_board",
     "/sk", 
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_sk.check_cdrate(cd).check_wblist(gbl)
 @pjsk_sk.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     qtype, qval = get_sk_query_params(ctx, args)
@@ -907,11 +907,11 @@ async def _(ctx: SekaiHandlerContext):
 # 查房
 pjsk_cf = SekaiCmdHandler([
     "/cf", "/查房", "/pjsk查房",
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     qtype, qval = get_sk_query_params(ctx, args)
@@ -925,11 +925,11 @@ async def _(ctx: SekaiHandlerContext):
 # 玩家追踪
 pjsk_cf = SekaiCmdHandler([
     "/skt", "/追踪", "/pjsk追踪",
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     qtype, qval = get_sk_query_params(ctx, args)
@@ -943,11 +943,11 @@ async def _(ctx: SekaiHandlerContext):
 # 分数线追踪
 pjsk_cf = SekaiCmdHandler([
     "/sklt", "/sktl", "/分数线追踪", "/pjsk分数线追踪",
-], regions=['jp', 'cn', 'tw'])
+], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
 async def _(ctx: SekaiHandlerContext):
-    args = ctx.get_args().strip()
+    args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
     try:

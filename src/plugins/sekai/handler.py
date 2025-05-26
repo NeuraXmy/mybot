@@ -35,6 +35,7 @@ class SekaiHandlerContext(HandlerContext):
     rip: RegionRipAssetManger = None
     static_imgs: StaticImageRes = None
     create_from_region: bool = False
+    prefix_arg: str = None
 
     @classmethod
     def from_region(cls, region: str) -> 'SekaiHandlerContext':
@@ -44,6 +45,7 @@ class SekaiHandlerContext(HandlerContext):
         ctx.rip = RegionRipAssetManger.get(region)
         ctx.static_imgs = StaticImageRes()
         ctx.create_from_region = True
+        ctx.prefix_arg = None
         return ctx
     
     def block_region(self, key="", timeout=3*60, err_msg: str = None):
@@ -58,15 +60,20 @@ class SekaiCmdHandler(CmdHandler):
         self, 
         commands: List[str],
         regions: List[str] = None, 
+        prefix_args: List[str] = None,
         **kwargs
     ):
         self.available_regions = regions or self.DEFAULT_AVAILABLE_REGIONS
+        self.prefix_args = sorted(prefix_args or [''], key=lambda x: len(x), reverse=True)
         all_region_commands = []
-        for region in ALL_SERVER_REGIONS:
-            for cmd in commands:
-                assert not cmd.startswith(f"/{region}")
-                all_region_commands.append(cmd)
-                all_region_commands.append(cmd.replace("/", f"/{region}"))
+        for prefix in self.prefix_args:
+            for region in ALL_SERVER_REGIONS:
+                for cmd in commands:
+                    assert not cmd.startswith(f"/{region}{prefix}")
+                    all_region_commands.append(cmd)
+                    all_region_commands.append(cmd.replace("/", f"/{prefix}"))
+                    all_region_commands.append(cmd.replace("/", f"/{region}{prefix}"))
+        all_region_commands = list(set(all_region_commands))
         super().__init__(all_region_commands, logger, **kwargs)
 
     async def additional_context_process(self, context: HandlerContext):
@@ -77,6 +84,14 @@ class SekaiCmdHandler(CmdHandler):
             if context.trigger_cmd.strip().startswith(f"/{region}"):
                 cmd_region = region
                 context.trigger_cmd = context.trigger_cmd.replace(f"/{region}", "/")
+                break
+        
+        # 处理前缀参数
+        prefix_arg = None
+        for prefix in self.prefix_args:
+            if context.trigger_cmd.startswith(f"/{prefix}"):
+                prefix_arg = prefix
+                context.trigger_cmd = context.trigger_cmd.replace(f"/{prefix}", "/")
                 break
 
         user_default_region = get_user_default_region(context.user_id, None)
@@ -111,6 +126,8 @@ class SekaiCmdHandler(CmdHandler):
         params['md'] = RegionMasterDataCollection(cmd_region)
         params['rip'] = RegionRipAssetManger.get(cmd_region)
         params['static_imgs'] = StaticImageRes()
+        params['create_from_region'] = False
+        params['prefix_arg'] = prefix_arg
 
         return SekaiHandlerContext(**params)
     

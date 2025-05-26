@@ -26,6 +26,7 @@ deck_recommend = SekaiDeckRecommend()
 RECOMMEND_TIMEOUT = timedelta(seconds=5)
 NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=10)
 SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=60)
+BONUS_RECOMMEND_TIMEOUT = timedelta(seconds=20)
 RECOMMEND_ALGS = ['dfs', 'ga']
 RECOMMEND_ALG_NAMES = {
     'dfs': '暴力搜索',
@@ -380,7 +381,7 @@ async def extract_bonus_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     options = DeckRecommendOptions()
 
     options.algorithm = "dfs"
-    options.timeout_ms = int(RECOMMEND_TIMEOUT.total_seconds() * 1000)
+    options.timeout_ms = int(BONUS_RECOMMEND_TIMEOUT.total_seconds() * 1000)
     options.target = "bonus"
     options.live_type = "solo"
 
