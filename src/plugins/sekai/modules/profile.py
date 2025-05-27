@@ -166,6 +166,9 @@ def validate_uid(ctx: SekaiHandlerContext, uid: str) -> bool:
     uid = str(uid)
     if not (10 <= len(uid) <= 20) or not uid.isdigit():
         return False
+    reg_time = get_register_time(ctx.region, uid)
+    if not reg_time or not (datetime.strptime("2020-09-01", "%Y-%m-%d") <= reg_time <= datetime.now()):
+        return False
     return True
 
 # 获取游戏api相关配置
@@ -341,13 +344,17 @@ async def get_detailed_profile_card(ctx: SekaiHandlerContext, profile: dict, err
                 TextBox(f"获取数据失败: {err_msg}", TextStyle(font=DEFAULT_FONT, size=20, color=RED), line_count=3).set_w(300)
     return f
        
-# 获取注册时间（通过第一张获取的卡）
-def get_register_time(detail_profile: dict) -> datetime:
-    cards = detail_profile['userCards']
-    reg_time = datetime.now()
-    for card in cards:
-        reg_time = min(reg_time, datetime.fromtimestamp(card['createdAt'] / 1000))
-    return reg_time
+# 获取注册时间，无效uid返回None
+def get_register_time(region: str, uid: str) -> datetime:
+    try:
+        if region in ['jp', 'en']:
+            time = int(uid[:-3]) / 1024 / 4096
+            return datetime.fromtimestamp(1600218000 + int(time))
+        elif region in ['tw', 'cn', 'kr']:
+            time = int(uid) / 1024 / 1024 / 4096
+            return datetime.fromtimestamp(int(time))
+    except ValueError:
+        return None
 
 # 合成个人信息图片
 async def compose_profile_image(ctx: SekaiHandlerContext, basic_profile: dict) -> Image.Image:
@@ -532,6 +539,8 @@ async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int
     text_style = TextStyle(font=DEFAULT_FONT, size=20, color=(50, 50, 50, 255))
     w1, w2, w3, w4, w5, w6 = 80, 80, 150, 300, 80, 80
 
+    max_score = max([item['highScore'] for item in await ctx.md.challenge_live_high_score_rewards.get()])
+
     with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
             await get_detailed_profile_card(ctx, profile, err_msg)
@@ -541,7 +550,7 @@ async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int
                     TextBox("角色", header_style).set_w(w1).set_content_align('c')
                     TextBox("等级", header_style).set_w(w2).set_content_align('c')
                     TextBox("分数", header_style).set_w(w3).set_content_align('c')
-                    TextBox("进度(上限250w)", header_style).set_w(w4).set_content_align('c')
+                    TextBox(f"进度(上限{max_score//10000}w)", header_style).set_w(w4).set_content_align('c')
                     with Frame().set_w(w5).set_content_align('c'):
                         ImageBox(await get_res_icon(ctx, 'jewel'), size=(None, 40))
                     with Frame().set_w(w6).set_content_align('c'):
@@ -560,7 +569,7 @@ async def compose_challenge_live_detail_image(ctx: SekaiHandlerContext, qid: int
                         TextBox(rank, text_style).set_w(w2).set_content_align('c')
                         TextBox(score, text_style).set_w(w3).set_content_align('c')
                         with Frame().set_w(w4).set_content_align('lt'):
-                            progress = max(min(challenge_info[cid][1] / 2500000, 1), 0)
+                            progress = max(min(challenge_info[cid][1] / max_score, 1), 0)
                             total_w, total_h, border = w4, 10, 2
                             progress_w = int((total_w - border * 2) * progress)
                             progress_h = total_h - border * 2
@@ -717,9 +726,6 @@ async def _(ctx: SekaiHandlerContext):
         if not uids:
             return await ctx.asend_reply_msg("你还没有绑定过游戏ID，请使用\"/绑定 游戏ID\"进行绑定")
         return await ctx.asend_reply_msg(f"已经绑定的游戏ID:\n" + "\n".join(uids))
-    
-    # 检查格式
-    assert_and_reply(validate_uid(ctx, args), "ID格式错误")
 
     # 检查是否在黑名单中
     assert_and_reply(not check_uid_in_blacklist(args), f"该游戏ID({args})已被拉入黑名单，无法绑定")
@@ -731,6 +737,9 @@ async def _(ctx: SekaiHandlerContext):
             region_ctx = SekaiHandlerContext.from_region(region)
             if not get_gameapi_config(region_ctx).profile_api_url:
                 return None
+            # 检查格式
+            if not validate_uid(region_ctx, args):
+                return region, None, f"ID格式错误"
             checked_regions.append(get_region_name(region))
             profile = await get_basic_profile(region_ctx, args, use_cache=False, raise_when_no_found=False)
             if not profile:
@@ -739,7 +748,7 @@ async def _(ctx: SekaiHandlerContext):
             return region, user_name, None
         except Exception as e:
             logger.warning(f"在 {region} 服务器尝试绑定失败: {get_exc_desc(e)}")
-            return region, None, "内部错误，请稍后再试"
+            return region, None, "内部错误"
         
     check_results = await asyncio.gather(*[check_bind(region) for region in ALL_SERVER_REGIONS])
     check_results = [res for res in check_results if res]
@@ -885,11 +894,10 @@ pjsk_reg_time = SekaiCmdHandler([
 pjsk_reg_time.check_cdrate(cd).check_wblist(gbl)
 @pjsk_reg_time.handle()
 async def _(ctx: SekaiHandlerContext):
-    profile, _ = await get_detailed_profile(ctx, ctx.user_id, raise_exc=True)
-    reg_time = get_register_time(profile).strftime('%Y-%m-%d')
-    elapsed = datetime.now() - get_register_time(profile)
-    user_name = profile['userGamedata']['name']
-    return await ctx.asend_reply_msg(f"{user_name} 的注册时间为: {reg_time} ({elapsed.days}天前)")
+    uid = get_uid_from_qid(ctx, ctx.user_id)
+    reg_time = get_register_time(ctx.region, uid)
+    elapsed = datetime.now() - reg_time
+    return await ctx.asend_reply_msg(f"注册时间: {reg_time.strftime('%Y-%m-%d')} ({elapsed.days}天前)")
 
 
 # 检查profile服务器状态
@@ -1033,7 +1041,7 @@ async def _(ctx: HandlerContext):
 # 挑战信息
 pjsk_challenge_info = SekaiCmdHandler([
     "/pjsk challenge info", "/pjsk_challenge_info",
-    "/挑战信息", "/挑战详情",
+    "/挑战信息", "/挑战详情", "/挑战进度",
 ])
 pjsk_challenge_info.check_cdrate(cd).check_wblist(gbl)
 @pjsk_challenge_info.handle()

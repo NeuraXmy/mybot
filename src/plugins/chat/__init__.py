@@ -586,7 +586,7 @@ all_model = CmdHandler(["/chat_model_list"], logger, priority=101)
 all_model.check_cdrate(chat_cd).check_wblist(gwl)
 @all_model.handle()
 async def _(ctx: HandlerContext):
-    return await ctx.asend_reply_msg(f"可用的模型: {', '.join(ChatSession.get_all_model_names())}")
+    return await ctx.asend_reply_msg(f"可用模型列表: {', '.join(ChatSession.get_all_model_names())}")
 
 
 # 获取所有可用的供应商名
