@@ -57,7 +57,7 @@ async def make_stamp_image_cq(ctx: SekaiHandlerContext, sid: int, text: str, for
     cid = stamp.get('characterId1')
     cid2 = stamp.get('characterId2')
     assert_and_reply(cid and not cid2, f"该表情不支持制作")
-    nickname = get_nicknames_by_chara_id(cid)[0]
+    nickname = CHARACTER_FIRST_NICKNAME[cid]
     text_zoom_ratio = 1.0
     line_count = 0
     for line in text.splitlines():
