@@ -287,6 +287,7 @@ class MusicSearchOptions:
     raise_when_err: bool = True
     distance_sim_threshold: float = 0.7
     debug: bool = False
+    verbose: bool = True
 
 @dataclass
 class MusicSearchResult:
@@ -318,7 +319,11 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
     global alias_mid_for_search
 
     options = options or MusicSearchOptions()
-    logger.info(f"查询曲目: \"{query}\" options={options}")
+
+    def log(msg: str):
+        if options.verbose:
+            logger.info(msg)
+    log(f"查询曲目: \"{query}\" options={options}")
 
     query = query.strip()
     clean_q = clean_name(query)
@@ -356,7 +361,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             else:
                 ret_musics.append(music)
         if options.debug:
-            logger.info(f"id匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"id匹配耗时: {time.time() - start_time:.4f}s")
 
     # 负数索引匹配
     if not search_type and options.use_nidx:
@@ -381,7 +386,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             else:
                 ret_musics.append(sorted_musics[idx])
         if options.debug:
-            logger.info(f"负数索引匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"负数索引匹配耗时: {time.time() - start_time:.4f}s")
 
     # 活动id匹配
     if not search_type and options.use_event_id:
@@ -399,7 +404,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             else:
                 err_msg = f"ID为{event_id}的活动没有对应曲目"
         if options.debug:
-            logger.info(f"活动id匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"活动id匹配耗时: {time.time() - start_time:.4f}s")
 
     # 箱活匹配
     if not search_type and options.use_ban_event:
@@ -413,7 +418,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             else:
                 err_msg = f"箱活{event['id']}没有对应曲目"
         if options.debug:
-            logger.info(f"箱活匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"箱活匹配耗时: {time.time() - start_time:.4f}s")
 
     # 曲名精确匹配
     if not search_type and options.use_title:
@@ -432,7 +437,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
                     ret_musics.append(music)
                 break
         if options.debug:
-            logger.info(f"曲名精确匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"曲名精确匹配耗时: {time.time() - start_time:.4f}s")
 
     # 别名精确匹配
     if not search_type and options.use_alias:
@@ -447,7 +452,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             else:
                 ret_musics.append(music)
         if options.debug:
-            logger.info(f"别名精确匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"别名精确匹配耗时: {time.time() - start_time:.4f}s")
 
     # 编辑距离匹配
     if not search_type and options.use_distance:
@@ -490,7 +495,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             ret_musics = [m[0] for m in music_sims]
             sims = [m[1] for m in music_sims]
         if options.debug:
-            logger.info(f"子串/编辑距离匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"子串/编辑距离匹配耗时: {time.time() - start_time:.4f}s")
         
     # 语义匹配
     if not search_type and options.use_emb:
@@ -501,7 +506,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
         else:
             if not options.search_num:
                 search_num = options.max_num * 5
-            logger.info(f"搜索曲名: {query}")
+            log(f"搜索曲名: {query}")
             res, scores = await query_music_by_emb(ctx, query, search_num)
             res = deepcopy(res)
             for m, s in zip(res, scores):
@@ -515,7 +520,7 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
             sims = [m['sim'] for m in res]
             ret_musics.extend(res)
         if options.debug:
-            logger.info(f"语义匹配耗时: {time.time() - start_time:.4f}s")
+            log(f"语义匹配耗时: {time.time() - start_time:.4f}s")
                     
     music = ret_musics[0] if len(ret_musics) > 0 else None
     candidates = ret_musics[1:] if len(ret_musics) > 1 else []
@@ -538,9 +543,9 @@ async def search_music(ctx: SekaiHandlerContext, query: str, options: MusicSearc
         candidate_msg += "\n" + additional_msg
     
     if music:
-        logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} id={music['id']} len(candidates)={len(candidates)}")
+        log(f"查询曲目: \"{query}\" 结果: type={search_type} id={music['id']} len(candidates)={len(candidates)}")
     else:
-        logger.info(f"查询曲目: \"{query}\" 结果: type={search_type} err_msg={err_msg}")
+        log(f"查询曲目: \"{query}\" 结果: type={search_type} err_msg={err_msg}")
 
     if options.raise_when_err and err_msg:
         raise Exception(err_msg)

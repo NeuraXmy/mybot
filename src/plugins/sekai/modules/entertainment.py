@@ -191,7 +191,7 @@ async def start_guess(ctx: SekaiHandlerContext, guess_type: str, timeout: timede
                 if time - uid_last_guess_time.get(uid, datetime.min) < GUESS_INTERVAL:
                     continue
                 uid_last_guess_time[uid] = time
-                logger.info(f"群聊 {gid} 收到{guess_type}消息: uid={uid}, text={text}")
+                # logger.info(f"群聊 {gid} 收到{guess_type}消息: uid={uid}, text={text}")
 
                 gctx.user_id = uid
                 gctx.msg_id = mid
@@ -399,7 +399,7 @@ async def random_clip_audio(input_path: str, save_path: str, length: float, reve
 def get_guess_music_check_fn(guess_type: str):
     async def check_fn(gctx: GuessContext):
         music, cover_thumb = gctx.data['music'], gctx.data['cover_thumb']
-        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False))
+        ret: MusicSearchResult = await search_music(gctx.ctx, gctx.text, MusicSearchOptions(use_emb=False, raise_when_err=False, verbose=False))
         if ret.music is None:
             return
         if ret.music['id'] == music['id']:
