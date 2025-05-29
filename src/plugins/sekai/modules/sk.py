@@ -108,6 +108,11 @@ async def parse_rankings(ctx: SekaiHandlerContext, event_id: int, data: dict, ig
         border_rankings = find_by(data['border'].get('userWorldBloomChapterRankingBorders', []), 'gameCharacterId', cid)
         border = [Ranking.from_sk(item) for item in border_rankings['borderRankings'] if item['rank'] != 100]
 
+    for item in top100:
+        item.uid = str(item.uid)
+    for item in border:
+        item.uid = str(item.uid)
+
     if ignore_no_update:
         # 过滤掉没有更新的border榜线
         border_has_diff = False
