@@ -46,7 +46,7 @@ async def use_tool(handle, session, type, data, event):
 
         notify_msg = f"正在执行python代码:\n\n{data}"
         if is_group_msg(event):
-            await send_group_fold_msg(get_bot(), event.group_id, [notify_msg])
+            await send_group_fold_msg(get_bot(), event, [notify_msg])
         else:
             await handle.send(notify_msg)
 

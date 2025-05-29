@@ -477,7 +477,7 @@ async def extract_target_event(
                     end_time = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
                     if start_time - timedelta(hours=12) <= datetime.now() <= end_time:
                         ok_chapters.append(chapter)
-                assert_and_reply(ok_chapters, f"请指定一个要查询的WL章节")
+                assert_and_reply(ok_chapters, f"请指定一个要查询的WL章节，例如 event112 wl1 或 event112 miku")
                 ok_chapters.sort(key=lambda x: x['startAt'], reverse=True)
                 chapter = ok_chapters[0]
         elif chapter_id:
