@@ -913,7 +913,7 @@ async def _(ctx: SekaiHandlerContext):
 # 卡面查询
 pjsk_card_img = SekaiCmdHandler([
     "/pjsk card img", "/pjsk_card_img", 
-    "/查卡面", "/卡面", '/卡牌',
+    "/查卡面", "/卡面",
 ])
 pjsk_card_img.check_cdrate(cd).check_wblist(gbl)
 @pjsk_card_img.handle()

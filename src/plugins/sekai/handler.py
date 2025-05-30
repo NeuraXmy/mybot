@@ -74,6 +74,7 @@ class SekaiCmdHandler(CmdHandler):
                     all_region_commands.append(cmd.replace("/", f"/{prefix}"))
                     all_region_commands.append(cmd.replace("/", f"/{region}{prefix}"))
         all_region_commands = list(set(all_region_commands))
+        self.original_commands = commands
         super().__init__(all_region_commands, logger, **kwargs)
 
     async def additional_context_process(self, context: HandlerContext):
@@ -116,7 +117,7 @@ class SekaiCmdHandler(CmdHandler):
                 help_doc += f"\n>使用`@{BOT_NAME} /help sekai`查看完整帮助"
                 msg = await get_image_cq(await markdown_to_image(help_doc), low_quality=True)
             else:
-                msg += "没有找到该指令的帮助\n使用\"@{BOT_NAME}/help sekai\"查看完整帮助"
+                msg = f"没有找到该指令的帮助\n使用\"@{BOT_NAME} /help sekai\"查看完整帮助"
             raise ReplyException(msg)
 
         # 构造新的上下文
@@ -134,22 +135,23 @@ class SekaiCmdHandler(CmdHandler):
     async def get_help_doc_part(self) -> Optional[str]:
         try:
             help_doc = Path(HELP_DOC_PATH).read_text(encoding="utf-8")
-            parts = help_doc.split("---")[2:-2]
-            cmd_parts = []
+            parts = help_doc.split("---")[2:-1] # 每个小标题
+            cmd_parts: List[str] = []   # 每个指令的部分
             for part in parts:
-                start = part.find("### ")
+                start = part.find("### ")   
                 part = part[start:]
                 cmd_parts.extend(part.split("### "))
-
             for cmd_part in cmd_parts:
-                if any(cmd in cmd_part for cmd in self.commands):
+                lines = cmd_part.splitlines()
+                if len(lines) < 2:
+                    continue
+                cmds = lines[1].replace("` `", "%").replace("`", "").replace("🛠️", "").strip().split("%")
+                if any(cmd in cmds for cmd in self.original_commands):
                     cmd_part = "### " + cmd_part
                     return cmd_part
-            
-            raise Exception(f"没有找到 {self.commands[0]} 的帮助文档")
-
+            raise Exception(f"没有找到 {self.original_commands[0]} 的帮助文档")
         except Exception as e:
-            logger.error(f"获取 {self.commands[0]} 的帮助文档失败")
+            logger.print_exc(f"获取 {self.original_commands[0]} 的帮助文档失败")
             return None
 
 

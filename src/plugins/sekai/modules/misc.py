@@ -11,14 +11,16 @@ md_update_group_sub = SekaiGroupSubHelper("update", "MasterData更新通知", AL
 # ======================= 指令处理 ======================= #
 
 pjsk_update = SekaiCmdHandler([
-    "/pjsk update", "/pjsk update",
+    "/pjsk update", "/pjsk_update", "/pjsk refresh", "/pjsk_refresh",
 ])
-pjsk_update.check_cdrate(cd).check_wblist(gbl).check_superuser()
+pjsk_update.check_cdrate(cd).check_wblist(gbl)
 @pjsk_update.handle()
 async def _(ctx: SekaiHandlerContext):
     mgr = RegionMasterDbManager.get(ctx.region)
-    source = await mgr.get_latest_source()
-    return await ctx.asend_reply_msg(f"{get_region_name(ctx.region)} 最新 MasterData 数据源:\n{source.name} - {source.version}")
+    msg = f"{get_region_name(ctx.region)}MasterData数据源"
+    for source in await mgr.get_all_sources():
+        msg += f"\n[{source.name}] {source.version}"
+    return await ctx.asend_reply_msg(msg.strip())
 
 
 ngword = SekaiCmdHandler([
