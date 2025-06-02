@@ -656,7 +656,7 @@ async def compose_mysekai_fixture_list_image(
 
         assert_and_reply(
             'userMysekaiBlueprints' in mysekai_info['updatedResources'],
-            "您的抓包数据来源没有提供蓝图数据"
+            "你的抓包数据来源没有提供蓝图数据"
         )
 
         obtained_fids = set()

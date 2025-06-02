@@ -485,6 +485,7 @@ MasterDataManager.set_index_keys("mysekaiCharacterTalkConditions", ['id', 'mysek
 MasterDataManager.set_index_keys("mysekaiMusicRecords", ['id', 'externalId'])
 MasterDataManager.set_index_keys("musicTags", ['id', 'musicId'])
 MasterDataManager.set_index_keys("eventDeckBonuses", ['id', 'eventId'])
+MasterDataManager.set_index_keys("eventCards", ['id', 'eventId'])
 
 
 # ================================ MasterData自定义下载 ================================ #

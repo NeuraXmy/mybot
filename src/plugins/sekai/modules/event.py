@@ -7,6 +7,30 @@ from ..draw import *
 from .profile import get_card_full_thumbnail, get_gameapi_config, get_uid_from_qid
 
 
+@dataclass
+class EventDetail:
+    # detail info
+    event: dict
+    name: str
+    eid: int
+    etype: str
+    etype_name: str
+    asset_name: str
+    start_time: datetime
+    end_time: datetime
+    event_cards: List[dict]
+    bonus_attr: str
+    bonus_cuids: List[int]
+    bonus_cids: List[int]
+    banner_cid: int
+    unit: str
+    # assets
+    event_banner: Image.Image
+    event_logo: Image.Image
+    event_bg: Image.Image
+    event_card_thumbs: List[Image.Image]
+
+    
 DEFAULT_EVENT_STORY_SUMMARY_MODEL = [
     # 'gemini-2.5-flash',
     'gemini-2-flash',
@@ -31,11 +55,90 @@ class EventListFilter:
     attr: str = None
     event_type: str = None
     unit: str = None
-    cid: int = None
+    cids: List[int] = None
+    banner_cid: int = None
     year: int = None
 
 
 # ======================= 处理逻辑 ======================= #
+
+# 获取某个活动详情
+async def get_event_detail(ctx: SekaiHandlerContext, event_or_event_id: Union[int, Dict], require_assets: List[str]) -> EventDetail:
+    if isinstance(event_or_event_id, int):
+        event_id = event_or_event_id
+        event = await ctx.md.events.find_by_id(event_id)
+        assert_and_reply(event, f"未找到ID为{event_id}的活动")
+    else:
+        event = event_or_event_id
+        event_id = event['id']
+    etype = event['eventType']
+    name = event['name']
+    etype_name = EVENT_TYPE_SHOW_NAMES.get(etype, "") or "马拉松"
+    asset_name = event['assetbundleName']
+    start_time = datetime.fromtimestamp(event['startAt'] / 1000)
+    end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+
+    event_cards = await ctx.md.event_cards.find_by('eventId', event_id, mode="all")
+    event_card_ids = [ec['cardId'] for ec in event_cards]
+    event_cards = await ctx.md.cards.collect_by_ids(event_card_ids)
+
+    bonus_attr = None
+    bonus_cuids = set()
+    for deck_bonus in await ctx.md.event_deck_bonuses.find_by('eventId', event_id, mode="all"):
+        if 'cardAttr' in deck_bonus:
+            bonus_attr = deck_bonus['cardAttr']
+        if 'gameCharacterUnitId' in deck_bonus:
+            bonus_cuids.add(deck_bonus['gameCharacterUnitId'])
+    bonus_cuids = sorted(list(bonus_cuids))
+    bonus_cids = [await get_chara_id_by_cuid(ctx, cuid) for cuid in bonus_cuids]
+
+    banner_cid = await get_event_banner_chara_id(ctx, event)
+    unit = None
+    if banner_cid:
+        unit = get_unit_by_chara_id(banner_cid)
+    elif event['eventType'] == 'world_bloom':
+        unit = get_unit_by_chara_id(event_cards[0]['characterId'])
+    
+    assert not require_assets or all(a in ['banner', 'logo', 'bg', 'card_thumbs'] for a in require_assets)
+
+    event_banner = None
+    if 'banner' in require_assets:
+        event_banner = await get_event_banner_img(ctx, event)
+
+    event_logo = None
+    if 'logo' in require_assets:
+        event_logo = await ctx.rip.img(f"event/{asset_name}/logo/logo.png")
+
+    event_bg = None
+    if 'bg' in require_assets:
+        event_bg = await ctx.rip.img(f"event/{asset_name}/screen/bg.png", default=None)
+
+    event_card_thumbs = []
+    if 'card_thumbs' in require_assets:
+        for card in event_cards:
+            thumb = await get_card_full_thumbnail(ctx, card, after_training=False)
+            event_card_thumbs.append(thumb)
+
+    return EventDetail(
+        event=event,
+        name=name,
+        eid=event_id,
+        etype=etype,
+        etype_name=etype_name,
+        asset_name=asset_name,
+        start_time=start_time,
+        end_time=end_time,
+        event_cards=event_cards,
+        bonus_attr=bonus_attr,
+        bonus_cuids=bonus_cuids,
+        bonus_cids=bonus_cids,
+        banner_cid=banner_cid,
+        unit=unit,
+        event_banner=event_banner,
+        event_logo=event_logo,
+        event_bg=event_bg,
+        event_card_thumbs=event_card_thumbs,
+    )
 
 # 获取wl_id对应的角色cid，wl_id对应普通活动则返回None
 async def get_wl_chapter_cid(ctx: SekaiHandlerContext, wl_id: int) -> Optional[int]:
@@ -226,121 +329,75 @@ async def is_ban_event(ctx: SekaiHandlerContext, event: dict) -> bool:
 async def get_event_banner_chara_id(ctx: SekaiHandlerContext, event: dict) -> int:
     if not await is_ban_event(ctx, event):
         return None
-    event_story = await ctx.md.event_stories.find_by('eventId', event['id'])
-    return event_story['bannerGameCharacterUnitId']
+    event_cards = await ctx.md.event_cards.find_by('eventId', event['id'], mode="all")
+    banner_card_id = min([ec['cardId'] for ec in event_cards])
+    banner_card = await ctx.md.cards.find_by_id(banner_card_id)
+    return banner_card['characterId']
 
-# 获取某个角色所有箱活
+# 获取某个角色所有箱活（按时间顺序排列）
 async def get_chara_ban_events(ctx: SekaiHandlerContext, cid: int) -> List[dict]:
-    nickname = get_nicknames_by_chara_id(cid)[0]
-    chara_ban_stories = await ctx.md.event_stories.find_by('bannerGameCharacterUnitId', cid, mode="all")
-    ban_event_id_set = await get_ban_events_id_set(ctx)
-    chara_ban_stories = [s for s in chara_ban_stories if s['eventId'] in ban_event_id_set]
-    assert_and_reply(chara_ban_stories, f"角色{nickname}没有箱活")  
-    event_ids = [s['eventId'] for s in chara_ban_stories]
-    events = []
-    for e in await ctx.md.events.get():
-        if e['id'] in event_ids and e['eventType'] in ('marathon', 'cheerful_carnival'):
-            events.append(e)
-    events.sort(key=lambda x: x['startAt'])
-    for i, e in enumerate(events, 1):
-        e['ban'] = f"{nickname}{i}"
-    return events
+    ban_events = await ctx.md.events.collect_by_ids(await get_ban_events_id_set(ctx))
+    ban_events = [e for e in ban_events if await get_event_banner_chara_id(ctx, e) == cid]
+    assert_and_reply(ban_events, f"角色{CHARACTER_FIRST_NICKNAME[cid]}没有箱活")  
+    ban_events.sort(key=lambda x: x['startAt'])
+    for i, e in enumerate(ban_events, 1):
+        e['ban_index'] = i
+    return ban_events
 
 # 合成活动列表图片
 async def compose_event_list_image(ctx: SekaiHandlerContext, filter: EventListFilter) -> Image.Image:
     events = sorted(await ctx.md.events.get(), key=lambda x: x['startAt'])    
-    banner_imgs = await batch_gather(*[get_event_banner_img(ctx, event) for event in events])
+    details: List[EventDetail] = await batch_gather(*[get_event_detail(ctx, e, ['banner', 'card_thumbs']) for e in events])
 
-    event_cards = await ctx.md.event_cards.get()
-    event_card_cids = [ec['cardId'] for ec in event_cards]
-    event_card_real_cards = await ctx.md.cards.collect_by_ids(event_card_cids)
-    event_card_eids = [ec['eventId'] for ec in event_cards]
-    event_cards = await ctx.md.cards.collect_by_ids(event_card_cids)
-    event_card_thumbs = await batch_gather(*[get_card_full_thumbnail(ctx, card, after_training=False) for card in event_cards])
-    event_cards = {}
-    for eid, card, thumb in zip(event_card_eids, event_card_real_cards, event_card_thumbs):
-        if eid not in event_cards:
-            event_cards[eid] = []
-        event_cards[eid].append((card, thumb))
+    filtered_details = []
+    for d in details:
+        if filter:
+            if filter.attr and filter.attr != d.bonus_attr: continue
+            if filter.cids and any(cid not in d.bonus_cids for cid in filter.cids): continue
+            if filter.banner_cid and filter.banner_cid != d.banner_cid: continue
+            if filter.year and filter.year != d.start_time.year: continue
+            if filter.event_type and filter.event_type != d.etype: continue
+            if filter.unit:
+                if filter.unit == 'blend':
+                    if d.unit: continue
+                else:
+                    if filter.unit != d.unit: continue
+        filtered_details.append(d)
+
+    assert_and_reply(filtered_details, "没有符合筛选条件的活动")
+
+    row_count = math.ceil(math.sqrt(len(filtered_details)))
 
     style1 = TextStyle(font=DEFAULT_HEAVY_FONT, size=10, color=(50, 50, 50))
     style2 = TextStyle(font=DEFAULT_FONT, size=10, color=(70, 70, 70))
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         TextBox("活动按时间顺序从左到右从上到下排列，黄色为当期活动", TextStyle(font=DEFAULT_FONT, size=10, color=(0, 0, 100))) \
             .set_offset((0, 4 - BG_PADDING))
-        with Grid(row_count=8, vertical=True).set_sep(8, 4).set_item_align('lt').set_content_align('lt'):
-            for event, banner_img in zip(events, banner_imgs):
-                eid = event['id']
-                card_and_thumbs = event_cards.get(eid, [])
-
-                # 查找ban主
-                banner_card = None
-                for card, thumb in card_and_thumbs:
-                    if card['characterId'] == await get_event_banner_chara_id(ctx, event):
-                        banner_card = card
-                        break
-                if not banner_card and card_and_thumbs:
-                    banner_card = card_and_thumbs[0][0]
-
-                card_and_thumbs = card_and_thumbs[:6]
-
+        with Grid(row_count=row_count, vertical=True).set_sep(8, 4).set_item_align('lt').set_content_align('lt'):
+            for d in filtered_details:
                 now = datetime.now()
-                start_time = datetime.fromtimestamp(event['startAt'] / 1000)
-                end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
-
                 bg_color = WIDGET_BG_COLOR
-                if start_time <= now <= end_time:
+                if d.start_time <= now <= d.end_time:
                     bg_color = (255, 250, 220, 200)
-                elif now > end_time:
+                elif now > d.end_time:
                     bg_color = (220, 220, 220, 200)
                 bg = roundrect_bg(bg_color, 5)
 
-                event_type_name = EVENT_TYPE_SHOW_NAMES.get(event['eventType'], "")
-                if event_type_name: event_type_name += "  "
-
-                attr, attr_icon = None, None
-                if banner_card and event['eventType'] in ['marathon', 'cheerful_carnival']:
-                    attr = banner_card['attr']
-                    attr_icon = get_attr_icon(attr)
-
-                unit, unit_logo = None, None
-                ban_cid, ban_chara_icon = None, None
-                if banner_card and await is_ban_event(ctx, event):
-                    ban_cid = banner_card['characterId']
-                    unit = get_unit_by_chara_id(ban_cid)
-                    unit_logo = get_unit_icon(unit)
-                    ban_chara_icon = get_chara_icon_by_chara_id(ban_cid)
-                elif banner_card and event['eventType'] == 'world_bloom':
-                    unit = get_unit_by_chara_id(banner_card['characterId'])
-                    unit_logo = get_unit_icon(unit)
-
-                # filter
-                if filter:
-                    if filter.attr and filter.attr != attr: continue
-                    if filter.cid and filter.cid != ban_cid: continue
-                    if filter.year and filter.year != start_time.year: continue
-                    if filter.event_type and filter.event_type != event['eventType']: continue
-                    if filter.unit:
-                        if filter.unit == 'blend':
-                            if unit: continue
-                        else:
-                            if filter.unit != unit: continue
-
                 with HSplit().set_padding(4).set_sep(4).set_item_align('lt').set_content_align('lt').set_bg(bg):
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
-                        ImageBox(banner_img, size=(None, 40))
+                        ImageBox(d.event_banner, size=(None, 40))
                         with Grid(col_count=3).set_padding(0).set_sep(1, 1):
-                            for _, img in card_and_thumbs:
-                                ImageBox(img, size=(30, 30))
+                            for thumb in d.event_card_thumbs[:6]:
+                                ImageBox(thumb, size=(30, 30))
                     with VSplit().set_padding(0).set_sep(2).set_item_align('lt').set_content_align('lt'):
-                        TextBox(f"{event['name']}", style1, line_count=2, use_real_line_count=False).set_w(100)
-                        TextBox(f"{event_type_name}ID: {eid}", style2)
-                        TextBox(f"S {start_time.strftime('%Y-%m-%d %H:%M')}", style2)
-                        TextBox(f"T {end_time.strftime('%Y-%m-%d %H:%M')}", style2)
+                        TextBox(f"{d.name}", style1, line_count=2, use_real_line_count=False).set_w(100)
+                        TextBox(f"ID: {d.eid} {d.etype_name}", style2)
+                        TextBox(f"S {d.start_time.strftime('%Y-%m-%d %H:%M')}", style2)
+                        TextBox(f"T {d.end_time.strftime('%Y-%m-%d %H:%M')}", style2)
                         with HSplit().set_padding(0).set_sep(4):
-                            if attr_icon: ImageBox(attr_icon, size=(None, 24))
-                            if unit_logo: ImageBox(unit_logo, size=(None, 24))
-                            if ban_chara_icon: ImageBox(ban_chara_icon, size=(None, 24))
+                            if d.bonus_attr: ImageBox(get_attr_icon(d.bonus_attr), size=(None, 24))
+                            if d.unit:  ImageBox(get_unit_icon(d.unit), size=(None, 24))
+                            if d.banner_cid: ImageBox(get_chara_icon_by_chara_id(d.banner_cid), size=(None, 24))
 
     add_watermark(canvas)
     return await run_in_pool(canvas.get_img)
@@ -632,74 +689,61 @@ async def send_boost(ctx: SekaiHandlerContext, qid: int) -> str:
 
 # 合成活动详情图片
 async def compose_event_detail_image(ctx: SekaiHandlerContext, event: dict) -> Image.Image:
-    event_id = event['id']
-    event_type = event['eventType']
-    event_type_name = EVENT_TYPE_SHOW_NAMES.get(event_type, "") or "马拉松"
-    start_time = datetime.fromtimestamp(event['startAt'] / 1000)
-    end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+    detail = await get_event_detail(ctx, event, ['logo', 'bg', 'card_thumbs'])
     now = datetime.now()
-    event_cards = await ctx.md.event_cards.find_by('eventId', event_id, mode="all")
-    event_card_thumbs = await batch_gather(*[get_card_full_thumbnail(ctx, card['cardId'], after_training=False) for card in event_cards])
 
-    asset_name = event['assetbundleName']
-    event_logo = await ctx.rip.img(f"event/{asset_name}/logo/logo.png")
-    event_bg = await ctx.rip.img(f"event/{asset_name}/screen/bg.png", default=None)
-
-    bonus_attr = None
-    bonus_cuids = set()
-    for deck_bonus in await ctx.md.event_deck_bonuses.find_by('eventId', event_id, mode="all"):
-        if 'cardAttr' in deck_bonus:
-            bonus_attr = deck_bonus['cardAttr']
-        if 'gameCharacterUnitId' in deck_bonus:
-            bonus_cuids.add(deck_bonus['gameCharacterUnitId'])
-    bonus_cuids = sorted(list(bonus_cuids))
+    if detail.banner_cid:
+        banner_index = find_by(await get_chara_ban_events(ctx, detail.banner_cid), "id", detail.eid)['ban_index']
 
     label_style = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(50, 50, 50))
     text_style = TextStyle(font=DEFAULT_FONT, size=24, color=(70, 70, 70))
 
-    wl_chapters = await get_wl_events(ctx, event_id)
+    wl_chapters = await get_wl_events(ctx, detail.eid)
     for chapter in wl_chapters:
         chapter['start_time'] = datetime.fromtimestamp(chapter['startAt'] / 1000)
         chapter['end_time'] = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
 
-    bg = ImageBg(event_bg, blur=False) if event_bg else DEFAULT_BLUE_GRADIENT_BG
-
     w = 1400
-    h = event_bg.size[1] * w // event_bg.size[0] if event_bg else None
+    h = detail.event_bg.size[1] * w // detail.event_bg.size[0] if detail.event_bg else None
+    bg = ImageBg(detail.event_bg, blur=False) if detail.event_bg else DEFAULT_BLUE_GRADIENT_BG
     
     async def draw(w, h):
         with Canvas(bg=bg, w=w, h=h).set_padding(BG_PADDING).set_content_align('r') as canvas:
             with VSplit().set_padding(16).set_sep(16).set_item_align('t').set_content_align('t').set_item_bg(roundrect_bg()):
                 # logo
-                ImageBox(event_logo, size=(None, 150)).set_omit_parent_bg(True)
+                ImageBox(detail.event_logo, size=(None, 150)).set_omit_parent_bg(True)
 
-                # 活动ID和类型
+                # 活动ID和类型和箱活
                 with VSplit().set_padding(16).set_sep(12).set_item_align('l').set_content_align('l'):
-                    with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
+                    with HSplit().set_padding(0).set_sep(8).set_item_align('l').set_content_align('l'):
                         TextBox(f"ID", label_style)
-                        TextBox(f"{event_id}", text_style)
+                        TextBox(f"{detail.eid}", text_style)
                         Spacer(w=8)
                         TextBox(f"类型", label_style)
-                        TextBox(f"{event_type_name}", text_style)
+                        TextBox(f"{detail.etype_name}", text_style)
+                        if detail.banner_cid:
+                            Spacer(w=8)
+                            ImageBox(get_chara_icon_by_chara_id(detail.banner_cid), size=(30, 30))
+                            TextBox(f"{banner_index}箱", label_style)
 
                 # 活动时间
                 with VSplit().set_padding(16).set_sep(12).set_item_align('c').set_content_align('c'):
                     with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
                         TextBox("开始时间", label_style)
-                        TextBox(start_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
+                        TextBox(detail.start_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
                     with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
                         TextBox("结束时间", label_style)
-                        TextBox(end_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
+                        TextBox(detail.end_time.strftime("%Y-%m-%d %H:%M:%S"), text_style)
 
                     with HSplit().set_padding(0).set_sep(8).set_item_align('lb').set_content_align('lb'):
-                        if start_time <= now <= end_time:
-                            TextBox(f"距结束还有{get_readable_timedelta(end_time - now)}", text_style)
-                        elif now > end_time:
+                        if detail.start_time <= now <= detail.end_time:
+                            TextBox(f"距结束还有{get_readable_timedelta(detail.end_time - now)}", text_style)
+                        elif now > detail.end_time:
                             TextBox(f"活动已结束", text_style)
                         else:
-                            TextBox(f"距开始还有{get_readable_timedelta(start_time - now)}", text_style)
+                            TextBox(f"距开始还有{get_readable_timedelta(detail.start_time - now)}", text_style)
 
-                    if event_type == 'world_bloom':
+                    if detail.etype == 'world_bloom':
                         cur_chapter = None
                         for chapter in wl_chapters:
                             if chapter['start_time'] <= now <= chapter['end_time']:
@@ -709,15 +753,15 @@ async def compose_event_detail_image(ctx: SekaiHandlerContext, event: dict) -> I
                             TextBox(f"距章节结束还有{get_readable_timedelta(cur_chapter['end_time'] - now)}", text_style)
                         
                     # 进度条
-                    progress = (datetime.now() - start_time) / (end_time - start_time)
+                    progress = (datetime.now() - detail.start_time) / (detail.end_time - detail.start_time)
                     progress = min(max(progress, 0), 1)
                     progress_w, progress_h, border = 320, 8, 1
-                    if event_type == 'world_bloom':
+                    if detail.etype == 'world_bloom':
                         with Frame().set_padding(8).set_content_align('lt'):
                             Spacer(w=progress_w+border*2, h=progress_h+border*2).set_bg(RoundRectBg((75, 75, 75, 255), 4))
                             for i, chapter in enumerate(wl_chapters):
-                                cprogress_start = (chapter['start_time'] - start_time) / (end_time - start_time)
-                                cprogress_end = (chapter['end_time'] - start_time) / (end_time - start_time)
+                                cprogress_start = (chapter['start_time'] - detail.start_time) / (detail.end_time - detail.start_time)
+                                cprogress_end = (chapter['end_time'] - detail.start_time) / (detail.end_time - detail.start_time)
                                 chapter_cid = chapter['wl_cid']
                                 chara_color = color_code_to_rgb((await ctx.md.game_character_units.find_by_id(chapter_cid))['colorCode'])
                                 Spacer(w=int(progress_w * (cprogress_end - cprogress_start)), h=progress_h).set_bg(RoundRectBg(chara_color, 4)) \
@@ -729,29 +773,29 @@ async def compose_event_detail_image(ctx: SekaiHandlerContext, event: dict) -> I
                             Spacer(w=int(progress_w * progress), h=progress_h).set_bg(RoundRectBg((255, 255, 255, 255), 4)).set_offset((border, border))
 
                 # 活动卡片
-                if event_cards:
+                if detail.event_cards:
                     with HSplit().set_padding(16).set_sep(16).set_item_align('c').set_content_align('c'):
                         TextBox("活动卡片", label_style)
-                        card_num = len(event_cards)
+                        card_num = len(detail.event_cards)
                         if card_num <= 4: col_count = card_num
                         elif card_num <= 6: col_count = 3
                         else: col_count = 4
                         with Grid(col_count=col_count).set_sep(4, 4):
-                            for card, thumb in zip(event_cards, event_card_thumbs):
+                            for card, thumb in zip(detail.event_cards, detail.event_card_thumbs):
                                 with VSplit().set_padding(0).set_sep(2).set_item_align('c').set_content_align('c'):
                                     ImageBox(thumb, size=(80, 80))
-                                    TextBox(f"ID:{card['cardId']}", TextStyle(font=DEFAULT_FONT, size=16, color=(75, 75, 75)), overflow='clip')
+                                    TextBox(f"ID:{card['id']}", TextStyle(font=DEFAULT_FONT, size=16, color=(75, 75, 75)), overflow='clip')
                 
                 # 加成
-                if bonus_attr or bonus_cuids:
+                if detail.bonus_attr or detail.bonus_cuids:
                     with HSplit().set_padding(16).set_sep(8).set_item_align('c').set_content_align('c'):
-                        if bonus_attr:
+                        if detail.bonus_attr:
                             TextBox("加成属性", label_style)
-                            ImageBox(get_attr_icon(bonus_attr), size=(None, 40))
-                        if bonus_cuids:
+                            ImageBox(get_attr_icon(detail.bonus_attr), size=(None, 40))
+                        if detail.bonus_cuids:
                             TextBox("加成角色", label_style)
                             with Grid(col_count=5).set_sep(4, 4):
-                                for cuid in bonus_cuids:
+                                for cuid in detail.bonus_cuids:
                                     cid = await get_chara_id_by_cuid(ctx, cuid)
                                     ImageBox(get_chara_icon_by_chara_id(cid), size=(None, 40))
 
@@ -784,7 +828,15 @@ async def _(ctx: SekaiHandlerContext):
         assert_and_reply(not filter.unit, "查混活不能指定团名")
         filter.unit = "blend"
         args = args.replace('混活', "").replace('混', "").strip()
-    filter.cid = get_cid_by_nickname(args)
+
+    filter.cids = []
+    for seg in args.strip().split():
+        if 'ban' in seg or '箱' in seg:
+            seg = seg.replace('ban', '').replace('箱', '').strip()
+            filter.banner_cid = get_cid_by_nickname(seg)
+        else:
+            if cid := get_cid_by_nickname(seg):
+                filter.cids.append(cid)
 
     logger.info(f"查询活动列表，筛选条件={filter}")
 
@@ -796,7 +848,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # 单个活动
 pjsk_event_list = SekaiCmdHandler([
-    "/pjsk event", "/pjsk_event", 
+    "/pjsk event", "/pjsk_event", "/event",
     "/活动", "/查活动",
 ])
 pjsk_event_list.check_cdrate(cd).check_wblist(gbl)

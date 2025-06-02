@@ -15,10 +15,9 @@ from .profile import (
     get_unit_by_card_id,
 )
 from .event import (
-    extract_ban_event, 
-    is_ban_event, 
-    get_event_banner_img,
-    get_event_banner_chara_id,
+    get_event_detail, 
+    get_event_banner_img, 
+    extract_ban_event,
 )
 
 DEFAULT_CARD_STORY_SUMMARY_MODEL = [
@@ -620,32 +619,9 @@ async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
 
     # 关联活动
     event_card = await ctx.md.event_cards.find_by("cardId", card_id)
+    event_detail = None
     if event_card:
-        event_id = event_card['eventId']
-        event_card_ids = await ctx.md.event_cards.find_by("eventId", event_id, mode='all')
-        event_cards = await ctx.md.cards.collect_by_ids([ec['cardId'] for ec in event_card_ids])
-        event = await ctx.md.events.find_by_id(event_id)
-        banner_card = find_by(event_cards, "characterId", await get_event_banner_chara_id(ctx, event))
-        if banner_card is None:
-            banner_card = event_cards[0]
-        event_name = event['name']
-        event_start_time = datetime.fromtimestamp(event['startAt'] / 1000)
-        event_end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
-        event_attr, event_attr_icon = None, None
-        if event['eventType'] in ['marathon', 'cheerful_carnival']:
-            event_attr = banner_card['attr']
-            event_attr_icon = get_attr_icon(event_attr)
-        event_unit, event_unit_logo = None, None
-        event_ban_cid, event_ban_chara_icon = None, None
-        if await is_ban_event(ctx, event):
-            event_ban_cid = banner_card['characterId']
-            event_unit = get_unit_by_chara_id(event_ban_cid)
-            event_unit_logo = get_unit_icon(event_unit)
-            event_ban_chara_icon = get_chara_icon_by_chara_id(event_ban_cid)
-        elif event['eventType'] == 'world_bloom':
-            event_unit = get_unit_by_chara_id(banner_card['characterId'])
-            event_unit_logo = get_unit_icon(event_unit)
-        event_banner_img = await get_event_banner_img(ctx, event)
+        event_detail = await get_event_detail(ctx, event_card['eventId'], require_assets=['banner'])
 
     # 关联卡池
     gacha = None
@@ -689,24 +665,24 @@ async def compose_card_detail_image(ctx: SekaiHandlerContext, card_id: int):
                         ImageBox(img, size=(500, None))
 
                 # 关联活动
-                if event_card:
+                if event_detail:
                     with VSplit().set_padding(16).set_sep(12).set_content_align('lt').set_item_align('lt'):
                         with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
                             TextBox("当期活动", label_style)
-                            TextBox(f"【{event_id}】{event_name}", small_style).set_w(360)
+                            TextBox(f"【{event_detail.eid}】{event_detail.name}", small_style).set_w(360)
                         with HSplit().set_padding(0).set_sep(8).set_content_align('lt').set_item_align('lt'):
-                            ImageBox(event_banner_img, size=(250, None))
+                            ImageBox(event_detail.event_banner, size=(250, None))
                             with VSplit().set_content_align('c').set_item_align('c').set_sep(6):
-                                TextBox(f"开始时间: {event_start_time.strftime('%Y-%m-%d %H:%M')}", small_style)
-                                TextBox(f"结束时间: {event_end_time.strftime('%Y-%m-%d %H:%M')}",   small_style)
+                                TextBox(f"开始时间: {event_detail.start_time.strftime('%Y-%m-%d %H:%M')}", small_style)
+                                TextBox(f"结束时间: {event_detail.end_time.strftime('%Y-%m-%d %H:%M')}",   small_style)
                                 Spacer(h=4)
                                 with HSplit().set_padding(0).set_sep(8).set_content_align('l').set_item_align('l'):
-                                    if event_attr:
-                                        ImageBox(event_attr_icon, size=(32, None))
-                                    if event_unit:
-                                        ImageBox(event_unit_logo, size=(32, None))
-                                    if event_ban_cid:
-                                        ImageBox(event_ban_chara_icon, size=(32, None))
+                                    if event_detail.bonus_attr:
+                                        ImageBox(get_attr_icon(event_detail.bonus_attr), size=(32, None))
+                                    if event_detail.unit:
+                                        ImageBox(get_unit_icon(event_detail.unit), size=(32, None))
+                                    if event_detail.banner_cid:
+                                        ImageBox(get_chara_icon_by_chara_id(event_detail.banner_cid), size=(32, None))
 
                 # 关联卡池
                 if gacha:
