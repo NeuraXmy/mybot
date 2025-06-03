@@ -12,6 +12,8 @@ from itertools import chain
 
 from PIL.Image import Image, Quantize
 
+QUANTIZE_METHOD = Quantize.MAXCOVERAGE
+DITHER = 0
 
 class TransparentAnimatedGifConverter(object):
     _PALETTE_SLOTSET = set(range(256))
@@ -99,7 +101,9 @@ class TransparentAnimatedGifConverter(object):
 
     def process(self) -> Image:
         """Return the processed mode `P` `Image`."""
-        self._img_p = self._img_rgba.convert(mode='P')
+        rgb_img = self._img_rgba.convert(mode='RGB')
+        pal_img = rgb_img.quantize(256)
+        self._img_p = rgb_img.quantize(palette=pal_img, method=QUANTIZE_METHOD, dither=DITHER)
         self._img_p_data = bytearray(self._img_p.tobytes())
         self._palette_replaces = dict(idx_from=list(), idx_to=list())
         self._process_pixels()
@@ -183,7 +187,7 @@ def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: fl
         img.putdata(trans_data)
         img: Image = img.convert("RGB")
         pal_img = img.quantize(256)
-        img = img.quantize(palette=pal_img, method=Quantize.MAXCOVERAGE, dither=0)
+        img = img.quantize(palette=pal_img, method=QUANTIZE_METHOD, dither=DITHER)
         palette = img.getpalette()[:768]
         transparent_color_index, min_dist = None, float("inf")
         for i in range(256):
