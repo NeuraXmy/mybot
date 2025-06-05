@@ -937,17 +937,29 @@ async def send_at_msg(handler, event, message):
     if check_group_disabled_by_event(event): return None
     return await handler.send(OutMessage(f'[CQ:at,qq={event.user_id}]{message}'))
 
+
 # 发送折叠消息失败的fallback
-async def fold_msg_fallback(bot, group_id, contents, e):
+async def fold_msg_fallback(bot, group_id, contents, e, method):
     utils_logger.warning(f'发送折叠消息失败，fallback为发送普通消息: {get_exc_desc(e)}')
-    contents[0] = "（发送折叠消息失败）\n" + contents[0]
-    for content in contents:
-        ret = await send_group_msg_by_bot(bot, group_id, content)
+    if method == 'seperate':
+        contents[0] = "（发送折叠消息失败）\n" + contents[0]
+        for content in contents:
+            ret = await send_group_msg_by_bot(bot, group_id, content)
+    elif method == 'join_newline':
+        contents = ["（发送折叠消息失败）"] + contents
+        msg = "\n".join(contents)
+        ret = await send_group_msg_by_bot(bot, group_id, msg)
+    elif method == 'join':
+        contents = ["（发送折叠消息失败）"] + contents
+        msg = "".join(contents)
+        ret = await send_group_msg_by_bot(bot, group_id, msg)
+    else:
+        raise Exception(f'未知折叠消息fallback方法 {method}')
     return ret
 
 # 发送群聊折叠消息 其中contents是text的列表
 @send_msg_func
-async def send_group_fold_msg(bot, group_id, contents):
+async def send_group_fold_msg(bot, group_id, contents, fallback_method='seperate'):
     if check_group_disabled(group_id):
         utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
         return
@@ -962,11 +974,11 @@ async def send_group_fold_msg(bot, group_id, contents):
     try:
         return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
     except Exception as e:
-        return await fold_msg_fallback(bot, group_id, contents, e)
+        return await fold_msg_fallback(bot, group_id, contents, e, fallback_method)
 
 # 发送多条消息折叠消息
 @send_msg_func
-async def send_multiple_fold_msg(bot, event, contents):
+async def send_multiple_fold_msg(bot, event, contents, fallback_method='seperate'):
     if check_group_disabled_by_event(event): return None
     msg_list = [{
         "type": "node",
@@ -980,7 +992,7 @@ async def send_multiple_fold_msg(bot, event, contents):
         try:
             return await bot.send_group_forward_msg(group_id=event.group_id, messages=msg_list)
         except Exception as e:
-            return await fold_msg_fallback(bot, event.group_id, contents, e)
+            return await fold_msg_fallback(bot, event.group_id, contents, e, fallback_method)
     else:
         return await bot.send_private_forward_msg(user_id=event.user_id, messages=msg_list)
     
@@ -1003,7 +1015,7 @@ async def send_private_msg_by_bot(bot, user_id, message):
 
 # 在event外发送多条消息折叠消息
 @send_msg_func
-async def send_multiple_fold_msg_by_bot(bot, group_id, contents):
+async def send_multiple_fold_msg_by_bot(bot, group_id, contents, fallback_method='seperate'):
     if check_group_disabled(group_id):
         utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
         return
@@ -1018,15 +1030,15 @@ async def send_multiple_fold_msg_by_bot(bot, group_id, contents):
     try:
         return await bot.send_group_forward_msg(group_id=group_id, messages=msg_list)
     except Exception as e:
-        return await fold_msg_fallback(bot, group_id, contents, e)
+        return await fold_msg_fallback(bot, group_id, contents, e, fallback_method)
 
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
-async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None):
+async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None, fallback_method='seperate'):
     if text_len is None: 
         text_len = get_str_appear_length(message)
     if is_group_msg(event) and text_len > threshold:
-        return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message])
+        return await send_group_fold_msg(bot, event.group_id, [event.get_plaintext(), message], fallback_method)
     if need_reply:
         return await send_reply_msg(handler, event, message)
     return await send_msg(handler, event, message)
@@ -1866,17 +1878,17 @@ class HandlerContext:
     def asend_at_msg(self, msg: str):
         return send_at_msg(self.nonebot_handler, self.event, msg)
 
-    def asend_fold_msg_adaptive(self, msg: str, threshold=200, need_reply=True, text_len=None):
-        return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply, text_len)
+    def asend_fold_msg_adaptive(self, msg: str, threshold=200, need_reply=True, text_len=None, fallback_method='seperate'):
+        return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply, text_len, fallback_method)
 
-    async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True):
+    async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True, fallback_method='seperate'):
         if show_cmd:
             cmd_msg = self.trigger_cmd + self.arg_text
             if self.group_id:
                 user_name = await get_group_member_name(self.bot, self.group_id, self.user_id)
                 cmd_msg = f'{user_name}: {cmd_msg}'
             msgs = [cmd_msg] + msgs
-        return await send_multiple_fold_msg(self.bot, self.event, msgs)
+        return await send_multiple_fold_msg(self.bot, self.event, msgs, fallback_method)
 
     # -------------------------- 其他 -------------------------- # 
 

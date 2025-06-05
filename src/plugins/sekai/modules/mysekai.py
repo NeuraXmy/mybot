@@ -1409,7 +1409,7 @@ async def _(ctx: SekaiHandlerContext):
     check_time = not 'force' in args
     imgs = await compose_mysekai_res_image(ctx, ctx.user_id, show_harvested, check_time)
     imgs = [await get_image_cq(img, low_quality=True) for img in imgs]
-    await ctx.asend_multiple_fold_msg(imgs, show_cmd=True)
+    await ctx.asend_multiple_fold_msg(imgs, show_cmd=True, fallback_method='join')
 
 
 # 查询mysekai蓝图
