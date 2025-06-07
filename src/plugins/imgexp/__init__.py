@@ -50,9 +50,6 @@ async def aget_video_info(url):
         with yt_dlp.YoutubeDL({}) as ydl:
             info = ydl.extract_info(url, download=False)
             info = ydl.sanitize_info(info)
-            # with open('test.json', 'w') as f:
-            #     import json
-            #     f.write(json.dumps(info, indent=4))
         return info
     return await asyncio.to_thread(get_video_info, url)
 

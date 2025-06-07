@@ -1,7 +1,5 @@
 from ..utils import *
 import aiosqlite
-import json
-from datetime import datetime
 
 config = get_config('record')
 logger = get_logger("Record")

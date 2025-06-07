@@ -1,16 +1,7 @@
-from nonebot import on_command, on_message
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.v11 import Message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.adapters.onebot.v11.message import Message as OutMessage
-from datetime import datetime
-from nonebot import get_bot
 from ..record.sql import query_recent_msg
 from ..record import before_record_hook
-import aiohttp
-import json
 from ..utils import *
-import asyncio
 import aiorpcx
 
 config = get_config('rpc')

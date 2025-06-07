@@ -6,7 +6,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from datetime import datetime, timedelta
 from ..utils import *
 from ..llm import ChatSession
-import json
 
 
 config = get_config('cron')
