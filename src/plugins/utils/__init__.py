@@ -950,7 +950,7 @@ async def fold_msg_fallback(bot, group_id, contents, e, method):
         msg = "\n".join(contents)
         ret = await send_group_msg_by_bot(bot, group_id, msg)
     elif method == 'join':
-        contents = ["（发送折叠消息失败）"] + contents
+        contents = ["（发送折叠消息失败）\n"] + contents
         msg = "".join(contents)
         ret = await send_group_msg_by_bot(bot, group_id, msg)
     else:

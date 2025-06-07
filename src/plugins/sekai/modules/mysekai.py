@@ -1409,7 +1409,7 @@ async def _(ctx: SekaiHandlerContext):
     check_time = not 'force' in args
     imgs = await compose_mysekai_res_image(ctx, ctx.user_id, show_harvested, check_time)
     imgs = [await get_image_cq(img, low_quality=True) for img in imgs]
-    await ctx.asend_multiple_fold_msg(imgs, show_cmd=True, fallback_method='join')
+    await ctx.asend_reply_msg("".join(imgs))
 
 
 # 查询mysekai蓝图
@@ -1653,9 +1653,8 @@ async def msr_auto_push():
                     await get_image_cq(img, low_quality=True) for img in 
                     await compose_mysekai_res_image(ctx, qid, False, True)
                 ]
-                username = await get_group_member_name(bot, int(gid), int(qid))
-                contents = [f"@{username} 的{region_name}Mysekai资源查询推送"] + contents
-                await send_group_fold_msg(bot, gid, contents)
+                contents = [f"[CQ:at,qq={qid}]的{region_name}MSR推送"] + contents
+                await send_group_msg_by_bot(bot, gid, "".join(contents))
             except:
                 logger.print_exc(f'在 {gid} 中自动推送用户 {qid} 的{region_name}Mysekai资源查询失败')
                 try: await send_group_msg_by_bot(bot, gid, f"自动推送用户 {qid} 的{region_name}Mysekai资源查询失败")
