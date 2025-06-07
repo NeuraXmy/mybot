@@ -282,7 +282,7 @@ async def get_card_story_summary(ctx: SekaiHandlerContext, card: dict, refresh: 
                         raise Exception(f"生成文本超过长度限制({len(resp_text)}>1024)")
                     start_idx = resp_text.find("{")
                     end_idx = resp_text.rfind("}") + 1
-                    data = json.loads(resp_text[start_idx:end_idx])
+                    data = loads_json(resp_text[start_idx:end_idx])
 
                     ep_summary = {}
                     ep_summary['summary'] = data['summary']

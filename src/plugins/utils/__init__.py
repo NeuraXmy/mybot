@@ -1,4 +1,4 @@
-import json
+import orjson
 import yaml
 from datetime import datetime, timedelta
 import traceback
@@ -75,6 +75,23 @@ print(f'日志等级: {LOG_LEVEL}')
 CD_VERBOSE_INTERVAL = get_config()['cd_verbose_interval']
 
 # ------------------------------------------ 工具函数 ------------------------------------------ #
+
+def load_json(file_path: str) -> dict:
+    with open(file_path, 'rb') as file:
+        return orjson.loads(file.read())
+    
+def dump_json(data: dict, file_path: str, indent: bool = True) -> None:
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'wb') as file:
+        buffer = orjson.dumps(data, option=orjson.OPT_INDENT_2 if indent else 0)
+        file.write(buffer)
+
+def loads_json(s: str | bytes) -> dict:
+    return orjson.loads(s)
+
+def dumps_json(data: dict, indent: bool = True) -> str:
+    return orjson.dumps(data, option=orjson.OPT_INDENT_2 if indent else 0).decode('utf-8')
+
 
 class HttpError(Exception):
     def __init__(self, status_code: int = 500, message: str = ''):
@@ -501,8 +518,7 @@ class FileDB:
 
     def load(self):
         try:
-            with open(self.path, 'r', encoding='utf-8') as f:
-                self.data = json.load(f)
+            self.data = load_json(self.path)
             self.logger.debug(f'加载数据库 {self.path} 成功')
         except:
             self.logger.debug(f'加载数据库 {self.path} 失败 使用空数据')
@@ -512,9 +528,7 @@ class FileDB:
         return self.data.keys()
 
     def save(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with open(self.path, 'w', encoding='utf-8') as f:
-            json.dump(self.data, f, indent=4, ensure_ascii=False)
+        dump_json(self.data, self.path)
         self.logger.debug(f'保存数据库 {self.path}')
 
     def get(self, key, default=None):
@@ -1727,18 +1741,12 @@ def run_in_pool_nowait(func, *args):
 
 
 # 异步加载json
-async def aload_json(path):
-    def load(path):
-        with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return await run_in_pool(load, path)
+async def aload_json(path: str):
+    return await run_in_pool(load_json, path)
 
 # 异步保存json
-async def asave_json(path, data):
-    def save(path, data):
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    return await run_in_pool(save, path, data)
+async def adump_json(data: dict, path: str):
+    return await run_in_pool(dump_json, data, path)
 
 
 # 下载json文件，返回json
@@ -1751,16 +1759,16 @@ async def download_json(url: str):
             if resp.status != 200:
                 try:
                     detail = await resp.text()
-                    detail = json.loads(detail)['detail']
+                    detail = loads_json(detail)['detail']
                 except:
                     pass
                 utils_logger.error(f"下载 {url} 失败: {resp.status} {detail}")
                 raise HttpError(resp.status, detail)
             if "text/plain" in resp.content_type:
-                return json.loads(await resp.text())
+                return loads_json(await resp.text())
             if "application/octet-stream" in resp.content_type:
                 import io
-                return json.loads(io.BytesIO(await resp.read()).read().decode())
+                return loads_json(io.BytesIO(await resp.read()).read())
             return await resp.json()
 
 

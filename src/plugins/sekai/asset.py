@@ -201,7 +201,7 @@ class MasterDataManager:
             versions[region] = {}
         versions[region][self.name] = self.version[region]
         file_db.set("master_data_cache_versions", versions)
-        await asave_json(cache_path, self.data[region])
+        await adump_json(self.data[region], cache_path)
         logger.info(f"MasterData [{region}.{self.name}] 更新成功")
 
         # 执行映射函数
@@ -929,7 +929,7 @@ class RegionRipAssetManger:
         - `timeout`: 超时时间
         """
         data = await self.get_asset(path, use_cache, allow_error, default, cache_expire_secs, timeout)
-        try: return json.loads(data)
+        try: return loads_json(data)
         except: pass
         if not allow_error:
             raise Exception(f"解析下载的 {self.region} 解包资源 {path} 为json失败")

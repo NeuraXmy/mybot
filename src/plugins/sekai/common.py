@@ -113,7 +113,7 @@ CARD_SKILL_NAMES = [
 
 UNKNOWN_IMG = Image.open(f"{SEKAI_ASSET_DIR}/static_images/unknown.png")
 
-CHARACTER_NICKNAME_DATA: List[Dict[str, Any]] = json.load(open(f"{SEKAI_DATA_DIR}/character_nicknames.json", 'r'))
+CHARACTER_NICKNAME_DATA: List[Dict[str, Any]] = load_json(f"{SEKAI_DATA_DIR}/character_nicknames.json")
 CHARACTER_FIRST_NICKNAME: Dict[int, str] = {}
 for item in CHARACTER_NICKNAME_DATA:
     CHARACTER_FIRST_NICKNAME[item['id']] = item['nicknames'][0]

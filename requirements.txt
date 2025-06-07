@@ -17,3 +17,4 @@ yt-dlp
 imageio[ffmpeg]
 pilmoji[requests]
 zhon
+orjson

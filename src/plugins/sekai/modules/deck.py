@@ -578,7 +578,7 @@ async def do_deck_recommend(
             try:
                 # 尝试从网络下载
                 musicmetas = await musicmetas_json.get()
-                await asave_json(MUSICMETAS_SAVE_PATH, musicmetas)
+                await adump_json(musicmetas, MUSICMETAS_SAVE_PATH)
             except Exception as e:
                 logger.warning(f"下载music_metas.json失败: {get_exc_desc(e)}")
                 if os.path.exists(MUSICMETAS_SAVE_PATH):
@@ -670,7 +670,7 @@ async def compose_deck_recommend_image(
 
     # 准备用户数据
     with TempFilePath("json") as userdata_path:
-        await asave_json(userdata_path, profile)
+        await adump_json(profile, userdata_path)
         options.region = ctx.region
         options.user_data_file_path = userdata_path
         log_options(ctx, uid, options)

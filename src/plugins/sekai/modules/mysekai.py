@@ -116,17 +116,14 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
         
         # 缓存数据
         cache_path = f"{SEKAI_PROFILE_DIR}/mysekai_cache/{ctx.region}/{uid}.json"
-        create_parent_folder(cache_path)
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(mysekai_info, f, ensure_ascii=False, indent=4)
+        dump_json(mysekai_info, cache_path)
         logger.info(f"获取 {qid} mysekai抓包数据成功，数据已缓存")
 
     except Exception as e:
         # 获取失败的情况，尝试读取缓存
         if cache_path and os.path.exists(cache_path):
-            with open(cache_path, "r", encoding="utf-8") as f:
-                mysekai_info = json.load(f)
-                logger.info(f"从缓存获取 {qid} mysekai抓包数据")
+            mysekai_info = load_json(cache_path)
+            logger.info(f"从缓存获取 {qid} mysekai抓包数据")
             return mysekai_info, str(e) + "(使用先前的缓存数据)"
         else:
             logger.info(f"未找到 {qid} 的缓存mysekai抓包数据")
@@ -249,8 +246,7 @@ async def get_mysekai_res_icon(ctx: SekaiHandlerContext, key: str) -> Image.Imag
 # 合成mysekai资源位置地图图片
 async def compose_mysekai_harvest_map_image(ctx: SekaiHandlerContext, harvest_map: dict, show_harvested: bool) -> Image.Image:
     site_id = harvest_map['mysekaiSiteId']
-    with open(f"{SEKAI_DATA_DIR}/mysekai_site_map_image_info.json", "r", encoding="utf-8") as f:
-        site_image_info = json.load(f)[str(site_id)]
+    site_image_info = load_json(f"{SEKAI_DATA_DIR}/mysekai_site_map_image_info.json")[str(site_id)]
     site_image = ctx.static_imgs.get(site_image_info['image'])
     scale = MYSEKAI_HARVEST_MAP_IMAGE_SCALE
     draw_w, draw_h = int(site_image.width * scale), int(site_image.height * scale)

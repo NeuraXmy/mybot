@@ -1029,9 +1029,6 @@ async def update_ranking():
         ctx = SekaiHandlerContext.from_region(region)
         ranking_update_times[region] += 1
         if data:
-            # with open(f"sandbox/board_{region}_{eid}.json", "w") as f:
-            #     json.dump(data, f, indent=4)
-
             # 更新总榜或WL单榜，返回是否更新成功
             async def update_board(ctx: SekaiHandlerContext, eid: int, data: dict) -> bool:
                 try:

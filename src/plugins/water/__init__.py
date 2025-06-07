@@ -142,7 +142,7 @@ async def get_hash_from_msg(group_id, msg, types=None):
         # json
         elif stype == 'json':
             if not check_type('json'): continue
-            data = json.loads(sdata['data'])
+            data = loads_json(sdata['data'])
 
             # 属于转发消息的json
             if data.get('app') == 'com.tencent.multimsg':

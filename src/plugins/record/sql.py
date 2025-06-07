@@ -38,7 +38,7 @@ async def get_conn(group_id):
 # 插入到消息表
 async def insert_msg(group_id, time: datetime, msg_id: int, user_id: int, nickname: str, msg: dict):
     time = time.timestamp()
-    content = json.dumps(msg)
+    content = dumps_json(msg)
 
     conn = await get_conn(group_id)
     insert_query = f'''
@@ -57,7 +57,7 @@ def msg_row_to_ret(row):
         "msg_id": row[2],
         "user_id": row[3],
         "nickname": row[4],
-        "msg": json.loads(row[5])
+        "msg": loads_json(row[5])
     }
 
 # 获取消息表中的所有消息

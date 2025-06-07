@@ -107,7 +107,7 @@ class Translator:
     def load_json_from_response(self, text) -> dict:
         first_bracket_index = text.find('{')
         last_bracket_index = text.rfind('}')
-        return dict(json.loads(text[first_bracket_index:last_bracket_index+1]))
+        return dict(loads_json(text[first_bracket_index:last_bracket_index+1]))
 
     def load_model(self) -> bool:
         if not self.model_loaded:

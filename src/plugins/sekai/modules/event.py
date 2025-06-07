@@ -569,7 +569,7 @@ async def get_event_story_summary(ctx: SekaiHandlerContext, event: dict, refresh
             
                 start_idx = resp_text.find("{")
                 end_idx = resp_text.rfind("}") + 1
-                data = json.loads(resp_text[start_idx:end_idx])
+                data = loads_json(resp_text[start_idx:end_idx])
 
                 summary = {}
                 summary['title'] = data['title']

@@ -123,7 +123,7 @@ async def get_image_caption(mdata: dict, model_name: str, timeout: int, use_llm:
 # json消息段转换为纯文本
 def json_msg_to_readable_text(mdata: dict):
     try:
-        data = json.loads(mdata['data'])
+        data = loads_json(mdata['data'])
         title = data["meta"]["detail_1"]["title"]
         desc = truncate(data["meta"]["detail_1"]["desc"], 32)
         url = data["meta"]["detail_1"]["qqdocurl"]
@@ -463,7 +463,7 @@ async def _(ctx: HandlerContext):
             if not need_tools: break
             try:
                 # 调用工具
-                tool_args = json.loads(res_text)
+                tool_args = loads_json(res_text)
                 tool_ret = await use_tool(chat_request, session, tool_args["tool"], tool_args["data"], event)
                 tools_additional_info += f"[工具{tool_args['tool']}返回结果: {tool_ret.strip()}]\n" 
             except Exception as exc:
@@ -939,7 +939,7 @@ async def _(ctx: HandlerContext):
                         raise Exception("回复格式错误")
                     text = text[start_idx:end_idx+1]
                     try: 
-                        data = json.loads(text)
+                        data = loads_json(text)
                         text = data["text"]
                     except:
                         raise Exception("回复格式错误")

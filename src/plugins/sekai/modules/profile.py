@@ -202,15 +202,12 @@ async def get_basic_profile(ctx: SekaiHandlerContext, uid: int, use_cache=True, 
             assert_and_reply(profile, f"找不到ID为 {uid} 的玩家")
         elif not profile:
             return {}
-        create_parent_folder(cache_path)
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(profile, f, ensure_ascii=False, indent=4)
+        dump_json(profile, cache_path)
         return profile
     except Exception as e:
         if use_cache and os.path.exists(cache_path):
             logger.print_exc(f"获取{uid}基本信息失败，使用缓存数据")
-            with open(cache_path, "r", encoding="utf-8") as f:
-                profile = json.load(f)
+            profile = load_json(cache_path)
             return profile
         raise e
     
@@ -283,16 +280,13 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
         
         # 缓存数据
         cache_path = f"{SEKAI_PROFILE_DIR}/suite_cache/{ctx.region}/{uid}.json"
-        create_parent_folder(cache_path)
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(profile, f, ensure_ascii=False, indent=4)
+        dump_json(profile, cache_path)
         logger.info(f"获取 {qid} 抓包数据成功，数据已缓存")
         
     except Exception as e:
         # 获取失败的情况，尝试读取缓存
         if cache_path and os.path.exists(cache_path):
-            with open(cache_path, "r", encoding="utf-8") as f:
-                profile = json.load(f)
+            profile = load_json(cache_path)
             logger.info(f"从缓存获取{qid}抓包数据")
             return profile, str(e) + "(使用先前的缓存数据)"
         else:

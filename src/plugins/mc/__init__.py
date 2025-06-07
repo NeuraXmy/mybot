@@ -97,7 +97,7 @@ class ServerData:
             url = f'{self.url}/up/world/world/{ts}'
             async with session.get(url, verify_ssl=False) as resp:
                 data = await resp.text()
-                json_data = json.loads(data)
+                json_data = loads_json(data)
                 return json_data
 
     # 通过卫星地图发送消息
@@ -120,7 +120,7 @@ class ServerData:
                 data = await resp.text()
                 if resp.status != 200:
                     raise Exception(f'{data}')
-                json_data = json.loads(data)
+                json_data = loads_json(data)
                 return json_data
 
     # 服务器执行rcon
