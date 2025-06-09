@@ -18,7 +18,7 @@ pjsk_update.check_cdrate(cd).check_wblist(gbl)
 async def _(ctx: SekaiHandlerContext):
     mgr = RegionMasterDbManager.get(ctx.region)
     msg = f"{get_region_name(ctx.region)}MasterData数据源"
-    for source in await mgr.get_all_sources():
+    for source in await mgr.get_all_sources(force_update=True):
         msg += f"\n[{source.name}] {source.version}"
     return await ctx.asend_reply_msg(msg.strip())
 

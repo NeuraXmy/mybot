@@ -80,11 +80,11 @@ class RegionMasterDbManager:
             await self.update()
         return self.latest_source
 
-    async def get_all_sources(self) -> List[RegionMasterDbSource]:
+    async def get_all_sources(self, force_update=False) -> List[RegionMasterDbSource]:
         """
         获取所有MasterDB数据源
         """
-        if not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
+        if force_update or not self.latest_source or datetime.now() - self.version_update_time > self.version_update_interval:
             await self.update()
         return self.sources
 
