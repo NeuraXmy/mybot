@@ -1031,3 +1031,18 @@ async def _(ctx: SekaiHandlerContext):
     ))
 
 
+# 实效计算
+pjsk_score_up = CmdHandler([
+    "/实效", "/pjsk_score_up", "/pjsk score up"
+], logger)
+pjsk_score_up.check_cdrate(cd).check_wblist(gbl)
+@pjsk_score_up.handle()
+async def _(ctx: SekaiHandlerContext):
+    try:
+        args = ctx.get_args().strip().split()
+        values = list(map(float, args))
+        assert len(values) == 5
+    except:
+        raise ReplyException(f"使用方式: {ctx.trigger_cmd} 100 100 100 100 100") 
+    res = values[0] + (values[1] + values[2] + values[3] + values[4]) / 5.
+    return await ctx.asend_reply_msg(f"实效: {res:.1f}%")
