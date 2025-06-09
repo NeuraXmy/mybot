@@ -967,13 +967,15 @@ async def fold_msg_fallback(bot, group_id, contents, e, method):
         contents = ["（发送折叠消息失败）\n"] + contents
         msg = "".join(contents)
         ret = await send_group_msg_by_bot(bot, group_id, msg)
+    elif method == 'none':
+        ret = await send_group_msg_by_bot(bot, group_id, "发送折叠消息失败")
     else:
         raise Exception(f'未知折叠消息fallback方法 {method}')
     return ret
 
 # 发送群聊折叠消息 其中contents是text的列表
 @send_msg_func
-async def send_group_fold_msg(bot, group_id, contents, fallback_method='seperate'):
+async def send_group_fold_msg(bot, group_id, contents, fallback_method='none'):
     if check_group_disabled(group_id):
         utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
         return
@@ -992,7 +994,7 @@ async def send_group_fold_msg(bot, group_id, contents, fallback_method='seperate
 
 # 发送多条消息折叠消息
 @send_msg_func
-async def send_multiple_fold_msg(bot, event, contents, fallback_method='seperate'):
+async def send_multiple_fold_msg(bot, event, contents, fallback_method='none'):
     if check_group_disabled_by_event(event): return None
     msg_list = [{
         "type": "node",
@@ -1029,7 +1031,7 @@ async def send_private_msg_by_bot(bot, user_id, message):
 
 # 在event外发送多条消息折叠消息
 @send_msg_func
-async def send_multiple_fold_msg_by_bot(bot, group_id, contents, fallback_method='seperate'):
+async def send_multiple_fold_msg_by_bot(bot, group_id, contents, fallback_method='none'):
     if check_group_disabled(group_id):
         utils_logger.warning(f'取消发送消息到被全局禁用的群 {group_id}')
         return
@@ -1048,7 +1050,7 @@ async def send_multiple_fold_msg_by_bot(bot, group_id, contents, fallback_method
 
 
 # 根据消息长度以及是否是群聊消息来判断是否需要折叠消息
-async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None, fallback_method='seperate'):
+async def send_fold_msg_adaptive(bot, handler, event, message, threshold=200, need_reply=True, text_len=None, fallback_method='none'):
     if text_len is None: 
         text_len = get_str_appear_length(message)
     if is_group_msg(event) and text_len > threshold:
@@ -1886,10 +1888,10 @@ class HandlerContext:
     def asend_at_msg(self, msg: str):
         return send_at_msg(self.nonebot_handler, self.event, msg)
 
-    def asend_fold_msg_adaptive(self, msg: str, threshold=200, need_reply=True, text_len=None, fallback_method='seperate'):
+    def asend_fold_msg_adaptive(self, msg: str, threshold=200, need_reply=True, text_len=None, fallback_method='none'):
         return send_fold_msg_adaptive(self.bot, self.nonebot_handler, self.event, msg, threshold, need_reply, text_len, fallback_method)
 
-    async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True, fallback_method='seperate'):
+    async def asend_multiple_fold_msg(self, msgs: List[str], show_cmd=True, fallback_method='none'):
         if show_cmd:
             cmd_msg = self.trigger_cmd + self.arg_text
             if self.group_id:
