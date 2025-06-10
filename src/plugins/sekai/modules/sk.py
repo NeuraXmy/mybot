@@ -379,7 +379,13 @@ async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Ima
     return await run_in_pool(canvas.get_img)
     
 # 从文本获取sk查询参数 (类型，值) 类型: 'name' 'uid' 'rank' 'ranks'
-def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union[str, int, List[int]]]:
+async def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union[str, int, List[int]]]:
+    msg = await ctx.aget_msg()
+    ats = extract_at_qq(msg)
+    if ats:
+        uid = get_uid_from_qid(ctx, ats[0], check_bind=False)
+        assert_and_reply(uid, "@的用户未绑定游戏ID")
+        return 'uid', uid
     args = args.strip()
     if not args:
         if uid := get_uid_from_qid(ctx, ctx.user_id, check_bind=False):
@@ -412,8 +418,9 @@ def get_sk_query_params(ctx: SekaiHandlerContext, args: str) -> Tuple[str, Union
 def format_sk_query_params(qtype: str, qval: Union[str, int, List[int]]) -> str:
     if qtype == 'self':
         return "你绑定的游戏ID"
+    if qtype == 'uid':
+        return "你查询的游戏ID"
     QTYPE_MAP = {
-        'uid': '游戏ID',
         'name': '游戏昵称',
         'rank': '排名',
         'ranks': '排名',
@@ -902,7 +909,7 @@ async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
-    qtype, qval = get_sk_query_params(ctx, args)
+    qtype, qval = await get_sk_query_params(ctx, args)
     return await ctx.asend_msg(await get_image_cq(
         await compose_sk_image(ctx, qtype, qval, event=wl_event),
         low_quality=True,
@@ -919,7 +926,7 @@ async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
-    qtype, qval = get_sk_query_params(ctx, args)
+    qtype, qval = await get_sk_query_params(ctx, args)
     assert_and_reply(qtype != 'ranks', "查房不支持查询多个排名")
     return await ctx.asend_msg(await get_image_cq(
         await compose_cf_image(ctx, qtype, qval, event=wl_event),
@@ -937,7 +944,7 @@ async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
-    qtype, qval = get_sk_query_params(ctx, args)
+    qtype, qval = await get_sk_query_params(ctx, args)
     assert_and_reply(qtype != 'ranks', "追踪不支持查询多个排名")
     return await ctx.asend_msg(await get_image_cq(
         await compose_player_trace_image(ctx, qtype, qval, event=wl_event),
