@@ -144,7 +144,7 @@ async def handle_get_group_new_msg(cid, group_id):
 @rpc('get_client_data')
 async def handle_get_client_data(cid, name):
     try:
-        return load_json('data/rpc/client_data/{name}.json')
+        return load_json(f'data/rpc/client_data/{name}.json')
     except:
         return None
     

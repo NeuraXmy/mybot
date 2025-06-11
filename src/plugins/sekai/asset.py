@@ -616,6 +616,9 @@ STARTAPP_PREFIXES = ['bonds_honor', 'honor', 'thumbnail', 'character', 'music', 
 def sekai_best_url_map(url: str) -> str:
     # 移除_rip
     url = url.replace("_rip", "")
+    # 谱面文件添加.txt
+    if 'music_score' in url:
+        url = url + ".txt"
     return url
 
 def haruki_url_map(url: str) -> str:
@@ -626,9 +629,7 @@ def haruki_url_map(url: str) -> str:
 
     # 移除_rip
     part2 = part2.replace("_rip", "")
-    # 替换.asset为.json
-    part2 = part2.replace(".asset", ".json")
-    # 添加.txt
+    # 谱面文件添加.txt
     if 'music_score' in part2:
         part2 = part2 + ".txt"
     # 需要删除倒数第二个目录的情况
