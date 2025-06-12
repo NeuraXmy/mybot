@@ -285,20 +285,20 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
                 item_style  = TextStyle(font=DEFAULT_FONT,      size=20, color=BLACK)
                 with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
                     with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
-                        TextBox("排名", title_style).set_bg(bg1).set_size((120, gh)).set_content_align('c')
-                        TextBox("名称", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                        TextBox("分数", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                        TextBox("RT",  title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
+                        TextBox("排名", title_style).set_bg(bg1).set_size((140, gh)).set_content_align('c')
+                        # TextBox("名称", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
+                        TextBox("分数", title_style).set_bg(bg1).set_size((180, gh)).set_content_align('c')
+                        TextBox("RT",  title_style).set_bg(bg1).set_size((180, gh)).set_content_align('c')
                     for i, rank in enumerate(ranks):
                         with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
                             bg = bg2 if i % 2 == 0 else bg1
                             r = get_board_rank_str(rank.rank)
                             score = get_board_score_str(rank.score)
                             rt = get_readable_datetime(rank.time, show_original_time=False, use_en_unit=False)
-                            TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((120, gh)).set_content_align('r').set_padding((16, 0))
-                            TextBox(rank.name,  item_style,                ).set_bg(bg).set_size((160, gh)).set_content_align('l').set_padding((8,  0))
-                            TextBox(score,      item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
-                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((140, gh)).set_content_align('r').set_padding((16, 0))
+                            # TextBox(rank.name,  item_style,                ).set_bg(bg).set_size((160, gh)).set_content_align('l').set_padding((8,  0))
+                            TextBox(score,      item_style, overflow='clip').set_bg(bg).set_size((180, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((180, gh)).set_content_align('r').set_padding((16, 0))
             else:
                 TextBox("暂无榜线数据", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)).set_padding(32)
     
@@ -306,7 +306,7 @@ async def compose_skl_image(ctx: SekaiHandlerContext, event: dict = None, full: 
     return await run_in_pool(canvas.get_img)
 
 # 合成时速图片
-async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Image.Image:
+async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None, period: timedelta = timedelta(minutes=60)) -> Image.Image:
     if not event:
         event = await get_current_event(ctx, mode="prev")
         assert_and_reply(event, "未找到当前活动")
@@ -319,7 +319,7 @@ async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Ima
     wl_cid = await get_wl_chapter_cid(ctx, eid)
 
     query_ranks = SKL_QUERY_RANKS
-    s_ranks = await query_first_ranking_after(ctx.region, eid, min(datetime.now(), event_end) - timedelta(hours=1), query_ranks)
+    s_ranks = await query_first_ranking_after(ctx.region, eid, min(datetime.now(), event_end) - period, query_ranks)
     t_ranks = await get_latest_ranking(ctx, eid, query_ranks)
 
     speeds: List[Tuple[int, int, timedelta, datetime]] = []
@@ -356,12 +356,12 @@ async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Ima
                 item_style  = TextStyle(font=DEFAULT_FONT,      size=20, color=BLACK)
                 with VSplit().set_content_align('c').set_item_align('c').set_sep(8).set_padding(8):
 
-                    TextBox("近一小时时速", title_style).set_size((420, None)).set_padding((8, 8))
+                    TextBox(f"近{period.seconds // 60}分钟换算时速", title_style).set_size((420, None)).set_padding((8, 8))
 
                     with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
-                        TextBox("排名", title_style).set_bg(bg1).set_size((120, gh)).set_content_align('c')
-                        TextBox("时速", title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
-                        TextBox("RT",  title_style).set_bg(bg1).set_size((160, gh)).set_content_align('c')
+                        TextBox("排名", title_style).set_bg(bg1).set_size((140, gh)).set_content_align('c')
+                        TextBox("时速", title_style).set_bg(bg1).set_size((180, gh)).set_content_align('c')
+                        TextBox("RT",  title_style).set_bg(bg1).set_size((180, gh)).set_content_align('c')
                     for i, (rank, dscore, dtime, rt) in enumerate(speeds):
                         with HSplit().set_content_align('c').set_item_align('c').set_sep(5).set_padding(0):
                             bg = bg2 if i % 2 == 0 else bg1
@@ -369,9 +369,9 @@ async def compose_sks_image(ctx: SekaiHandlerContext, event: dict = None) -> Ima
                             dtime = dtime.total_seconds()
                             speed = get_board_score_str(int(dscore / dtime * 3600)) if dtime > 0 else "-"
                             rt = get_readable_datetime(rt, show_original_time=False, use_en_unit=False)
-                            TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((120, gh)).set_content_align('r').set_padding((16, 0))
-                            TextBox(speed,      item_style,                ).set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((8,  0))
-                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((160, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(r,          item_style, overflow='clip').set_bg(bg).set_size((140, gh)).set_content_align('r').set_padding((16, 0))
+                            TextBox(speed,      item_style,                ).set_bg(bg).set_size((180, gh)).set_content_align('r').set_padding((8,  0))
+                            TextBox(rt,         item_style, overflow='clip').set_bg(bg).set_size((180, gh)).set_content_align('r').set_padding((16, 0))
             else:
                 TextBox("暂无时速数据", TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)).set_padding(32)
     
@@ -904,8 +904,12 @@ async def _(ctx: SekaiHandlerContext):
     args = ctx.get_args().strip() + ctx.prefix_arg
     wl_event, args = await extract_wl_event(ctx, args)
 
+    period = timedelta(minutes=60)
+    try: period = timedelta(minutes=int(args))
+    except: pass
+
     return await ctx.asend_msg(await get_image_cq(
-        await compose_sks_image(ctx, event=wl_event),
+        await compose_sks_image(ctx, event=wl_event, period=period),
         low_quality=True,
     ))
 
