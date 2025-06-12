@@ -1510,7 +1510,7 @@ async def _(ctx: SekaiHandlerContext):
 # 查询烤森抓包数据
 pjsk_check_mysekai_data = SekaiCmdHandler([
     "/pjsk check mysekai data", "/pjsk_check_mysekai_data", 
-    "/pjsk烤森抓包数据", "/pjsk烤森抓包",
+    "/pjsk烤森抓包数据", "/pjsk烤森抓包", "/烤森抓包", "/烤森抓包数据",
     "/msd",
 ])
 pjsk_check_mysekai_data.check_cdrate(cd).check_wblist(gbl)
@@ -1630,7 +1630,7 @@ async def msr_auto_push():
                         continue
                     upload_times = await resp.json()
         except Exception as e:
-            logger.print_exc(f"获取{region_name}Mysekai上传时间失败")
+            logger.warning(f"获取{region_name}Mysekai上传时间失败: {get_exc_desc(e)}")
             continue
 
         need_push_uids = [] # 需要推送的uid（有及时更新数据并且没有距离太久的）

@@ -166,15 +166,15 @@ Project Sekai（世界计划）游戏多区服服务
 
 
 ### 查询抓包数据状态
-`/pjsk抓包` `/pjsk check data`
+`/抓包数据` `/pjsk check data`
 > 查询自己的抓包数据在自建抓包工具/Haruki工具箱中的更新时间  
 支持服务器: `jp cn tw`
 
-- `/pjsk抓包`
+- `/抓包数据`
 
 
 ### 修改抓包获取模式
-`/pjsk抓包模式` `/pjsk data mode`
+`/抓包模式` `/pjsk data mode`
 > 修改自己的抓包获取模式，可用的模式有:  
 `default` 只有自建抓包工具找不到数据时才会使用Haruki工具箱  
 `latest` 同时从两个来源获取数据，使用最新的一个  
@@ -183,7 +183,7 @@ Project Sekai（世界计划）游戏多区服服务
 推荐大部分使用自建抓包工具的使用 `default`，混合使用Haruki工具箱的使用 `latest`
 支持服务器: `jp cn tw`
 
-- `/pjsk抓包模式`
+- `/抓包模式`
 
 
 ### 隐藏/展示抓包数据
@@ -722,7 +722,7 @@ Project Sekai（世界计划）游戏多区服服务
 
 
 ### 查询烤森抓包数据状态
-`/msd` `/pjsk烤森抓包` `/pjsk check mysekai data`
+`/msd` `/烤森抓包` `/烤森抓包数据` `/pjsk check mysekai data`
 > 查询自己的📡烤森抓包数据在自建抓包工具/Haruki工具箱中的更新时间  
 支持服务器: `jp`
 

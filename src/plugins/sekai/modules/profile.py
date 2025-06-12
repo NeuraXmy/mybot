@@ -918,7 +918,7 @@ async def _(ctx: SekaiHandlerContext):
 # 设置抓包数据获取模式
 pjsk_data_mode = SekaiCmdHandler([
     "/pjsk data mode", "/pjsk_data_mode",
-    "/pjsk抓包模式", "/pjsk抓包获取模式",
+    "/pjsk抓包模式", "/pjsk抓包获取模式", "/抓包模式",
 ])
 pjsk_data_mode.check_cdrate(cd).check_wblist(gbl)
 @pjsk_data_mode.handle()
@@ -959,7 +959,7 @@ async def _(ctx: SekaiHandlerContext):
 # 查询抓包数据
 pjsk_check_data = SekaiCmdHandler([
     "/pjsk check data", "/pjsk_check_data",
-    "/pjsk抓包", "/pjsk抓包数据", "/pjsk抓包查询",
+    "/pjsk抓包", "/pjsk抓包数据", "/pjsk抓包查询", "/抓包数据",
 ])
 pjsk_check_data.check_cdrate(cd).check_wblist(gbl)
 @pjsk_check_data.handle()
