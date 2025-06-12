@@ -4,8 +4,14 @@ from ..common import *
 from ..handler import *
 from ..asset import *
 from ..draw import *
-from .profile import get_card_full_thumbnail, get_gameapi_config, get_uid_from_qid
-
+from .profile import (
+    get_card_full_thumbnail, 
+    get_gameapi_config, 
+    get_uid_from_qid,
+    get_detailed_profile,
+    get_detailed_profile_card,
+    get_player_avatar_info_by_detailed_profile,
+)
 
 @dataclass
 class EventDetail:
@@ -806,7 +812,87 @@ async def compose_event_detail_image(ctx: SekaiHandlerContext, event: dict) -> I
         return await draw(w, h)
     except:
         return await draw(w, None)
+
+# 合成活动记录图片
+async def compose_event_record_image(ctx: SekaiHandlerContext, qid: int) -> Image.Image:
+    profile, err_msg = await get_detailed_profile(ctx, qid, raise_exc=True)
+    avatar_info = await get_player_avatar_info_by_detailed_profile(ctx, profile)
+    user_events: List[Dict[str, Any]] = profile['userEvents']
+    assert_and_reply(user_events, "找不到你的活动记录，可能是未参加过活动，或数据来源未提供userEvents字段")
+
+    user_worldblooms: List[Dict[str, Any]] = profile.get('userWorldBlooms', [])
+    for item in user_worldblooms:
+        item['eventPoint'] = item['worldBloomChapterPoint']
+    user_events += user_worldblooms
+
+    topk = 20
+    if any('rank' in item for item in user_events):
+        has_rank = True
+        title = f"排名前{topk}的记录"
+        user_events.sort(key=lambda x: x.get('rank', 1e9))
+    else:
+        has_rank = False
+        title = f"活动点数前{topk}的记录"
+        user_events.sort(key=lambda x: x['eventPoint'], reverse=True)
+    user_events = user_events[:topk]
+
+    for i, item in enumerate(user_events):
+        item['no'] = i + 1
+        event = await ctx.md.events.find_by_id(item['eventId'])
+        item['banner'] = await get_event_banner_img(ctx, event)
+        item['eventName'] = event['name']
+        item['startAt'] = datetime.fromtimestamp(event['startAt'] / 1000)
+        item['endAt'] = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+        if 'gameCharacterId' in item:
+            item['charaIcon'] = get_chara_icon_by_chara_id(item['gameCharacterId'])
+        
+    style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(50, 50, 50))
+    style2 = TextStyle(font=DEFAULT_FONT, size=16, color=(70, 70, 70))
+    style3 = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=(70, 70, 70))
+
+    with Canvas(bg=random_unit_bg(avatar_info.unit)).set_padding(BG_PADDING) as canvas:
+        with VSplit().set_content_align('lt').set_item_align('lt').set_sep(16):
+            await get_detailed_profile_card(ctx, profile, err_msg)
+
+            with VSplit().set_padding(16).set_sep(16).set_item_align('lt').set_content_align('lt').set_bg(roundrect_bg()):
+                TextBox(title, style1)
+
+                th, sh, gh = 28, 40, 80
+                with HSplit().set_padding(16).set_sep(16).set_item_align('lt').set_content_align('lt').set_bg(roundrect_bg()):
+                    # 序号
+                    with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
+                        Spacer(h=th)
+                        for item in user_events:
+                            TextBox(f"#{item['no']}", style1, overflow='clip').set_h(gh)
+                    # 活动信息
+                    with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
+                        TextBox("活动", style1).set_h(th).set_content_align('c')
+                        for item in user_events:
+                            with HSplit().set_padding(0).set_sep(4).set_item_align('l').set_content_align('l').set_h(gh):
+                                with Frame().set_content_align('lb'):
+                                    ImageBox(item['banner'], size=(None, gh))
+                                    if 'charaIcon' in item:
+                                        ImageBox(item['charaIcon'], size=(48, 48)).set_offset((4, -4))
+                                with VSplit().set_padding(0).set_sep(2).set_item_align('l').set_content_align('l'):
+                                    TextBox(f"【{item['eventId']}】{item['eventName']}", style2).set_w(150)
+                                    TextBox(f"S {item['startAt'].strftime('%Y-%m-%d %H:%M')}", style2)
+                                    TextBox(f"T {item['endAt'].strftime('%Y-%m-%d %H:%M')}", style2)
+                    # 排名
+                    if has_rank:
+                        with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
+                            TextBox("排名", style1).set_h(th).set_content_align('c')
+                            for item in user_events:
+                                TextBox(f"{item.get('rank', '?')}", style3, overflow='clip').set_h(gh).set_content_align('c')
+                    # 活动点数
+                    with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
+                        TextBox("PT", style1).set_h(th).set_content_align('c')
+                        for item in user_events:
+                            TextBox(f"{item['eventPoint']}", style3, overflow='clip').set_h(gh).set_content_align('c')
+
     
+    add_watermark(canvas)
+    return await run_in_pool(canvas.get_img)
+
 
 # ======================= 指令处理 ======================= #
 
@@ -905,3 +991,17 @@ pjsk_send_boost.check_cdrate(cd).check_wblist(gbl)
 @pjsk_send_boost.handle()
 async def _(ctx: SekaiHandlerContext):
     return await ctx.asend_reply_msg(await send_boost(ctx, ctx.user_id))
+
+
+# 活动记录
+pjsk_event_record = SekaiCmdHandler([
+    "/pjsk event record", "/pjsk_event_record", 
+    "/活动记录", "/冲榜记录",
+])
+pjsk_event_record.check_cdrate(cd).check_wblist(gbl)
+@pjsk_event_record.handle()
+async def _(ctx: SekaiHandlerContext):
+    return await ctx.asend_reply_msg(await get_image_cq(
+        await compose_event_record_image(ctx, ctx.user_id),
+        low_quality=True,
+    ))
