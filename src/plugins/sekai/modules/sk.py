@@ -517,7 +517,7 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
 
     style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=24, color=BLACK)
     style2 = TextStyle(font=DEFAULT_FONT, size=24, color=BLACK)
-    style3 = TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=BLACK)
+    style3 = TextStyle(font=DEFAULT_FONT, size=20, color=BLACK)
     texts: List[str, TextStyle] = []
 
     ranks = []
@@ -568,6 +568,16 @@ async def compose_cf_image(ctx: SekaiHandlerContext, qtype: str, qval: Union[str
     
     texts.append((f"{name}", style1))
     texts.append((f"当前排名 {get_board_rank_str(cur_rank)} - 当前分数 {get_board_score_str(cur_score)}", style2))
+
+    latest_ranks = await get_latest_ranking(ctx, eid, ALL_RANKS)
+    skl_ranks = [r for r in latest_ranks if r.rank in list(range(1, 10)) + SKL_QUERY_RANKS]
+    if prev_rank := find_prev_ranking(skl_ranks, cur_rank):
+        dlt_score = prev_rank.score - cur_score
+        texts.append((f"{prev_rank.rank}名分数: {get_board_score_str(prev_rank.score)}  ↑{get_board_score_str(dlt_score)}", style3))
+    if next_rank := find_next_ranking(skl_ranks, cur_rank):
+        dlt_score = cur_score - next_rank.score
+        texts.append((f"{next_rank.rank}名分数: {get_board_score_str(next_rank.score)}  ↓{get_board_score_str(dlt_score)}", style3))
+
     texts.append((f"近{avg_pt_n}次平均Pt: {avg_pt:.1f}", style2))
     texts.append((f"最近一次Pt: {last_pt}", style2))
     texts.append((f"时速: {get_board_score_str(hour_speed)}", style2))
@@ -636,7 +646,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
 
     def draw_graph() -> Image.Image:
         fig, ax = plt.subplots()
-        fig.set_size_inches(8, 8)
+        fig.set_size_inches(12, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
         ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min(scores) * 0.95, max(scores) * 1.05)
@@ -646,6 +656,7 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
                      color='blue', fontsize=12, ha='right')
         ax.legend(loc='lower right')
+        ax.grid(True, linestyle='-', alpha=0.3, color='gray')
         ax2 = ax.twinx()
         ax2.plot(times, rs, 'o', label='排名', color='red', markersize=2, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(int(x))))
@@ -707,12 +718,13 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         min_score = min(scores + pred_scores)
 
         fig, ax = plt.subplots()
-        fig.set_size_inches(8, 8)
+        fig.set_size_inches(12, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
         ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min_score * 0.95, max_score * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
         ax.legend(loc='lower right')
+        ax.grid(True, linestyle='-', alpha=0.3, color='gray')
         plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
                      color='blue', fontsize=12, ha='right')
 
@@ -936,7 +948,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # 玩家追踪
 pjsk_cf = SekaiCmdHandler([
-    "/skt", "/追踪", "/pjsk追踪",
+    "/ptr", "/玩家追踪", "/pjsk玩家追踪",
 ], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
 @pjsk_cf.handle()
@@ -954,6 +966,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # 分数线追踪
 pjsk_cf = SekaiCmdHandler([
+    "/skt", "/追踪", "/pjsk追踪",
     "/sklt", "/sktl", "/分数线追踪", "/pjsk分数线追踪",
 ], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)

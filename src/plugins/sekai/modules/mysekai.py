@@ -1602,7 +1602,7 @@ async def _(ctx: SekaiHandlerContext):
 # ======================= 定时任务 ======================= #
 
 # Mysekai资源查询自动推送
-@repeat_with_interval(2, 'Mysekai资源查询自动推送', logger)
+@repeat_with_interval(3, 'Mysekai资源查询自动推送', logger)
 async def msr_auto_push():
     bot = get_bot()
 
@@ -1613,12 +1613,30 @@ async def msr_auto_push():
         url = get_gameapi_config(ctx).mysekai_upload_time_api_url
         if not url: continue
 
-        upload_times = await download_json(url)
+        # 获取订阅的用户列表和抓包模式
+        qids = [qid for qid, gid in msr_sub.get_all_gid_uid(region)]
+        uid_modes = {}
+        for qid in qids:
+            if uid := get_uid_from_qid(ctx, qid, check_bind=False):
+                uid_modes[uid] = get_user_data_mode(ctx, qid)
+        if not uid_modes: continue
+
+        # 获取Mysekai上传时间
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, json=uid_modes, verify_ssl=False) as resp:
+                    if resp.status != 200:
+                        logger.error(f"获取{region_name}Mysekai上传时间失败: {resp.status}")
+                        continue
+                    upload_times = await resp.json()
+        except Exception as e:
+            logger.print_exc(f"获取{region_name}Mysekai上传时间失败")
+            continue
+
         need_push_uids = [] # 需要推送的uid（有及时更新数据并且没有距离太久的）
         last_refresh_time = get_mysekai_last_refresh_time()
-        for item in upload_times:
-            uid = item['id']
-            update_time = datetime.fromtimestamp(item['upload_time'] / 1000)
+        for uid, ts in upload_times.items():
+            update_time = datetime.fromtimestamp(ts / 1000)
             if update_time > last_refresh_time and datetime.now() - update_time < timedelta(hours=1):
                 need_push_uids.append(int(uid))
                 
