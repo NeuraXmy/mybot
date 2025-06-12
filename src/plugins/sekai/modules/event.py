@@ -829,11 +829,11 @@ async def compose_event_record_image(ctx: SekaiHandlerContext, qid: int) -> Imag
     if any('rank' in item for item in user_events):
         has_rank = True
         title = f"排名前{topk}的记录"
-        user_events.sort(key=lambda x: x.get('rank', 1e9))
+        user_events.sort(key=lambda x: (x.get('rank', 1e9), -x['eventPoint']))
     else:
         has_rank = False
         title = f"活动点数前{topk}的记录"
-        user_events.sort(key=lambda x: x['eventPoint'], reverse=True)
+        user_events.sort(key=lambda x: -x['eventPoint'])
     user_events = user_events[:topk]
 
     for i, item in enumerate(user_events):
@@ -882,7 +882,7 @@ async def compose_event_record_image(ctx: SekaiHandlerContext, qid: int) -> Imag
                         with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
                             TextBox("排名", style1).set_h(th).set_content_align('c')
                             for item in user_events:
-                                TextBox(f"{item.get('rank', '?')}", style3, overflow='clip').set_h(gh).set_content_align('c')
+                                TextBox(f"{item.get('rank', '-')}", style3, overflow='clip').set_h(gh).set_content_align('c')
                     # 活动点数
                     with VSplit().set_padding(0).set_sep(sh).set_item_align('c').set_content_align('c'):
                         TextBox("PT", style1).set_h(th).set_content_align('c')
