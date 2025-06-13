@@ -934,12 +934,17 @@ async def _(ctx: SekaiHandlerContext):
     data_modes = profile_db.get("data_modes", {})
     cur_mode = data_modes.get(ctx.region, {}).get(str(ctx.user_id), DEFAULT_DATA_MODE)
     help_text = f"""
-你的抓包数据获取模式: {cur_mode} 
-使用\"/pjsk抓包模式 模式名\"来切换模式，可用模式名如下:
-【default】 从该bot自建服务获取失败才尝试从Haruki工具箱获取
-【latest】 同时从两个数据源获取，使用最新的的一个
-【local】 仅从该bot自建服务获取
-【haruki】 仅从Haruki工具箱获取
+你的{get_region_name(ctx.region)}抓包数据获取模式: {cur_mode} 
+---
+使用\"{ctx.original_trigger_cmd} 模式名\"来切换模式，可用模式名如下:
+【latest】
+同时从所有数据源获取，使用最新的一个（推荐）
+【default】
+从本地数据获取失败才尝试从Haruki工具箱获取（使用bot自建服务推荐）
+【local】
+仅从本地数据获取
+【haruki】
+仅从Haruki工具箱获取
 """.strip()
     
     ats = extract_at_qq(await ctx.aget_msg())
@@ -959,9 +964,9 @@ async def _(ctx: SekaiHandlerContext):
     profile_db.set("data_modes", data_modes)
 
     if qid == ctx.user_id:
-        return await ctx.asend_reply_msg(f"切换抓包数据获取模式:\n{cur_mode} -> {args}")
+        return await ctx.asend_reply_msg(f"切换{get_region_name(ctx.region)}抓包数据获取模式:\n{cur_mode} -> {args}")
     else:
-        return await ctx.asend_reply_msg(f"切换 {qid} 的抓包数据获取模式:\n{cur_mode} -> {args}")
+        return await ctx.asend_reply_msg(f"切换 {qid} 的{get_region_name(ctx.region)}抓包数据获取模式:\n{cur_mode} -> {args}")
 
 
 # 查询抓包数据
@@ -980,26 +985,28 @@ async def _(ctx: SekaiHandlerContext):
     task2 = get_detailed_profile(ctx, qid, raise_exc=False, mode="haruki")
     (local_profile, local_err), (haruki_profile, haruki_err) = await asyncio.gather(task1, task2)
 
-    msg = f"@{nickname} 的Suite抓包数据状态\n"
+    msg = f"@{nickname} 的{get_region_name(ctx.region)}Suite抓包数据状态\n"
 
     if local_err:
-        msg += f"【BOT自建服务】\n获取失败: {local_err}\n"
+        local_err = local_err[local_err.find(']')+1:].strip()
+        msg += f"[本地数据]\n获取失败: {local_err}\n"
     else:
-        msg += "【BOT自建服务】\n"
+        msg += "[本地数据]\n"
         upload_time = datetime.fromtimestamp(local_profile['upload_time'] / 1000)
         upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
         msg += f"{upload_time_text}\n"
 
     if haruki_err:
-        msg += f"【Haruki工具箱】\n获取失败: {haruki_err}\n"
+        haruki_err = haruki_err[haruki_err.find(']')+1:].strip()
+        msg += f"[Haruki工具箱]\n获取失败: {haruki_err}\n"
     else:
-        msg += "【Haruki工具箱】\n"
+        msg += "[Haruki工具箱]\n"
         upload_time = datetime.fromtimestamp(haruki_profile['upload_time'] / 1000)
         upload_time_text = upload_time.strftime('%m-%d %H:%M:%S') + f"({get_readable_datetime(upload_time, show_original_time=False)})"
         msg += f"{upload_time_text}\n"
 
     mode = get_user_data_mode(ctx, ctx.user_id)
-    msg += f"---\n数据获取模式: {mode}，使用\"/pjsk抓包模式 模式名\"来切换模式"
+    msg += f"---\n数据获取模式: {mode}，使用\"/{ctx.region}抓包模式\"来切换模式"
 
     return await ctx.asend_reply_msg(msg)
 

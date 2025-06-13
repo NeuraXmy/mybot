@@ -970,7 +970,7 @@ async def _(ctx: SekaiHandlerContext):
 
 # 分数线追踪
 pjsk_cf = SekaiCmdHandler([
-    "/skt", "/追踪", "/pjsk追踪",
+    "/rtr", "/skt", "/追踪", "/pjsk追踪", 
     "/sklt", "/sktl", "/分数线追踪", "/pjsk分数线追踪",
 ], regions=['jp', 'cn', 'tw'], prefix_args=['', 'wl'])
 pjsk_cf.check_cdrate(cd).check_wblist(gbl)
