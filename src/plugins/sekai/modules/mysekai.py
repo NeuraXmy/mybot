@@ -1611,8 +1611,8 @@ async def _(ctx: SekaiHandlerContext):
 
 # ======================= 定时任务 ======================= #
 
-# Mysekai资源查询自动推送
-@repeat_with_interval(5, 'Mysekai资源查询自动推送', logger)
+# MSR自动推送 & MSR订阅更新
+@repeat_with_interval(2, 'MSR自动推送', logger)
 async def msr_auto_push():
     bot = get_bot()
 
@@ -1624,19 +1624,30 @@ async def msr_auto_push():
         if not url: continue
 
         # 获取订阅的用户列表和抓包模式
-        qids = [qid for qid, gid in msr_sub.get_all_gid_uid(region)]
+        qids = list(set([qid for qid, gid in msr_sub.get_all_gid_uid(region)]))
         uid_modes = {}
         for qid in qids:
             if uid := get_uid_from_qid(ctx, qid, check_bind=False):
                 uid_modes[uid] = get_user_data_mode(ctx, qid)
         if not uid_modes: continue
 
+        # 向api服务器更新msr订阅信息
+        update_msr_sub_url = get_gameapi_config(ctx).update_msr_sub_api_url
+        if update_msr_sub_url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.put(update_msr_sub_url, json=uid_modes, verify_ssl=False) as resp:
+                        if resp.status != 200:
+                            logger.error(f"更新{region_name}Mysekai订阅信息失败: HTTP {resp.status}")
+            except Exception as e:
+                logger.warning(f"更新{region_name}Mysekai订阅信息失败: {get_exc_desc(e)}")
+
         # 获取Mysekai上传时间
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, json=uid_modes, verify_ssl=False) as resp:
                     if resp.status != 200:
-                        logger.error(f"获取{region_name}Mysekai上传时间失败: {resp.status}")
+                        logger.error(f"获取{region_name}Mysekai上传时间失败: HTTP {resp.status}")
                         continue
                     upload_times = await resp.json()
         except Exception as e:
@@ -1686,3 +1697,4 @@ async def msr_auto_push():
                 logger.print_exc(f'在 {gid} 中自动推送用户 {qid} 的{region_name}Mysekai资源查询失败')
                 try: await send_group_msg_by_bot(bot, gid, f"自动推送用户 {qid} 的{region_name}Mysekai资源查询失败")
                 except: pass
+

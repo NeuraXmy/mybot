@@ -15,10 +15,10 @@ class GameApiConfig:
     api_status_url: Optional[str] = None
     profile_api_url: Optional[str] = None 
     suite_api_url: Optional[str] = None
-    suite_upload_time_api_url: Optional[str] = None
     mysekai_api_url: Optional[str] = None  
     mysekai_photo_api_url: Optional[str] = None 
     mysekai_upload_time_api_url: Optional[str] = None 
+    update_msr_sub_api_url: Optional[str] = None
     ranking_api_url: Optional[str] = None
     send_boost_api_url: Optional[str] = None
 
