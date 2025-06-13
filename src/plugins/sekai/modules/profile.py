@@ -184,7 +184,7 @@ def get_uid_from_qid(ctx: SekaiHandlerContext, qid: int, check_bind=True) -> str
     qid = str(qid)
     bind_list: Dict[str, str] = profile_db.get("bind_list", {}).get(ctx.region, {})
     if check_bind and not bind_list.get(qid, None):
-        assert_and_reply(get_gameapi_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
+        # assert_and_reply(get_gameapi_config(ctx).profile_api_url, f"暂不支持查询 {ctx.region} 服务器的玩家信息")
         region = "" if ctx.region == "jp" else ctx.region
         raise ReplyException(f"请使用\"/{region}绑定 你的游戏ID\"绑定账号")
     uid = bind_list.get(qid, None)
@@ -269,7 +269,15 @@ async def get_detailed_profile(ctx: SekaiHandlerContext, qid: int, raise_exc=Fal
             profile = await download_json(url.format(uid=uid) + f"?mode={mode}")
         except HttpError as e:
             logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
-            raise ReplyException(e.message)
+            if e.status_code == 404:
+                local_err = e.message.get('local_err', None)
+                haruki_err = e.message.get('haruki_err', None)
+                msg = f"获取你的{get_region_name(ctx.region)}Suite抓包数据失败，发送\"/抓包\"指令可获取帮助\n"
+                if local_err is not None: msg += f"[本地数据] {local_err}\n"
+                if haruki_err is not None: msg += f"[Haruki工具箱] {haruki_err}\n"
+                raise ReplyException(msg.strip())
+            else:
+                raise e
         except Exception as e:
             logger.info(f"获取 {qid} 抓包数据失败: {get_exc_desc(e)}")
             raise e

@@ -9,10 +9,9 @@ from typing import Tuple, List, Union
 from collections import defaultdict
 from random import randrange
 from itertools import chain
+from PIL import Image, ImageSequence
 
-from PIL.Image import Image, Quantize
-
-QUANTIZE_METHOD = Quantize.MAXCOVERAGE
+QUANTIZE_METHOD = Image.Quantize.MAXCOVERAGE
 DITHER = 0
 
 class TransparentAnimatedGifConverter(object):
@@ -114,11 +113,10 @@ class TransparentAnimatedGifConverter(object):
         self._img_p.info['background'] = 0
         return self._img_p
 
-
-def _create_animated_gif(images: List[Image], durations: Union[int, List[int]], alpha_threshold: int = 0) -> Tuple[Image, dict]:
+def _create_animated_gif(images: List[Image.Image], durations: Union[int, List[int]], alpha_threshold: int = 0) -> Tuple[Image.Image, dict]:
     """If the image is a GIF, create an its thumbnail here."""
     save_kwargs = dict()
-    new_images: List[Image] = []
+    new_images: List[Image.Image] = []
 
     for frame in images:
         thumbnail = frame.copy()  # type: Image
@@ -139,8 +137,7 @@ def _create_animated_gif(images: List[Image], durations: Union[int, List[int]], 
         loop=0)
     return output_image, save_kwargs
 
-
-def save_transparent_gif(images: List[Image], durations: Union[int, List[int]], save_file, alpha_threshold: int = 0):
+def _save_transparent_gif(images: List[Image.Image], durations: Union[int, List[int]], save_file, alpha_threshold: int = 0):
     """Creates a transparent GIF, adjusting to avoid transparency issues that are present in the PIL library
 
     Note that this does NOT work for partial alpha. The partial alpha gets discarded and replaced by solid colors.
@@ -156,7 +153,23 @@ def save_transparent_gif(images: List[Image], durations: Union[int, List[int]], 
     root_frame, save_args = _create_animated_gif(images, durations, alpha_threshold)
     root_frame.save(save_file, **save_args)
 
+# 从GIF获取帧间隔
+def get_gif_duration(img: Image.Image):
+    return img.info.get('duration', 50)
 
+# 从GIF获取帧序列
+def get_frames_from_gif(img: Image.Image):
+    return [frame.copy() for frame in ImageSequence.Iterator(img)]
+
+# 从帧序列保存透明GIF
+def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str, alpha_threshold: float = 0.5):
+    alpha_threshold = max(0.0, min(1.0, alpha_threshold))
+    alpha_threshold = int(alpha_threshold * 255)
+    if isinstance(frames, Image.Image):
+        frames = [frames]
+    _save_transparent_gif(frames, duration, save_path, alpha_threshold)
+
+# 保存高质量静态GIF
 def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: float=0.5):
     import random
     import os
@@ -201,3 +214,29 @@ def save_high_quality_static_gif(img: Image, save_path: str, alpha_threshold: fl
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         img.save(save_path, save_all=True, append_images=[img], duration=100, loop=0, transparency=transparent_color_index)
         break
+
+# 从帧序列保存APNG
+def save_apng(images: List[Image.Image], save_path: str, duration=50, loop=0):
+    """
+    将RGBA图像列表保存为APNG文件
+    Args:
+        images: PIL Image对象列表
+        output_path: 输出文件路径
+        duration: 每帧持续时间（毫秒）
+        loop: 循环次数（0表示无限循环）
+    """
+    if not images:
+        raise ValueError("图像列表不能为空")
+    rgba_images = []
+    for img in images:
+        img = img.convert('RGBA')
+        rgba_images.append(img)
+    rgba_images[0].save(
+        save_path,
+        format='PNG',
+        save_all=True,
+        append_images=rgba_images[1:],
+        duration=duration,
+        loop=loop
+    )
+

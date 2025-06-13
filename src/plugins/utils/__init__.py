@@ -25,8 +25,7 @@ import shutil
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import re
 from .plot import *
-from .trans_gif import save_transparent_gif as _save_transparent_gif
-from .trans_gif import save_high_quality_static_gif
+from .img_utils import *
 import math
 import requests
 require("nonebot_plugin_apscheduler")
@@ -217,22 +216,6 @@ class TempFilePath:
         # utils_logger.info(f'删除临时文件 {self.path}')
         remove_file(self.path)
 
-
-# 从GIF获取帧间隔
-def get_gif_duration(img: Image.Image):
-    return img.info.get('duration', 50)
-
-# 从GIF获取帧序列
-def get_frames_from_gif(img: Image.Image):
-    return [frame.copy() for frame in ImageSequence.Iterator(img)]
-
-# 从帧序列保存透明GIF
-def save_transparent_gif(frames: Union[Image.Image, List[Image.Image]], duration: int, save_path: str, alpha_threshold: float = 0.5):
-    alpha_threshold = max(0.0, min(1.0, alpha_threshold))
-    alpha_threshold = int(alpha_threshold * 255)
-    if isinstance(frames, Image.Image):
-        frames = [frames]
-    _save_transparent_gif(frames, duration, save_path, alpha_threshold)
 
 
 # matplotlib图像转换为Image

@@ -105,7 +105,15 @@ async def get_mysekai_info(ctx: SekaiHandlerContext, qid: int, raise_exc=False, 
             mysekai_info = await download_json(url.format(uid=uid) + f"?mode={mode}")
         except HttpError as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
-            raise ReplyException(e.message)
+            if e.status_code == 404:
+                local_err = e.message.get('local_err', None)
+                haruki_err = e.message.get('haruki_err', None)
+                msg = f"获取你的{get_region_name(ctx.region)}Mysekai抓包数据失败，发送\"/抓包\"指令可获取帮助\n"
+                if local_err is not None: msg += f"[本地数据] {local_err}\n"
+                if haruki_err is not None: msg += f"[Haruki工具箱] {haruki_err}\n"
+                raise ReplyException(msg.strip())
+            else:
+                raise e
         except Exception as e:
             logger.info(f"获取 {qid} mysekai抓包数据失败: {get_exc_desc(e)}")
             raise e
@@ -1602,7 +1610,7 @@ async def _(ctx: SekaiHandlerContext):
 # ======================= 定时任务 ======================= #
 
 # Mysekai资源查询自动推送
-@repeat_with_interval(3, 'Mysekai资源查询自动推送', logger)
+@repeat_with_interval(5, 'Mysekai资源查询自动推送', logger)
 async def msr_auto_push():
     bot = get_bot()
 
