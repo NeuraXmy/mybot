@@ -457,7 +457,7 @@ async def compose_mysekai_res_image(ctx: SekaiHandlerContext, qid: int, show_har
         raise ReplyException(f"数据已过期({upload_time.strftime('%m-%d %H:%M:%S')})")
 
     assert_and_reply('userMysekaiHarvestMaps' in mysekai_info['updatedResources'], 
-                     f"你的Mysekai抓包数据不完整，请尝试退出游戏到主界面后重新上传抓包数据")
+                     f"你的Mysekai抓包数据不完整，请尝试退出游戏到标题界面后重新上传抓包数据")
 
     # 天气预报图片
     schedule = mysekai_info['mysekaiPhenomenaSchedules']

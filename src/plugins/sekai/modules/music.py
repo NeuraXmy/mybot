@@ -219,6 +219,8 @@ class SyncMusicAliasConfig:
     regions: List[str]
     url: str
     sync_times: List[Tuple[str, str, str]]
+    sync_batch_interval: int
+    sync_batch_size: int
 
     @classmethod
     def get(cls) -> 'SyncMusicAliasConfig':
@@ -242,6 +244,7 @@ async def sync_music_alias():
         try:
             url = cfg.url.format(mid=mid)
             data = await download_json(url)
+            await asyncio.sleep(cfg.sync_batch_interval)  
             assert data['music_id'] == mid
             aliases = data['aliases']
             # 排除韩语别名
@@ -255,8 +258,8 @@ async def sync_music_alias():
                 return True
             return False
         except Exception as e:
-            logger.print_exc(f"同步歌曲 {mid} 的别名失败")
-    updated_num = sum(await batch_gather(*[sync(mid) for mid in mids]))
+            logger.warning(f"同步歌曲 {mid} 的别名失败: {get_exc_desc(e)}")
+    updated_num = sum(await batch_gather(*[sync(mid) for mid in mids], batch_size=cfg.sync_batch_size))
     logger.info(f"别名同步完成，{updated_num} 首歌曲的别名发生变更")
     
 
