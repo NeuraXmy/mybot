@@ -1,12 +1,4 @@
-from nonebot import on_command
-from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import MessageEvent, Message, Bot, GroupMessageEvent
 from .run import run
-from nonebot import on_command
-from nonebot.params import CommandArg
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.v11 import Message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from ..utils import *
 
 config = get_config("run_code")
@@ -15,7 +7,7 @@ file_db = get_file_db("data/runcode/db.json", logger)
 cd = ColdDown(file_db, logger, config['cd'])
 gbl = get_group_black_list(file_db, logger, "runcode")
 
-runcode = CmdHandler(['/code, /run'], logger)
+runcode = CmdHandler(['/code', '/run'], logger)
 runcode.check_cdrate(cd).check_wblist(gbl)
 @runcode.handle()
 async def _(ctx: HandlerContext):
