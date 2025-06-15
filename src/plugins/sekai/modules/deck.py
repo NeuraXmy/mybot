@@ -821,7 +821,7 @@ async def compose_deck_recommend_image(
                         if recommend_type == "challenge":
                             ImageBox(chara_icon, size=(None, 50))
                             TextBox(f"{chara_name}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
-                        if recommend_type in ["wl", "wl_bonus"]:
+                        if recommend_type in ["wl"]:
                             ImageBox(wl_chara_icon, size=(None, 50))
                             TextBox(f"{wl_chara_name} 章节", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
                         if recommend_type == "unit_attr":
