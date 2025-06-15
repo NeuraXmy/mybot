@@ -633,6 +633,10 @@ async def do_deck_recommend(
         decks = sorted(decks, key=key_func, reverse=True)[:limit]
         src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
         res = DeckRecommendResult()
+        # 加成组卡的队伍按照加成排序
+        if options.target == "bonus":
+            for deck in decks:
+                deck.cards = sorted(deck.cards, key=lambda x: x.event_bonus_rate, reverse=True)
         res.decks = decks
         return res, src_algs, cost_times
 
@@ -901,9 +905,13 @@ async def compose_deck_recommend_image(
                             for deck in result_decks:
                                 if wl_chara_name:
                                     bonus = f"{deck.event_bonus_rate:.1f}+{deck.support_deck_bonus_rate:.1f}%"
+                                    total = f"{deck.event_bonus_rate+deck.support_deck_bonus_rate:.1f}%"
+                                    with VSplit().set_content_align('c').set_item_align('c').set_sep(4).set_padding(0).set_h(gh).set_offset((0, -voffset)):
+                                        TextBox(total, tb_style)
+                                        TextBox(bonus, TextStyle(font=DEFAULT_FONT, size=18, color=(100, 100, 100)))
                                 else:
                                     bonus = f"{deck.event_bonus_rate:.1f}%"
-                                TextBox(bonus, tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
+                                    TextBox(bonus, tb_style).set_h(gh).set_content_align('c').set_offset((0, -voffset))
 
                     # 实效
                     if options.live_type in ['multi', 'cheerful']:
