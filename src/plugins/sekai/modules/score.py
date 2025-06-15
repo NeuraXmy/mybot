@@ -169,6 +169,7 @@ async def compose_score_control_image(ctx: SekaiHandlerContext, target_point: in
 
     style1 = TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=BLACK)
     style2 = TextStyle(font=DEFAULT_FONT,      size=16, color=(50, 50, 50))
+    style3 = TextStyle(font=DEFAULT_BOLD_FONT, size=16, color=(255, 50, 50))
     
     with Canvas(bg=DEFAULT_BLUE_GRADIENT_BG).set_padding(BG_PADDING) as canvas:
         with VSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_item_bg(roundrect_bg()):
@@ -178,6 +179,7 @@ async def compose_score_control_image(ctx: SekaiHandlerContext, target_point: in
                     ImageBox(music_cover, size=(20, 20), use_alphablend=False)
                     TextBox(f"【{music_id}】{music_title}", style1)
                 TextBox(f"歌曲基础分 {music_basic_score}   目标活动点数 {target_point} PT", style1)
+                TextBox(f"友情提醒：控分前请核对加成和体力设置", style3)
             
             # 数据
             with HSplit().set_content_align('lt').set_item_align('lt').set_sep(8).set_omit_parent_bg(True).set_item_bg(roundrect_bg()):

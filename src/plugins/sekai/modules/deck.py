@@ -826,7 +826,9 @@ async def compose_deck_recommend_image(
                         
                         # TextBox(f"最高{target}", TextStyle(font=DEFAULT_BOLD_FONT, size=30, color=(70, 70, 70)))
 
-                    if recommend_type not in ["bonus", "wl_bonus"]:
+                    if recommend_type in ["bonus", "wl_bonus"]:
+                        TextBox(f"友情提醒：控分前请核对加成和体力设置", TextStyle(font=DEFAULT_BOLD_FONT, size=26, color=(255, 50, 50)))
+                    else:
                         with HSplit().set_content_align('l').set_item_align('l').set_sep(16):
                             with Frame().set_size((50, 50)):
                                 Spacer(w=50, h=50).set_bg(FillBg(fill=DIFF_COLORS[options.music_diff])).set_offset((6, 6))
