@@ -128,8 +128,8 @@ def add_watermark(canvas: Canvas, text: str=DEFAULT_WATERMARK, size=12):
     for item in items:
         frame_canvas.add_item(item)
     frame_watermark.add_item(frame_canvas)
-    frame_watermark.add_item(text1)
     frame_watermark.add_item(text2)
+    frame_watermark.add_item(text1)
     canvas.add_item(frame_watermark).set_size(None)
 
 
