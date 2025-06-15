@@ -56,21 +56,28 @@ async def handle_increase(group_id, user_id, sub_type):
     decrease_notified.discard(guid)
 
     try:
-        name = await get_group_member_name(bot, group_id, user_id)
-        name = f"{name}({user_id})"
+        nickname = await get_group_member_name(bot, group_id, user_id)
+        name = f"{nickname}({user_id})"
     except:
+        nickname = ""
         name = str(user_id)
 
-    if sub_type == 'approve':
-        msg = f"{name} 加入群聊"
-    elif sub_type == 'invite':
-        msg = f"{name} 被邀请进入群聊"
+    welcome_info = file_db.get(f'welcome_infos', {}).get(str(group_id))
+    if welcome_info:
+        msg = welcome_info
+        if "{user}" in msg:
+            msg = msg.replace("{user}", nickname)
+        if "{user_id}" in msg:
+            msg = msg.replace("{user_id}", str(user_id))
+        if "@" in msg:
+            msg = msg.replace("@", f"[CQ:at,qq={user_id}]")
     else:
-        msg = f"{name} 加入群聊"
-
-    welcome_infos = file_db.get(f'welcome_infos', {})
-    if group_id in welcome_infos:
-        msg += f"\n{welcome_infos[group_id]}"
+        if sub_type == 'approve':
+            msg = f"{name} 加入群聊"
+        elif sub_type == 'invite':
+            msg = f"{name} 被邀请进入群聊"
+        else:
+            msg = f"{name} 加入群聊"
 
     await send_group_msg_by_bot(bot, group_id, msg)
     await asyncio.sleep(3)
@@ -103,8 +110,8 @@ join = on_notice()
 async def _(bot: Bot, event: NoticeEvent):
     if event.notice_type == 'group_increase':
         return await handle_increase(event.group_id, event.user_id, event.sub_type)
-    if event.notice_type == 'group_decrease':
-        return await handle_decrease(event.group_id, event.user_id, event.sub_type)
+    # if event.notice_type == 'group_decrease':
+    #     return await handle_decrease(event.group_id, event.user_id, event.sub_type)
 
 
 # 定时更新
@@ -114,12 +121,12 @@ start_repeat_with_interval(GROUP_INFO_UPDATE_INTERVAL, update_member_info, logge
 
 
 # 设置入群欢迎信息
-welcome_info = CmdHandler(["/welcome info", "/入群信息"], logger)
+welcome_info = CmdHandler(["/welcome info", "/入群信息", "/欢迎信息"], logger)
 welcome_info.check_wblist(gwl).check_superuser()
 @welcome_info.handle()
 async def _(ctx: HandlerContext):
     text = ctx.get_args().strip()
-    group_id = ctx.group_id
+    group_id = str(ctx.group_id)
     if not text:
         welcome_infos = file_db.get(f'welcome_infos', {})
         del welcome_infos[group_id]
