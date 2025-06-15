@@ -1019,7 +1019,7 @@ async def _(ctx: SekaiHandlerContext):
 # 加成组卡
 pjsk_bonus_deck = SekaiCmdHandler([
     "/pjsk bonus deck", "/pjsk_bonus_deck", "/pjsk bonus card", "/pjsk_bonus_card",
-    "/加成组卡", "/加成组队", "/加成卡组",
+    "/加成组卡", "/加成组队", "/加成卡组", "/控分组卡", "/控分组队", "/控分卡组",
 ], regions=['jp', 'cn', 'tw'])
 pjsk_bonus_deck.check_cdrate(cd).check_wblist(gbl)
 @pjsk_bonus_deck.handle()
