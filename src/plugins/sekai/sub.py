@@ -143,7 +143,7 @@ USER_UNSUB_COMMANDS = [
 class SekaiUserSubHelper:
     all_subs: List['SekaiUserSubHelper'] = []
 
-    def __init__(self, id: str, name: str, regions: List[str], related_group_sub: SekaiGroupSubHelper = None):
+    def __init__(self, id: str, name: str, regions: List[str], related_group_sub: SekaiGroupSubHelper = None, only_one_group=False):
         self.id = id
         self.name = name
         self.regions = regions
@@ -157,6 +157,7 @@ class SekaiUserSubHelper:
                 val_fn=lambda x: list(map(int, x.split("@")))
             ) for region, region_name in zip(regions, ALL_SERVER_REGION_NAMES)
         }
+        self.only_one_group = only_one_group
         self._register_handlers()
         SekaiUserSubHelper.all_subs.append(self)
 
@@ -166,8 +167,17 @@ class SekaiUserSubHelper:
         sub.check_cdrate(cd).check_wblist(gbl)
         @sub.handle()
         async def _(ctx: SekaiHandlerContext):
+            has_other_group_sub = False
+            if self.only_one_group:
+                # 检测是否在其他群聊订阅
+                for uid, gid in self.subs[ctx.region].get_all():
+                    if uid == ctx.user_id and gid != ctx.group_id:
+                        has_other_group_sub = True
+                        self.subs[ctx.region].unsub(uid, gid)
             self.subs[ctx.region].sub(ctx.user_id, ctx.group_id)
             msg = f"成功订阅 {self.name}({get_region_name(ctx.region)})\n"
+            if has_other_group_sub:
+                msg += "已自动取消你在其他群聊的订阅\n"
             # 对应群聊功能未开启
             if self.related_group_sub and ctx.group_id not in self.related_group_sub.get_all(ctx.region):
                 msg += f"该订阅对应的群聊功能 {self.related_group_sub.name}({get_region_name(ctx.region)}) 在本群未开启！"

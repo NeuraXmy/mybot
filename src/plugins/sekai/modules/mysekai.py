@@ -19,7 +19,7 @@ from .profile import (
 from .music import get_music_cover_thumb
 
 
-msr_sub = SekaiUserSubHelper("msr", "烤森资源查询自动推送", ['jp'])
+msr_sub = SekaiUserSubHelper("msr", "烤森资源查询自动推送", ['jp'], only_one_group=True)
 
 MYSEKAI_HARVEST_MAP_IMAGE_SCALE = 0.8
 
