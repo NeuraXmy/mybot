@@ -697,6 +697,20 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
     scores = [rank.score for rank in ranks]
     pred_scores = []
     pred_times = []
+
+    # 时速计算
+    speeds = []
+    min_period = timedelta(minutes=20)
+    max_period = timedelta(minutes=60)
+    left = 0
+    for right in range(0, len(ranks)):
+        while ranks[right].time - ranks[left].time > max_period:
+            left += 1
+        if min_period <= ranks[right].time - ranks[left].time <= max_period:
+            speed = (ranks[right].score - ranks[left].score) / (ranks[right].time - ranks[left].time).total_seconds() * 3600
+            speeds.append(speed)
+        else:
+            speeds.append(-1)
     
     # 附加排名预测
     try:
@@ -729,14 +743,19 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
                      color='blue', fontsize=12, ha='right')
 
         if pred_scores:
-            ax2 = ax.twinx()
-            ax2.plot(pred_times, pred_scores, 'o--', label='预测', color='red', markersize=2, linewidth=1)
-            ax2.set_ylim(min_score * 0.95, max_score * 1.05)
-            ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: ""))
-            ax2.legend(loc='lower right')
+            ax.plot(pred_times, pred_scores, 'o--', label='预测', color='red', markersize=2, linewidth=1)
+            ax.set_ylim(min_score * 0.95, max_score * 1.05)
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: ""))
+            ax.legend(loc='lower right')
             plt.annotate(f"{get_board_score_str(pred_scores[-1])}", xy=(pred_times[-1], pred_scores[-1]), xytext=(pred_times[-1], pred_scores[-1]), 
                          color='red', fontsize=12, ha='right')
 
+        ax2 = ax.twinx()
+        ax2.plot(times, speeds, 'o', label='换算时速', color='green', markersize=0.5, linewidth=0.5)
+        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(int(x)) + "/h"))
+        ax2.set_ylim(0, max(speeds) * 1.05)
+        ax2.legend(loc='upper left')
+        
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         fig.autofmt_xdate()
