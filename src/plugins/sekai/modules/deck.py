@@ -43,8 +43,9 @@ MUSICMETAS_SAVE_PATH = f"{SEKAI_ASSET_DIR}/music_metas.json"
 DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL = timedelta(days=1)
 
 data_update_lock = asyncio.Lock()
-last_deck_recommend_masterdata_version: Dict[str, datetime] = {}
-last_deck_recommend_musicmeta_update_time: Dict[str, datetime] = {}
+last_deck_recommend_masterdata_version: Dict[str, str] = {}
+last_deck_recommend_masterdata_update_time: Dict[str, datetime] = {} 
+last_deck_recommend_musicmetas_update_time: Dict[str, datetime] = {}
 
 
 # ======================= 默认配置 ======================= #
@@ -489,157 +490,9 @@ async def extract_bonus_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     return options
 
 
-# ======================= Worker ======================= #
-
-RECOMMEND_WORKER_NUM = 4
-recommend_workers: List[multiprocessing.Process] = None
-recommend_dataupdate_queues: List[multiprocessing.Queue] = None
-recommend_options_queue: multiprocessing.Queue = None
-recommend_results_queue: multiprocessing.Queue = None
-recommend_results_retrieve_thread: Optional[threading.Thread] = None
-recommend_results_futs: Dict[int, asyncio.Future] = {}
-recommend_seq_top = 0
-
-@dataclass
-class RecommendTaskResult:
-    seq: int
-    index: int
-    alg: str
-    cost_time: float
-    wait_time: float
-    result: DeckRecommendResult
-
-# 自动组卡worker
-def deck_recommend_worker(index: int):
-    global recommend_dataupdate_queues
-    global recommend_options_queue
-    global recommend_results_queue
-
-    worker_name = f"DeckRecommendWorker{index}"
-    recommender = SekaiDeckRecommend()
-
-    while True:
-        try:
-            # 获取组卡任务
-            data = recommend_options_queue.get()
-            seq = data['seq']
-            wait_time = (datetime.now() - datetime.fromtimestamp(data['start'])).total_seconds()
-            options = DeckRecommendOptions.from_dict(data['options'])
-
-            # 处理数据更新任务
-            while recommend_dataupdate_queues[index].qsize():
-                update = recommend_dataupdate_queues[index].get()
-                if update['type'] == 'masterdata':
-                    recommender.update_masterdata(update['path'], update['region'])
-                    logger.info(f"{worker_name} 已更新 {update['region']} MasterData")
-                elif update['type'] == 'musicmetas':
-                    recommender.update_musicmetas(update['path'], update['region'])
-                    logger.info(f"{worker_name} 已更新 {update['region']} MusicMetas")
-
-            # 执行组卡
-            logger.info(f"{worker_name} 开始处理组卡任务{seq}")
-            start_time = datetime.now()
-            result = recommender.recommend(options)
-            cost_time = (datetime.now() - start_time).total_seconds()
-            logger.info(f"{worker_name} 处理组卡任务{seq}完成 ({cost_time:.2f}s)")
-
-            # 返回结果
-            result_data = {
-                'seq': seq, 'index': index, 'alg': options.algorithm, 
-                'cost_time': cost_time, 'wait_time': wait_time,
-                'result': result.to_dict()
-            }
-            recommend_results_queue.put_nowait(result_data)
-
-        except Exception as e:
-            logger.print_exc(f"{worker_name} 处理组卡任务失败")
-
-# 获取结果并返回给future
-def retrieve_recommend_results():
-    global recommend_results_queue
-    global recommend_results_futs
-    while True:
-        try:
-            result = recommend_results_queue.get()
-            seq = result['seq']
-            result = RecommendTaskResult(
-                seq=seq, 
-                index=result['index'], 
-                alg=result['alg'],
-                cost_time=result['cost_time'],
-                wait_time=result['wait_time'],
-                result=DeckRecommendResult.from_dict(result['result']),
-            )
-            if seq in recommend_results_futs:
-                fut = recommend_results_futs.pop(seq)
-                if not fut.done():
-                    fut.set_result(result)
-            else:
-                logger.warning(f"组卡结果{seq} 未找到对应的Future")
-        except Exception as e:
-            logger.print_exc(f"获取组卡结果失败")
-
-# 初始化workers
-def init_workers():
-    global recommend_workers
-    global recommend_dataupdate_queues
-    global recommend_options_queue
-    global recommend_results_queue
-    global recommend_results_retrieve_thread
-    if recommend_workers is None:
-        recommend_dataupdate_queues = [multiprocessing.Queue() for _ in range(RECOMMEND_WORKER_NUM)]
-        recommend_options_queue = multiprocessing.Queue()
-        recommend_results_queue = multiprocessing.Queue()
-        # 启动workers
-        recommend_workers = [
-            multiprocessing.Process(
-                target=deck_recommend_worker, 
-                args=(i,), 
-                name=f"DeckRecommendWorker{i}", 
-                daemon=True
-            ) for i in range(RECOMMEND_WORKER_NUM)
-        ]
-        for worker in recommend_workers:
-            worker.start()
-        # 启动结果获取线程
-        recommend_results_retrieve_thread = threading.Thread(
-            target=retrieve_recommend_results, 
-            name="DeckRecommendResultsRetriever", 
-            daemon=True,
-        )
-        recommend_results_retrieve_thread.start()
-        logger.info(f"初始化 {len(recommend_workers)} 个自动组卡 Workers")
-
-# 广播数据更新任务
-def broadcast_data_update(region: str, type: str, path: str):
-    init_workers()
-    global recommend_dataupdate_queues
-    update = {'type': type, 'region': region, 'path': path}
-    for queue in recommend_dataupdate_queues:
-        queue.put_nowait(update)
-
-# 添加组卡任务
-def add_recommend_task(options: DeckRecommendOptions) -> asyncio.Future[DeckRecommendResult]:
-    init_workers()
-    global recommend_options_queue
-    global recommend_results_futs
-    global recommend_seq_top
-
-    seq = recommend_seq_top
-    recommend_seq_top += 1
-    data = {
-        'seq': seq, 'start': datetime.now().timestamp(),
-        'options': options.to_dict(),
-    }
-    fut = asyncio.Future()
-
-    recommend_results_futs[seq] = fut
-    recommend_options_queue.put_nowait(data)
-
-    return fut
-
-
 # ======================= 处理逻辑 ======================= #
+
+RECOMMEND_SERVE_URL = "http://localhost:45556/recommend"
 
 # 获取deck的hash
 def get_deck_hash(deck: RecommendDeck) -> str:
@@ -674,11 +527,13 @@ async def do_deck_recommend(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
 ) -> Tuple[DeckRecommendResult, List[str], Dict[str, Tuple[timedelta, timedelta]]]:
+    # 检查数据更新
     async with data_update_lock:
         global last_deck_recommend_masterdata_version
-        global last_deck_recommend_musicmeta_update_time
+        global last_deck_recommend_masterdata_update_time
+        global last_deck_recommend_musicmetas_update_time
         
-        # 准备masterdata
+        # 更新masterdata
         if last_deck_recommend_masterdata_version.get(ctx.region) != await ctx.md.get_version():
             logger.info(f"重新加载本地自动组卡 {ctx.region} masterdata")
             # 确保所有masterdata就绪
@@ -719,12 +574,12 @@ async def do_deck_recommend(
                     ctx.md.mysekai_gate_levels.get(),
                 ]
             await asyncio.gather(*mds)
-            broadcast_data_update(ctx.region, 'masterdata', f"{SEKAI_ASSET_DIR}/masterdata/{ctx.region}/")
             last_deck_recommend_masterdata_version[ctx.region] = await ctx.md.get_version()
+            last_deck_recommend_masterdata_update_time[ctx.region] = datetime.now()
 
-        # 准备musicmetas
-        if last_deck_recommend_musicmeta_update_time.get(ctx.region) is None \
-            or datetime.now() - last_deck_recommend_musicmeta_update_time[ctx.region] > DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL:
+        # 更新musicmetas
+        if last_deck_recommend_musicmetas_update_time.get(ctx.region) is None \
+            or datetime.now() - last_deck_recommend_musicmetas_update_time[ctx.region] > DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL:
             logger.info(f"重新加载本地自动组卡 {ctx.region} musicmetas")
             try:
                 # 尝试从网络下载
@@ -737,8 +592,7 @@ async def do_deck_recommend(
                     logger.info(f"使用本地缓存music_metas.json")
                 else:
                     raise ReplyException(f"获取music_metas.json失败: {get_exc_desc(e)}")
-            broadcast_data_update(ctx.region, 'musicmetas', MUSICMETAS_SAVE_PATH)
-            last_deck_recommend_musicmeta_update_time[ctx.region] = datetime.now()
+            last_deck_recommend_musicmetas_update_time[ctx.region] = datetime.now()
 
     # 算法选择
     if options.algorithm == "all": 
@@ -746,27 +600,51 @@ async def do_deck_recommend(
     else:
         algs = [options.algorithm]
 
+    # 请求组卡函数
+    async def request_recommend(options: DeckRecommendOptions) -> dict:
+        payload = {
+            'create_ts': datetime.now().timestamp(),
+            'region': options.region,
+            'masterdata_path': f"{SEKAI_ASSET_DIR}/masterdata/{options.region}/",
+            'masterdata_update_ts': last_deck_recommend_masterdata_update_time[options.region].timestamp(),
+            'musicmetas_path': MUSICMETAS_SAVE_PATH,
+            'musicmetas_update_ts': last_deck_recommend_musicmetas_update_time[options.region].timestamp(),
+            'options': options.to_dict(),
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(RECOMMEND_SERVE_URL, json=payload) as resp:
+                if resp.status != 200:
+                    raise ReplyException(f"组卡请求失败: HTTP {resp.status}")
+                data = await resp.json()
+                if data['status'] != 'success':
+                    raise ReplyException(data['exception'])
+                return data
+
     # 组卡!
     futs = []
     for alg in algs:
         opt = DeckRecommendOptions(options)
         opt.algorithm = alg
-        futs.append(add_recommend_task(opt))
-    results: List[RecommendTaskResult] = await asyncio.gather(*futs)
+        futs.append(request_recommend(opt))
+    results: List[dict] = await asyncio.gather(*futs)
 
     # 结果排序去重
     decks: List[RecommendDeck] = []
     cost_and_wait_times = {}
     deck_src_alg = {}
-    for r in results:
-        cost_and_wait_times[r.alg] = (r.cost_time, r.wait_time)
-        for deck in r.result.decks:
+    for resp in results:
+        alg = resp['alg']
+        cost_time = resp['cost_time']
+        wait_time = resp['wait_time']
+        result = DeckRecommendResult.from_dict(resp['result'])
+        cost_and_wait_times[alg] = (cost_time, wait_time)
+        for deck in result.decks:
             deck_hash = get_deck_hash(deck)
             if deck_hash not in deck_src_alg:
-                deck_src_alg[deck_hash] = r.alg
+                deck_src_alg[deck_hash] = alg
                 decks.append(deck)
             else:
-                deck_src_alg[deck_hash] += "+" + r.alg
+                deck_src_alg[deck_hash] += "+" + alg
     def key_func(deck: RecommendDeck):
         if options.target == "score":
             return deck.score
