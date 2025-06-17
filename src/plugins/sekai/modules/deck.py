@@ -20,9 +20,9 @@ from sekai_deck_recommend import (
     DeckRecommendSaOptions,
     RecommendDeck,
 )
+import multiprocessing
 
 
-deck_recommend = SekaiDeckRecommend()
 RECOMMEND_TIMEOUT = timedelta(seconds=5)
 NO_EVENT_RECOMMEND_TIMEOUT = timedelta(seconds=10)
 SINGLE_ALG_RECOMMEND_TIMEOUT = timedelta(seconds=60)
@@ -33,10 +33,6 @@ RECOMMEND_ALG_NAMES = {
     'sa': '模拟退火',
     'ga': '遗传算法',
 }
-deck_recommend_pool = ThreadPoolExecutor(max_workers=len(RECOMMEND_ALGS))
-deck_recommend_lock = asyncio.Lock()
-
-last_deck_recommend_masterdata_version: Dict[str, datetime] = {}
 
 musicmetas_json = WebJsonRes(
     name="MusicMeta", 
@@ -44,8 +40,11 @@ musicmetas_json = WebJsonRes(
     update_interval=timedelta(hours=1),
 )
 MUSICMETAS_SAVE_PATH = f"{SEKAI_ASSET_DIR}/music_metas.json"
-last_deck_recommend_musicmeta_update_time: Dict[str, datetime] = {}
 DECK_RECOMMEND_MUSICMETAS_UPDATE_INTERVAL = timedelta(days=1)
+
+data_update_lock = asyncio.Lock()
+last_deck_recommend_masterdata_version: Dict[str, datetime] = {}
+last_deck_recommend_musicmeta_update_time: Dict[str, datetime] = {}
 
 
 # ======================= 默认配置 ======================= #
@@ -89,7 +88,83 @@ NOCHANGE_CARD_CONFIG.skill_max = False
 DEFAULT_LIMIT = 8
 BONUS_TARGET_LIMIT = 1
 
+
 # ======================= 参数获取 ======================= #
+
+# 从args获取组卡目标活动（如果是wl则会同时返回cid）返回 (活动, cid, 剩余参数)
+async def extract_target_event(
+    ctx: SekaiHandlerContext, 
+    args: str,
+) -> Tuple[dict, Optional[int], str]:
+    # 是否指定了活动id/章节id/角色昵称
+    event_id, chapter_id, chapter_nickname = None, None, None
+    event_match = re.search(r"event(\d+)", args)
+    if event_match:
+        event_id = int(event_match.group(1))
+        args = args.replace(event_match.group(0), "").strip()
+    for i in range(1, 10):
+        if f"wl{i}" in args:
+            chapter_id = i
+            args = args.replace(f"wl{i}", "").strip()
+            break
+    for item in CHARACTER_NICKNAME_DATA:
+        for nickname in item['nicknames']:
+            if nickname in args:
+                chapter_nickname = nickname
+                args = args.replace(nickname, "").strip()
+                break
+
+    if not event_id:
+        # 获取默认活动：寻找 开始时间-两天 <= 当前 <= 结束时间 的最晚的活动
+        ok_events = []
+        for event in await ctx.md.events.get():
+            start_time = datetime.fromtimestamp(event['startAt'] / 1000)
+            end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
+            if start_time - timedelta(days=2) <= datetime.now() <= end_time:
+                ok_events.append(event)
+        assert_and_reply(ok_events, """
+找不到正在进行的/即将开始的活动，使用\"/组卡\"指定团队+属性组卡，或使用\"/活动组卡help\"查看如何组往期活动
+""".strip())
+        ok_events.sort(key=lambda x: x['startAt'], reverse=True)
+        event = ok_events[0]
+    else:
+        event = await ctx.md.events.find_by_id(event_id)
+        assert_and_reply(event, f"活动 {event_id} 不存在")
+
+    wl_events = await get_wl_events(ctx, event['id'])
+    if wl_events:
+        if not chapter_id and not chapter_nickname:
+            # 获取默认章节
+            if datetime.now() < datetime.fromtimestamp(event['startAt'] / 1000):
+                # 活动还没开始，默认使用第一个章节
+                wl_events.sort(key=lambda x: x['startAt'])
+                chapter = wl_events[0]
+            else:
+                # 否则寻找 开始时间-半天 <= 当前 <= 结束时间 的最晚的章节
+                ok_chapters = []
+                for chapter in wl_events:
+                    start_time = datetime.fromtimestamp(chapter['startAt'] / 1000)
+                    end_time = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
+                    if start_time - timedelta(hours=12) <= datetime.now() <= end_time:
+                        ok_chapters.append(chapter)
+                assert_and_reply(ok_chapters, f"请指定一个要查询的WL章节，例如 event112 wl1 或 event112 miku")
+                ok_chapters.sort(key=lambda x: x['startAt'], reverse=True)
+                chapter = ok_chapters[0]
+        elif chapter_id:
+            chapter = find_by(wl_events, "id", 1000 * chapter_id + event['id'])
+            assert_and_reply(chapter, f"活动 {event['id']} 没有章节 {chapter_id}")
+        else: 
+            cid = get_cid_by_nickname(chapter_nickname)
+            chapter = find_by(wl_events, "wl_cid", cid)
+            assert_and_reply(chapter, f"活动 {event['id']} 没有 {chapter_nickname} 的章节 ")
+
+        wl_cid = chapter['wl_cid']
+
+    else:
+        assert_and_reply(not chapter_id, f"活动 {event['id']} 不是WL活动，无法指定章节")
+        wl_cid = None
+
+    return event, wl_cid, args
 
 # 从args中提取组卡目标
 def extract_target(args: str, options: DeckRecommendOptions) -> str:
@@ -414,87 +489,162 @@ async def extract_bonus_options(ctx: SekaiHandlerContext, args: str) -> DeckReco
     return options
 
 
+# ======================= Worker ======================= #
+
+RECOMMEND_WORKER_NUM = 4
+recommend_workers: List[multiprocessing.Process] = None
+recommend_dataupdate_queues: List[multiprocessing.Queue] = None
+recommend_options_queue: multiprocessing.Queue = None
+recommend_results_queue: multiprocessing.Queue = None
+recommend_results_retrieve_thread: Optional[threading.Thread] = None
+recommend_results_futs: Dict[int, asyncio.Future] = {}
+recommend_seq_top = 0
+
+@dataclass
+class RecommendTaskResult:
+    seq: int
+    index: int
+    alg: str
+    cost_time: float
+    wait_time: float
+    result: DeckRecommendResult
+
+# 自动组卡worker
+def deck_recommend_worker(index: int):
+    global recommend_dataupdate_queues
+    global recommend_options_queue
+    global recommend_results_queue
+
+    worker_name = f"DeckRecommendWorker{index}"
+    recommender = SekaiDeckRecommend()
+
+    while True:
+        try:
+            # 获取组卡任务
+            data = recommend_options_queue.get()
+            seq = data['seq']
+            wait_time = (datetime.now() - datetime.fromtimestamp(data['start'])).total_seconds()
+            options = DeckRecommendOptions.from_dict(data['options'])
+
+            # 处理数据更新任务
+            while recommend_dataupdate_queues[index].qsize():
+                update = recommend_dataupdate_queues[index].get()
+                if update['type'] == 'masterdata':
+                    recommender.update_masterdata(update['path'], update['region'])
+                    logger.info(f"{worker_name} 已更新 {update['region']} MasterData")
+                elif update['type'] == 'musicmetas':
+                    recommender.update_musicmetas(update['path'], update['region'])
+                    logger.info(f"{worker_name} 已更新 {update['region']} MusicMetas")
+
+            # 执行组卡
+            logger.info(f"{worker_name} 开始处理组卡任务{seq}")
+            start_time = datetime.now()
+            result = recommender.recommend(options)
+            cost_time = (datetime.now() - start_time).total_seconds()
+            logger.info(f"{worker_name} 处理组卡任务{seq}完成 ({cost_time:.2f}s)")
+
+            # 返回结果
+            result_data = {
+                'seq': seq, 'index': index, 'alg': options.algorithm, 
+                'cost_time': cost_time, 'wait_time': wait_time,
+                'result': result.to_dict()
+            }
+            recommend_results_queue.put_nowait(result_data)
+
+        except Exception as e:
+            logger.print_exc(f"{worker_name} 处理组卡任务失败")
+
+# 获取结果并返回给future
+def retrieve_recommend_results():
+    global recommend_results_queue
+    global recommend_results_futs
+    while True:
+        try:
+            result = recommend_results_queue.get()
+            seq = result['seq']
+            result = RecommendTaskResult(
+                seq=seq, 
+                index=result['index'], 
+                alg=result['alg'],
+                cost_time=result['cost_time'],
+                wait_time=result['wait_time'],
+                result=DeckRecommendResult.from_dict(result['result']),
+            )
+            if seq in recommend_results_futs:
+                fut = recommend_results_futs.pop(seq)
+                if not fut.done():
+                    fut.set_result(result)
+            else:
+                logger.warning(f"组卡结果{seq} 未找到对应的Future")
+        except Exception as e:
+            logger.print_exc(f"获取组卡结果失败")
+
+# 初始化workers
+def init_workers():
+    global recommend_workers
+    global recommend_dataupdate_queues
+    global recommend_options_queue
+    global recommend_results_queue
+    global recommend_results_retrieve_thread
+    if recommend_workers is None:
+        recommend_dataupdate_queues = [multiprocessing.Queue() for _ in range(RECOMMEND_WORKER_NUM)]
+        recommend_options_queue = multiprocessing.Queue()
+        recommend_results_queue = multiprocessing.Queue()
+        # 启动workers
+        recommend_workers = [
+            multiprocessing.Process(
+                target=deck_recommend_worker, 
+                args=(i,), 
+                name=f"DeckRecommendWorker{i}", 
+                daemon=True
+            ) for i in range(RECOMMEND_WORKER_NUM)
+        ]
+        for worker in recommend_workers:
+            worker.start()
+        # 启动结果获取线程
+        recommend_results_retrieve_thread = threading.Thread(
+            target=retrieve_recommend_results, 
+            name="DeckRecommendResultsRetriever", 
+            daemon=True,
+        )
+        recommend_results_retrieve_thread.start()
+        logger.info(f"初始化 {len(recommend_workers)} 个自动组卡 Workers")
+
+# 广播数据更新任务
+def broadcast_data_update(region: str, type: str, path: str):
+    init_workers()
+    global recommend_dataupdate_queues
+    update = {'type': type, 'region': region, 'path': path}
+    for queue in recommend_dataupdate_queues:
+        queue.put_nowait(update)
+
+# 添加组卡任务
+def add_recommend_task(options: DeckRecommendOptions) -> asyncio.Future[DeckRecommendResult]:
+    init_workers()
+    global recommend_options_queue
+    global recommend_results_futs
+    global recommend_seq_top
+
+    seq = recommend_seq_top
+    recommend_seq_top += 1
+    data = {
+        'seq': seq, 'start': datetime.now().timestamp(),
+        'options': options.to_dict(),
+    }
+    fut = asyncio.Future()
+
+    recommend_results_futs[seq] = fut
+    recommend_options_queue.put_nowait(data)
+
+    return fut
+
+
 # ======================= 处理逻辑 ======================= #
 
 # 获取deck的hash
 def get_deck_hash(deck: RecommendDeck) -> str:
     deck_hash = str(deck.score) + str(deck.total_power) + str(deck.cards[0].card_id)
     return deck_hash
-
-# 从参数获取组卡目标活动（如果是wl则会同时返回cid）返回 (活动, cid, 剩余参数)
-async def extract_target_event(
-    ctx: SekaiHandlerContext, 
-    args: str,
-) -> Tuple[dict, Optional[int], str]:
-    # 是否指定了活动id/章节id/角色昵称
-    event_id, chapter_id, chapter_nickname = None, None, None
-    event_match = re.search(r"event(\d+)", args)
-    if event_match:
-        event_id = int(event_match.group(1))
-        args = args.replace(event_match.group(0), "").strip()
-    for i in range(1, 10):
-        if f"wl{i}" in args:
-            chapter_id = i
-            args = args.replace(f"wl{i}", "").strip()
-            break
-    for item in CHARACTER_NICKNAME_DATA:
-        for nickname in item['nicknames']:
-            if nickname in args:
-                chapter_nickname = nickname
-                args = args.replace(nickname, "").strip()
-                break
-
-    if not event_id:
-        # 获取默认活动：寻找 开始时间-两天 <= 当前 <= 结束时间 的最晚的活动
-        ok_events = []
-        for event in await ctx.md.events.get():
-            start_time = datetime.fromtimestamp(event['startAt'] / 1000)
-            end_time = datetime.fromtimestamp(event['aggregateAt'] / 1000 + 1)
-            if start_time - timedelta(days=2) <= datetime.now() <= end_time:
-                ok_events.append(event)
-        assert_and_reply(ok_events, """
-找不到正在进行的/即将开始的活动，使用\"/组卡\"指定团队+属性组卡，或使用\"/活动组卡help\"查看如何组往期活动
-""".strip())
-        ok_events.sort(key=lambda x: x['startAt'], reverse=True)
-        event = ok_events[0]
-    else:
-        event = await ctx.md.events.find_by_id(event_id)
-        assert_and_reply(event, f"活动 {event_id} 不存在")
-
-    wl_events = await get_wl_events(ctx, event['id'])
-    if wl_events:
-        if not chapter_id and not chapter_nickname:
-            # 获取默认章节
-            if datetime.now() < datetime.fromtimestamp(event['startAt'] / 1000):
-                # 活动还没开始，默认使用第一个章节
-                wl_events.sort(key=lambda x: x['startAt'])
-                chapter = wl_events[0]
-            else:
-                # 否则寻找 开始时间-半天 <= 当前 <= 结束时间 的最晚的章节
-                ok_chapters = []
-                for chapter in wl_events:
-                    start_time = datetime.fromtimestamp(chapter['startAt'] / 1000)
-                    end_time = datetime.fromtimestamp(chapter['aggregateAt'] / 1000 + 1)
-                    if start_time - timedelta(hours=12) <= datetime.now() <= end_time:
-                        ok_chapters.append(chapter)
-                assert_and_reply(ok_chapters, f"请指定一个要查询的WL章节，例如 event112 wl1 或 event112 miku")
-                ok_chapters.sort(key=lambda x: x['startAt'], reverse=True)
-                chapter = ok_chapters[0]
-        elif chapter_id:
-            chapter = find_by(wl_events, "id", 1000 * chapter_id + event['id'])
-            assert_and_reply(chapter, f"活动 {event['id']} 没有章节 {chapter_id}")
-        else: 
-            cid = get_cid_by_nickname(chapter_nickname)
-            chapter = find_by(wl_events, "wl_cid", cid)
-            assert_and_reply(chapter, f"活动 {event['id']} 没有 {chapter_nickname} 的章节 ")
-
-        wl_cid = chapter['wl_cid']
-
-    else:
-        assert_and_reply(not chapter_id, f"活动 {event['id']} 不是WL活动，无法指定章节")
-        wl_cid = None
-
-    return event, wl_cid, args
 
 # 打印组卡配置
 def log_options(ctx: SekaiHandlerContext, user_id: int, options: DeckRecommendOptions):
@@ -515,15 +665,16 @@ def log_options(ctx: SekaiHandlerContext, user_id: int, options: DeckRecommendOp
     log += f"rarity2={cardconfig2str(options.rarity_2_config)}, "
     log += f"rarity3={cardconfig2str(options.rarity_3_config)}, "
     log += f"rarity4={cardconfig2str(options.rarity_4_config)}, "
-    log += f"rarity_bd={options.rarity_birthday_config}, "
+    log += f"rarity_bd={cardconfig2str(options.rarity_birthday_config)}, "
+    log += f"fixed_cards={options.fixed_cards}"
     logger.info(log)
 
-# 本地自动组卡实现 返回(结果，结果算法来源，{算法:耗时})
+# 自动组卡实现 返回Tuple[结果，结果算法来源，Dict[算法: Tuple[耗时，等待时间]]]
 async def do_deck_recommend(
     ctx: SekaiHandlerContext, 
     options: DeckRecommendOptions,
-) -> Tuple[DeckRecommendResult, List[str], Dict[str, timedelta]]:
-    async with deck_recommend_lock:
+) -> Tuple[DeckRecommendResult, List[str], Dict[str, Tuple[timedelta, timedelta]]]:
+    async with data_update_lock:
         global last_deck_recommend_masterdata_version
         global last_deck_recommend_musicmeta_update_time
         
@@ -568,7 +719,7 @@ async def do_deck_recommend(
                     ctx.md.mysekai_gate_levels.get(),
                 ]
             await asyncio.gather(*mds)
-            deck_recommend.update_masterdata(f"{SEKAI_ASSET_DIR}/masterdata/{ctx.region}/", ctx.region)
+            broadcast_data_update(ctx.region, 'masterdata', f"{SEKAI_ASSET_DIR}/masterdata/{ctx.region}/")
             last_deck_recommend_masterdata_version[ctx.region] = await ctx.md.get_version()
 
         # 准备musicmetas
@@ -586,61 +737,57 @@ async def do_deck_recommend(
                     logger.info(f"使用本地缓存music_metas.json")
                 else:
                     raise ReplyException(f"获取music_metas.json失败: {get_exc_desc(e)}")
-            deck_recommend.update_musicmetas(MUSICMETAS_SAVE_PATH, ctx.region)
+            broadcast_data_update(ctx.region, 'musicmetas', MUSICMETAS_SAVE_PATH)
             last_deck_recommend_musicmeta_update_time[ctx.region] = datetime.now()
 
-        # 算法选择
-        if options.algorithm == "all": 
-            algs = RECOMMEND_ALGS
-        else:
-            algs = [options.algorithm]
+    # 算法选择
+    if options.algorithm == "all": 
+        algs = RECOMMEND_ALGS
+    else:
+        algs = [options.algorithm]
 
-        # 组卡!
-        results: List[Tuple[DeckRecommendResult, str, timedelta]] = []
-        for alg in algs:
-            opt = DeckRecommendOptions(options)
-            opt.algorithm = alg
-            def do_recommend(opt: DeckRecommendOptions) -> Tuple[DeckRecommendResult, str, timedelta]:
-                start_time = datetime.now()
-                res = deck_recommend.recommend(opt)
-                cost_time = datetime.now() - start_time
-                return res, opt.algorithm, cost_time
-            results.append(await run_in_pool(do_recommend, opt, pool=deck_recommend_pool))
+    # 组卡!
+    futs = []
+    for alg in algs:
+        opt = DeckRecommendOptions(options)
+        opt.algorithm = alg
+        futs.append(add_recommend_task(opt))
+    results: List[RecommendTaskResult] = await asyncio.gather(*futs)
 
-        # 结果排序去重
-        decks: List[RecommendDeck] = []
-        cost_times = {}
-        deck_src_alg = {}
-        for res, alg, cost_time in results:
-            cost_times[alg] = cost_time
-            for deck in res.decks:
-                deck_hash = get_deck_hash(deck)
-                if deck_hash not in deck_src_alg:
-                    deck_src_alg[deck_hash] = alg
-                    decks.append(deck)
-                else:
-                    deck_src_alg[deck_hash] += "+" + alg
-        def key_func(deck: RecommendDeck):
-            if options.target == "score":
-                return deck.score
-            elif options.target == "power":
-                return deck.total_power
-            elif options.target == "skill":
-                return deck.expect_skill_score_up
-            elif options.target == "bonus":
-                return (-deck.event_bonus_rate, deck.score)
-        limit = options.limit if options.target != "bonus" else options.limit * len(options.target_bonus_list)
-        decks = sorted(decks, key=key_func, reverse=True)[:limit]
-        src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
-        res = DeckRecommendResult()
-        # 加成组卡的队伍按照加成排序
-        if options.target == "bonus":
-            for deck in decks:
-                deck.cards = sorted(deck.cards, key=lambda x: x.event_bonus_rate, reverse=True)
-        res.decks = decks
-        return res, src_algs, cost_times
+    # 结果排序去重
+    decks: List[RecommendDeck] = []
+    cost_and_wait_times = {}
+    deck_src_alg = {}
+    for r in results:
+        cost_and_wait_times[r.alg] = (r.cost_time, r.wait_time)
+        for deck in r.result.decks:
+            deck_hash = get_deck_hash(deck)
+            if deck_hash not in deck_src_alg:
+                deck_src_alg[deck_hash] = r.alg
+                decks.append(deck)
+            else:
+                deck_src_alg[deck_hash] += "+" + r.alg
+    def key_func(deck: RecommendDeck):
+        if options.target == "score":
+            return deck.score
+        elif options.target == "power":
+            return deck.total_power
+        elif options.target == "skill":
+            return deck.expect_skill_score_up
+        elif options.target == "bonus":
+            return (-deck.event_bonus_rate, deck.score)
+    limit = options.limit if options.target != "bonus" else options.limit * len(options.target_bonus_list)
+    decks = sorted(decks, key=key_func, reverse=True)[:limit]
+    src_algs = [deck_src_alg[get_deck_hash(deck)] for deck in decks]
+    res = DeckRecommendResult()
+    # 加成组卡的队伍按照加成排序
+    if options.target == "bonus":
+        for deck in decks:
+            deck.cards = sorted(deck.cards, key=lambda x: x.event_bonus_rate, reverse=True)
+    res.decks = decks
+    return res, src_algs, cost_and_wait_times
 
-# 获取自动组卡图片
+# 合成自动组卡图片
 async def compose_deck_recommend_image(
     ctx: SekaiHandlerContext, 
     qid: int,
@@ -680,7 +827,7 @@ async def compose_deck_recommend_image(
         log_options(ctx, uid, options)
 
         # 组卡！
-        cost_times = {}
+        cost_times, wait_times = {}, {}
         result_decks = []
         result_algs = []
         if recommend_type == "challenge_all":
@@ -688,17 +835,22 @@ async def compose_deck_recommend_image(
             for item in CHARACTER_NICKNAME_DATA:
                 options.challenge_live_character_id = item['id']
                 options.limit = 1
-                res, algs, cts = await do_deck_recommend(ctx, options)
+                res, algs, cost_and_wait_times = await do_deck_recommend(ctx, options)
                 result_decks.extend(res.decks)
                 result_algs.extend(algs)
-                for alg, cost in cts.items():
+                for alg, (cost, wait) in cost_and_wait_times.items():
                     if alg not in cost_times:
-                        cost_times[alg] = timedelta()
+                        cost_times[alg] = 0
+                        wait_times[alg] = 0
                     cost_times[alg] += cost
+                    wait_times[alg] = max(wait_times[alg], wait)
             options.challenge_live_character_id = None
         else:
             # 正常组卡
-            res, algs, cost_times = await do_deck_recommend(ctx, options)
+            res, algs, cost_and_wait_times = await do_deck_recommend(ctx, options)
+            for alg, (cost, wait) in cost_and_wait_times.items():
+                cost_times[alg] = cost
+                wait_times[alg] = wait
             result_decks = res.decks
             result_algs = algs
 
@@ -944,9 +1096,12 @@ async def compose_deck_recommend_image(
                     if recommend_type not in ["bonus", "wl_bonus"]:
                         TextBox(f"12星卡固定最大等级+最大突破+最大技能+剧情已读，34星及生日卡固定最大等级", tip_style)
                     TextBox(f"组卡代码来自 https://github.com/NeuraXmy/sekai-deck-recommend-cpp", tip_style)
-                    alg_and_cost_text = "本次组卡使用算法及耗时: "
+                    alg_and_cost_text = "本次组卡使用算法: "
                     for alg, cost in cost_times.items():
-                        alg_and_cost_text += f"{RECOMMEND_ALG_NAMES[alg]}({cost.total_seconds():.2f}s) + "
+                        alg_name = RECOMMEND_ALG_NAMES[alg]
+                        cost_time = f"{cost:.2f}s"
+                        wait_time = f"{wait_times[alg]:.2f}s"
+                        alg_and_cost_text += f"{alg_name} (等待{wait_time}/耗时{cost_time}) + "
                     alg_and_cost_text = alg_and_cost_text[:-3]
                     TextBox(alg_and_cost_text, tip_style)
 
