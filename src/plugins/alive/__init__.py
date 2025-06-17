@@ -1,10 +1,8 @@
 from ..utils import *
-import mail
 from datetime import datetime
-from nonebot.adapters.onebot.v11 import Bot
-from nonebot.adapters.onebot.v11.message import Message
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot import on_command
+from nonebot_plugin_picstatus.collectors import collect_all
+from nonebot_plugin_picstatus.bg_provider import bg_preloader
+from nonebot_plugin_picstatus.templates import render_current_template
 
 
 config = get_config('alive')
@@ -101,13 +99,17 @@ async def _(ctx: HandlerContext):
     exit(0)
 
 
-# 获取当前状态
+# 获取状态图
+async def get_status_image_cq():
+    bg = await bg_preloader.get()
+    collected = await collect_all()
+    return await get_image_cq(await render_current_template(collected=collected, bg=bg))
+
+
 status = CmdHandler(["status", "状态"], logger, only_to_me=True, block=True, priority=1000)
 status.check_cdrate(cd)
 @status.handle()
 async def _(ctx: HandlerContext):
-    from nonebot_plugin_picstatus.collectors import collect_all
-    from nonebot_plugin_picstatus.bg_provider import bg_preloader
-    from nonebot_plugin_picstatus.templates import render_current_template
-    bg, collected = await asyncio.gather(bg_preloader.get(), collect_all())
-    return await ctx.asend_msg(await get_image_cq(await render_current_template(collected=collected, bg=bg)))
+    return await ctx.asend_msg(get_status_image_cq())
+
+
