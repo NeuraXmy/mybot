@@ -55,12 +55,12 @@ def get_exc_desc(e: Exception) -> str:
 def log(*args, **kwargs):
     time_str = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
     pname = f"[{os.getpid()}] "
-    print(time_str, pname, *args, **kwargs)
+    print(time_str, pname, *args, **kwargs, flush=True)
 
 def error(*args, **kwargs):
-    log(*args, **kwargs)
+    log(*args, **kwargs, flush=True)
     import traceback
-    traceback.print_exc()
+    print(traceback.format_exc(), flush=True)
 
 def print_headers(headers: Dict[str, str]):
     headers = dict(headers)
