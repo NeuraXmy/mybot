@@ -1031,8 +1031,8 @@ async def _(ctx: HandlerContext):
 
 # 移除游戏id到黑名单
 pjsk_blacklist_remove = CmdHandler([
-    "/pjsk blacklist remove", "/pjsk_blacklist_remove",
-    "/pjsk黑名单移除", "/pjsk移除黑名单",
+    "/pjsk blacklist remove", "/pjsk_blacklist_remove", "/pjsk_blacklist_del",
+    "/pjsk黑名单移除", "/pjsk移除黑名单", "/pjsk删除黑名单",
 ], logger)
 pjsk_blacklist_remove.check_cdrate(cd).check_wblist(gbl).check_superuser()
 @pjsk_blacklist_remove.handle()
