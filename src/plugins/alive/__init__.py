@@ -113,3 +113,20 @@ async def _(ctx: HandlerContext):
     return await ctx.asend_msg(get_status_image_cq())
 
 
+STATUS_NOTIFY_TIME = [18, 0, 0]
+
+# 订阅状态
+status_notify_gwl = get_group_white_list(file_db, logger, "status_notify", is_service=False)
+
+# 发送状态图定时任务
+@scheduler.scheduled_job("cron", hour=STATUS_NOTIFY_TIME[0], minute=STATUS_NOTIFY_TIME[1], second=STATUS_NOTIFY_TIME[2])
+async def status_nofify():
+    bot = get_bot()
+    if not status_notify_gwl.get():
+        return
+    msg = await get_status_image_cq()
+    for group_id in status_notify_gwl.get():
+        try:
+            await send_group_msg_by_bot(bot, group_id, msg)
+        except Exception as e:
+            logger.print_exc(f"向群 {group_id} 定时推送状态图失败")

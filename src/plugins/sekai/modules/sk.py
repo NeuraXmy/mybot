@@ -73,6 +73,25 @@ class PredictWinrate:
 
 # ======================= 处理逻辑 ======================= #
 
+# 给图表绘制一个昼夜颜色背景
+def draw_daynight_bg(ax, start_time: datetime, end_time: datetime):
+    def get_time_bg_color(time: datetime) -> str:
+        night_color = (200, 200, 230)    # 0:00
+        day_color = (245, 245, 250)     # 12:00
+        ratio = math.sin((time.hour) / 24 * math.pi * 2 - math.pi / 2)
+        color = lerp_color(night_color, day_color, (ratio + 1) / 2)
+        return rgb_to_color_code(color)
+    interval = timedelta(hours=1)
+    start_time = start_time.replace(minute=0, second=0, microsecond=0)
+    bg_times = [start_time]
+    while bg_times[-1] < end_time:
+        bg_times.append(bg_times[-1] + interval)
+    bg_colors = [get_time_bg_color(t) for t in bg_times]
+    for i in range(len(bg_times)):
+        start = bg_times[i]
+        end = bg_times[i] + interval
+        ax.axvspan(start, end, facecolor=bg_colors[i], edgecolor=None, zorder=0)
+
 # 从榜线列表中找到最近的前一个榜线
 def find_prev_ranking(ranks: List[Ranking], rank: int) -> Optional[Ranking]:
     most_prev = None
@@ -648,6 +667,10 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
         fig, ax = plt.subplots()
         fig.set_size_inches(12, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
+
+        draw_daynight_bg(ax, times[0], times[-1])
+
+        # 绘制分数
         ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min(scores) * 0.95, max(scores) * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
@@ -657,11 +680,14 @@ async def compose_player_trace_image(ctx: SekaiHandlerContext, qtype: str, qval:
                      color='blue', fontsize=12, ha='right')
         ax.legend(loc='lower right')
         ax.grid(True, linestyle='-', alpha=0.3, color='gray')
+
+        # 绘制排名
         ax2 = ax.twinx()
         ax2.plot(times, rs, 'o', label='排名', color='red', markersize=2, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(int(x))))
         ax2.set_ylim(max(rs) + 1, min(rs) - 1)
         ax2.legend(loc='lower right')
+
         fig.autofmt_xdate()
         plt.annotate(f"{int(rs[-1])}", xy=(times[-1], rs[-1]), xytext=(times[-1], rs[-1]),
                      color='red', fontsize=12, ha='right')
@@ -734,6 +760,10 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         fig, ax = plt.subplots()
         fig.set_size_inches(12, 8)
         fig.subplots_adjust(wspace=0, hspace=0)
+
+        draw_daynight_bg(ax, times[0], times[-1])
+
+        # 绘制分数
         ax.plot(times, scores, 'o', label='分数', color='blue', markersize=2, linewidth=0.5)
         ax.set_ylim(min_score * 0.95, max_score * 1.05)
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(x)))
@@ -742,6 +772,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
         plt.annotate(f"{get_board_score_str(scores[-1])}", xy=(times[-1], scores[-1]), xytext=(times[-1], scores[-1]), 
                      color='blue', fontsize=12, ha='right')
 
+        # 绘制预测线
         if pred_scores:
             ax.plot(pred_times, pred_scores, 'o--', label='预测', color='red', markersize=2, linewidth=1)
             ax.set_ylim(min_score * 0.95, max_score * 1.05)
@@ -750,6 +781,7 @@ async def compose_rank_trace_image(ctx: SekaiHandlerContext, rank: int, event: d
             plt.annotate(f"{get_board_score_str(pred_scores[-1])}", xy=(pred_times[-1], pred_scores[-1]), xytext=(pred_times[-1], pred_scores[-1]), 
                          color='red', fontsize=12, ha='right')
 
+        # 绘制时速
         ax2 = ax.twinx()
         ax2.plot(times, speeds, 'o', label='换算时速', color='green', markersize=0.5, linewidth=0.5)
         ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: get_board_score_str(int(x)) + "/h"))

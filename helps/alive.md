@@ -10,6 +10,7 @@
 
 - [`/killbot` 关闭bot](#killbot)
 - [`@bot /status` 查看bot状态](#bot-status)
+- [`/status_notify_{on|off}` 开启或关闭状态通知](#status-notify-onoff)
 
 --- 
 
@@ -42,6 +43,16 @@
 - **示例**
 
     `@bot /status`
+
+## `/status_notify_{on|off}`
+
+> 开启或关闭群聊内状态通知，开启后每天18:00将推送一次bot状态图
+
+- **示例**
+
+    `/status_notify_on`
+
+    `/status_notify_off`
 
 ---
 

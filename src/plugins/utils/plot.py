@@ -72,6 +72,10 @@ def color_code_to_rgb(code: str) -> Color:
         return int(code[0:2], 16), int(code[2:4], 16), int(code[4:6], 16), 255
     raise ValueError("Invalid color code")
 
+def rgb_to_color_code(rgb: Color) -> str:
+    r, g, b = rgb[:3]
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 def lerp_color(c1, c2, t):
     ret = []
     for i in range(len(c1)):
