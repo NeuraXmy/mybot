@@ -1067,6 +1067,7 @@ ranking_update_failures = { region: 0 for region in ALL_SERVER_REGIONS }
 @repeat_with_interval(SK_RECORD_INTERVAL, '更新榜线数据', logger, every_output=False, error_limit=1)
 async def update_ranking():
     tasks = []
+    region_failed = {}
 
     for region in ALL_SERVER_REGIONS:
         ctx = SekaiHandlerContext.from_region(region)
@@ -1092,6 +1093,7 @@ async def update_ranking():
                         return ctx.region, eid, await resp.json()
             except Exception as e:
                 logger.warning(f"获取 {ctx.region} 榜线数据失败: {get_exc_desc(e)}")
+                region_failed[ctx.region] = True
                 return ctx.region, eid, None
             
         tasks.append(_get_ranking(ctx, event['id']))
@@ -1128,24 +1130,25 @@ async def update_ranking():
                     logger.print_exc(f"插入 {region}_{eid} 榜线数据失败: {get_exc_desc(e)}")
                     return False
 
-            ok = True
             # 总榜
-            ok = ok and await update_board(ctx, eid, data)
+            if not await update_board(ctx, eid, data):
+                region_failed[region] = True
             # WL单榜
             wl_events = await get_wl_events(ctx, eid)
             for wl_event in wl_events:
                 if datetime.now() > datetime.fromtimestamp(wl_event['aggregateAt'] / 1000 + RECORD_TIME_AFTER_EVENT_END):
                     continue
-                ok = ok and await update_board(ctx, wl_event['id'], data)
+                if not await update_board(ctx, wl_event['id'], data):
+                    region_failed[region] = True
         
-            if not ok:
+        # 更新失败次数和日志
+        for region in ALL_SERVER_REGIONS:
+            if region_failed.get(region, False):
                 ranking_update_failures[region] += 1
-
-        # log
-        if ranking_update_times[region] >= UPDATE_RANKING_LOG_INTERVAL_TIMES:
-            logger.info(f"最近 {UPDATE_RANKING_LOG_INTERVAL_TIMES} 次更新 {region} 榜线数据失败次数: {ranking_update_failures[region]}")
-            ranking_update_times[region] = 0
-            ranking_update_failures[region] = 0
+            if ranking_update_times[region] >= UPDATE_RANKING_LOG_INTERVAL_TIMES:
+                logger.info(f"最近 {UPDATE_RANKING_LOG_INTERVAL_TIMES} 次更新 {region} 榜线数据失败次数: {ranking_update_failures[region]}")
+                ranking_update_times[region] = 0
+                ranking_update_failures[region] = 0
 
 
 
