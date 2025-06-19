@@ -82,11 +82,11 @@ CARD_ATTR_NAMES = [
     ("pure", "PURE", "Pure", "纯洁", "绿草", "绿", "草", "小草"),
 ]
 CARD_RARE_NAMES = [
-    ("rarity_1", "1星", "一星"),
-    ("rarity_2", "2星", "二星", "两星"),
-    ("rarity_3", "3星", "三星"),
-    ("rarity_4", "4星", "四星"),
-    ("rarity_birthday", "生日", "生日卡"),
+    ("rarity_1", "1星", "一星", "1x", "1"),
+    ("rarity_2", "2星", "二星", "两星", "2x", "2"),
+    ("rarity_3", "3星", "三星", "3x", "3"),
+    ("rarity_4", "4星", "四星", "4x", "4"),
+    ("rarity_birthday", "生日", "生日卡", "bd"),
 ]
 CARD_SUPPLIES_NAMES = [
     ("all_limited", "限定", "限"),

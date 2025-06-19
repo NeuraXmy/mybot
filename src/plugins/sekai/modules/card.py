@@ -825,12 +825,12 @@ async def _(ctx: SekaiHandlerContext):
         event, args = await extract_ban_event(ctx, args)
 
     # 其他参数
-    unit, args = extract_unit(args)
-    rare, args = extract_card_rare(args)
     attr, args = extract_card_attr(args)
     supply, args = extract_card_supply(args)
     skill, args = extract_card_skill(args)
     year, args = extract_year(args)
+    unit, args = extract_unit(args)
+    rare, args = extract_card_rare(args)
     box = False
     if 'box' in args:
         args = args.replace('box', '').strip()
